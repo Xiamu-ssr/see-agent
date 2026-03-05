@@ -53,6 +53,11 @@ def build_system_prompt(config: dict) -> str:
             "7. 连续 3 次操作没有进展时，停下来重新分析当前状态，尝试完全不同的策略。\n"
             "8. 任务完成后必须调用 finished 工具。\n"
             "9. 遇到无法解决的问题（密码、验证码）调用 call_user，等用户处理后会通知你继续。\n"
+            "10. 操作前先检查 <ENVIRONMENT> 中的运行应用列表。如果目标应用已在运行，"
+            "用 shell('open -a AppName') 激活；如果未运行，先启动。\n"
+            "11. macOS 支持多桌面(Space)。如果截图中看不到目标窗口但应用已在运行，"
+            "尝试 hotkey(['ctrl','right']) 或 hotkey(['ctrl','left']) 切换桌面，"
+            "或用 shell('open -a AppName') 将其调到当前桌面。\n"
             "</RULES>"
         )
     else:
@@ -75,6 +80,13 @@ def build_system_prompt(config: dict) -> str:
             "8. You MUST call the finished tool when the task is complete.\n"
             "9. If you encounter an unsolvable problem (password, captcha), "
             "call call_user and wait for the user to handle it.\n"
+            "10. Check the <ENVIRONMENT> block for running apps before acting. "
+            "If the target app is already running, use shell('open -a AppName') "
+            "to activate it; if not running, launch it first.\n"
+            "11. macOS supports multiple desktops (Spaces). If the target window "
+            "is not visible but the app is running, try hotkey(['ctrl','right']) "
+            "or hotkey(['ctrl','left']) to switch desktops, or use "
+            "shell('open -a AppName') to bring it to the current desktop.\n"
             "</RULES>"
         )
 

@@ -297,6 +297,10 @@ def _overlay_process_entry(
         window.setHasShadow_(False)
         # Stay on all Spaces / desktops.
         window.setCollectionBehavior_(1 | (1 << 4))
+        # NSWindowSharingNone — screencapture/CGWindowListCreateImage
+        # will NOT capture this window, so overlay never appears in
+        # screenshots sent to the LLM.
+        window.setSharingType_(0)
 
         view = _OverlayView.alloc().initWithFrame_(frame)
         window.setContentView_(view)

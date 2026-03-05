@@ -171,13 +171,27 @@ class AgentLoop:
         # Scale for the LLM (the saved file stays at full resolution).
         scaled = self._maybe_scale(screenshot)
 
+        # ── 2b. Collect desktop environment info ──────────────────────
+        from src.agent.environment import collect_environment
+
+        try:
+            env_block = await collect_environment(
+                screenshot.width, screenshot.height,
+            )
+        except Exception:
+            logger.warning("Failed to collect environment info", exc_info=True)
+            env_block = ""
+
         # ── 3. Build conversation context ─────────────────────────────
         from src.brain.prompts import build_system_prompt
 
         system_prompt = build_system_prompt(self._config)
         ctx = ConversationContext(system_prompt, max_images=self._max_images)
+
+        # Prepend environment block to the user task text.
+        task_text = f"{env_block}\n\n{task}" if env_block else task
         ctx.add_user_task(
-            task, scaled.base64, scaled.detail,
+            task_text, scaled.base64, scaled.detail,
             mime_type=scaled.mime_type,
         )
 
@@ -271,11 +285,8 @@ class AgentLoop:
                 ctx.add_tool_result(tc.id, f"User replied: {user_reply}")
                 ctx.add_user_reply(user_reply)
 
-                # Dismiss overlay before taking screenshot.
-                if self._overlay:
-                    self._overlay.dismiss()
-
                 # Take a fresh screenshot after user interaction.
+                # (Overlay uses setSharingType_(0) so it won't appear in screenshots.)
                 screenshot = await self._eye.capture()
                 shot_path = task_dir / f"step_{step:03d}.webp"
                 screenshot.save(shot_path)
@@ -330,9 +341,9 @@ class AgentLoop:
                         success=False,
                     )
 
-            # ── 4f. Dismiss overlay, then wait for UI to settle ────────
-            if self._overlay:
-                self._overlay.dismiss()
+            # ── 4f. Wait for UI to settle ──────────────────────────────
+            # Overlay stays visible (setSharingType_(0) keeps it out of
+            # screenshots).  It will be replaced by the next show_overlay call.
             await asyncio.sleep(self._screenshot_interval_ms / 1000.0)
 
             # ── 4g. Take new screenshot, save to disk ─────────────────

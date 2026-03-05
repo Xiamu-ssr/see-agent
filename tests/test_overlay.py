@@ -154,11 +154,16 @@ class TestShowOverlay:
 
 
 class TestLoopOverlayIntegration:
-    """Verify AgentLoop correctly calls overlay and dismiss."""
+    """Verify AgentLoop correctly calls overlay show methods.
+
+    With ``setSharingType_(0)`` the overlay window is invisible to
+    screenshots, so ``dismiss()`` is no longer called during the loop.
+    The overlay persists until replaced by the next ``show_*`` call.
+    """
 
     @pytest.mark.asyncio
-    async def test_overlay_show_and_dismiss_on_tool_execution(self, tmp_path):
-        """Overlay should be shown before tool exec and dismissed before screenshot."""
+    async def test_overlay_show_on_tool_execution(self, tmp_path):
+        """Overlay show_click and show_finished should be called."""
         # click → finished
         responses = [
             _make_click_response(1),
@@ -200,15 +205,15 @@ class TestLoopOverlayIntegration:
         # show_click called for the click step.
         overlay.show_click.assert_called_once_with(100, 200, False)
 
-        # dismiss called before the post-tool screenshot.
-        overlay.dismiss.assert_called()
+        # dismiss is NOT called during the loop (setSharingType hides overlay).
+        overlay.dismiss.assert_not_called()
 
         # show_finished called for the finished step.
         overlay.show_finished.assert_called_once_with("OK")
 
     @pytest.mark.asyncio
-    async def test_dismiss_called_before_screenshot(self, tmp_path):
-        """dismiss() must be called BEFORE eye.capture for the post-tool screenshot."""
+    async def test_overlay_persists_through_screenshot(self, tmp_path):
+        """Overlay is NOT dismissed before eye.capture (setSharingType hides it)."""
         brain = AsyncMock()
         brain.chat = AsyncMock(side_effect=[
             _make_click_response(1),
@@ -232,10 +237,10 @@ class TestLoopOverlayIntegration:
 
         overlay = MagicMock()
 
-        def tracking_dismiss():
-            call_order.append("dismiss")
+        def tracking_show_click(x, y, double=False):
+            call_order.append("show_click")
 
-        overlay.dismiss = MagicMock(side_effect=tracking_dismiss)
+        overlay.show_click = MagicMock(side_effect=tracking_show_click)
 
         loop = AgentLoop(
             brain=brain,
@@ -248,13 +253,13 @@ class TestLoopOverlayIntegration:
         with patch("src.agent.loop.SCREENSHOTS_DIR", tmp_path):
             await loop.run("click then finish")
 
-        # Initial capture happens first (step 0).
-        # Then after tool exec: dismiss, then capture (step 1).
-        # Find the dismiss and the capture that follows it.
-        assert "dismiss" in call_order
-        dismiss_idx = call_order.index("dismiss")
-        captures_after = [i for i, v in enumerate(call_order) if v == "capture" and i > dismiss_idx]
-        assert len(captures_after) >= 1, "capture must happen after dismiss"
+        # show_click should appear before the post-tool capture,
+        # with NO dismiss in between.
+        assert "show_click" in call_order
+        assert "dismiss" not in call_order
+        click_idx = call_order.index("show_click")
+        captures_after = [i for i, v in enumerate(call_order) if v == "capture" and i > click_idx]
+        assert len(captures_after) >= 1, "capture must happen after show_click"
 
     @pytest.mark.asyncio
     async def test_no_overlay_no_errors(self, tmp_path):
