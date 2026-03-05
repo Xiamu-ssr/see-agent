@@ -7,6 +7,6 @@
     "language": "zh",
     "max_steps": 50,
     "max_images": 5,
-    "screenshot_interval_ms": 500,
+    "screenshot_interval_ms": 800,
     "soul_path": "~/.see-agent/SOUL.md"
 }

@@ -46,13 +46,13 @@ class DragTool(Tool):
             "drag(%d, %d) -> (%d, %d)", start_x, start_y, end_x, end_y
         )
 
-        # Move to the starting position, then drag to the end position.
+        # Manual mouseDown → moveTo → mouseUp to work around a pyautogui
+        # bug where drag() passes button='primary' (instead of 'left') to
+        # _mouseMoveDrag, which triggers an AssertionError on macOS.
         pyautogui.moveTo(start_x, start_y)
-        pyautogui.drag(
-            end_x - start_x,
-            end_y - start_y,
-            duration=0.5,
-        )
+        pyautogui.mouseDown(button="left")
+        pyautogui.moveTo(end_x, end_y, duration=0.5)
+        pyautogui.mouseUp(button="left")
 
         return (
             f"已从 ({start_x}, {start_y}) 拖拽到 ({end_x}, {end_y})"

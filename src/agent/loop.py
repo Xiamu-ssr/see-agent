@@ -122,7 +122,7 @@ class AgentLoop:
         self._max_steps: int = int(config.get("max_steps", 50))
         self._max_images: int = int(config.get("max_images", 5))
         self._screenshot_interval_ms: int = int(
-            config.get("screenshot_interval_ms", 500)
+            config.get("screenshot_interval_ms", 800)
         )
         self._scaling_enabled: bool = bool(config.get("scaling_enabled", True))
 
@@ -347,6 +347,8 @@ class AgentLoop:
             await asyncio.sleep(self._screenshot_interval_ms / 1000.0)
 
             # ── 4g. Take new screenshot, save to disk ─────────────────
+            if self._overlay:
+                self._overlay.show_screenshot()
             screenshot = await self._eye.capture()
             shot_path = task_dir / f"step_{step:03d}.webp"
             screenshot.save(shot_path)

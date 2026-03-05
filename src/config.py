@@ -20,7 +20,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "language": "zh",
     "max_steps": 50,
     "max_images": 5,
-    "screenshot_interval_ms": 500,
+    "screenshot_interval_ms": 800,
     "show_overlay": True,
     "scaling_enabled": True,
     "soul_path": "~/.see-agent/SOUL.md",
