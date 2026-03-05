@@ -22,3 +22,13 @@ bash scripts/check.sh
 这个脚本按顺序跑四层检查：pyright 类型检查 → ruff lint → pytest → 端到端冒烟。全过才算改完。
 
 不要手动挑着跑，直接跑脚本，它会告诉你哪层没过。
+
+## 提交代码
+
+验证通过后，commit 并 push：
+```bash
+git add -A
+git commit -m "简要描述改了什么"
+git push
+```
+每次改完都要推到远程，不要只 commit 不 push。
