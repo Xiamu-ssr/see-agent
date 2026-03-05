@@ -138,7 +138,7 @@ class AgentLoop:
 
         # ── 2. Initial screenshot ─────────────────────────────────────
         screenshot = await self._eye.capture()
-        initial_path = task_dir / "step_000.png"
+        initial_path = task_dir / "step_000.webp"
         screenshot.save(initial_path)
 
         # ── 3. Build conversation context ─────────────────────────────
@@ -146,7 +146,10 @@ class AgentLoop:
 
         system_prompt = build_system_prompt(self._config)
         ctx = ConversationContext(system_prompt, max_images=self._max_images)
-        ctx.add_user_task(task, screenshot.base64, screenshot.detail)
+        ctx.add_user_task(
+            task, screenshot.base64, screenshot.detail,
+            mime_type=screenshot.mime_type,
+        )
 
         # ── 4. Main loop ──────────────────────────────────────────────
         consecutive_errors = 0
@@ -235,9 +238,12 @@ class AgentLoop:
 
                 # Take a fresh screenshot after user interaction.
                 screenshot = await self._eye.capture()
-                shot_path = task_dir / f"step_{step:03d}.png"
+                shot_path = task_dir / f"step_{step:03d}.webp"
                 screenshot.save(shot_path)
-                ctx.add_screenshot(screenshot.base64, screenshot.detail)
+                ctx.add_screenshot(
+                    screenshot.base64, screenshot.detail,
+                    mime_type=screenshot.mime_type,
+                )
                 continue
 
             # ── 4e. Execute tool via registry ─────────────────────────
@@ -272,12 +278,13 @@ class AgentLoop:
 
             # ── 4g. Take new screenshot, save to disk ─────────────────
             screenshot = await self._eye.capture()
-            shot_path = task_dir / f"step_{step:03d}.png"
+            shot_path = task_dir / f"step_{step:03d}.webp"
             screenshot.save(shot_path)
 
             # ── 4h. Add to context ────────────────────────────────────
             ctx.add_tool_result(
-                tc.id, result, screenshot.base64, screenshot.detail
+                tc.id, result, screenshot.base64, screenshot.detail,
+                mime_type=screenshot.mime_type,
             )
 
             # ── 4i. No-progress detection (screenshot hash) ──────────

@@ -36,14 +36,16 @@ class ConversationContext:
     # ------------------------------------------------------------------ #
 
     def add_user_task(
-        self, text: str, screenshot_b64: str, detail: str
+        self, text: str, screenshot_b64: str, detail: str,
+        mime_type: str = "image/webp",
     ) -> None:
         """Append the initial user task message together with the first screenshot.
 
         Parameters:
             text: The natural-language task description.
-            screenshot_b64: Base64-encoded PNG of the current screen.
+            screenshot_b64: Base64-encoded image of the current screen.
             detail: OpenAI vision detail level (``"low"`` or ``"high"``).
+            mime_type: MIME type of the encoded image.
         """
         self._messages.append(
             {
@@ -53,7 +55,7 @@ class ConversationContext:
                     {
                         "type": "image_url",
                         "image_url": {
-                            "url": f"data:image/png;base64,{screenshot_b64}",
+                            "url": f"data:{mime_type};base64,{screenshot_b64}",
                             "detail": detail,
                         },
                     },
@@ -78,6 +80,7 @@ class ConversationContext:
         result: str,
         screenshot_b64: str | None = None,
         detail: str = "high",
+        mime_type: str = "image/webp",
     ) -> None:
         """Append a tool-result message and an optional follow-up screenshot.
 
@@ -88,8 +91,9 @@ class ConversationContext:
         Parameters:
             tool_call_id: The ``id`` of the tool call this result corresponds to.
             result: Textual result returned by the tool.
-            screenshot_b64: Optional base64-encoded PNG taken after execution.
+            screenshot_b64: Optional base64-encoded image taken after execution.
             detail: OpenAI vision detail level for the screenshot.
+            mime_type: MIME type of the encoded image.
         """
         self._messages.append(
             {
@@ -99,7 +103,7 @@ class ConversationContext:
             }
         )
         if screenshot_b64 is not None:
-            self.add_screenshot(screenshot_b64, detail)
+            self.add_screenshot(screenshot_b64, detail, mime_type=mime_type)
         logger.debug(
             "Added tool result (id=%s, has_screenshot=%s)",
             tool_call_id,
@@ -107,13 +111,15 @@ class ConversationContext:
         )
 
     def add_screenshot(
-        self, screenshot_b64: str, detail: str = "high"
+        self, screenshot_b64: str, detail: str = "high",
+        mime_type: str = "image/webp",
     ) -> None:
         """Append a standalone screenshot as a user message.
 
         Parameters:
-            screenshot_b64: Base64-encoded PNG image data.
+            screenshot_b64: Base64-encoded image data.
             detail: OpenAI vision detail level (``"low"`` or ``"high"``).
+            mime_type: MIME type of the encoded image.
         """
         self._messages.append(
             {
@@ -122,7 +128,7 @@ class ConversationContext:
                     {
                         "type": "image_url",
                         "image_url": {
-                            "url": f"data:image/png;base64,{screenshot_b64}",
+                            "url": f"data:{mime_type};base64,{screenshot_b64}",
                             "detail": detail,
                         },
                     },

@@ -17,16 +17,18 @@ class Screenshot:
     """Immutable container for a captured screenshot.
 
     Attributes:
-        base64: PNG image encoded as a base64 string (no data-URI prefix).
+        base64: Image encoded as a base64 string (no data-URI prefix).
         width: Logical width in pixels (CSS / point resolution).
         height: Logical height in pixels (CSS / point resolution).
         scale_factor: Ratio of physical to logical pixels (e.g. 2.0 on Retina).
+        mime_type: MIME type of the encoded image (e.g. ``"image/webp"``).
     """
 
     base64: str
     width: int
     height: int
     scale_factor: float = field(default=1.0)
+    mime_type: str = field(default="image/webp")
 
     # --------------------------------------------------------------------- #
     # Derived helpers
@@ -52,19 +54,27 @@ class Screenshot:
             return "low"
         return "high"
 
+    @property
+    def _extension(self) -> str:
+        """File extension derived from :attr:`mime_type` (e.g. ``".webp"``)."""
+        return "." + self.mime_type.split("/")[-1]
+
     # --------------------------------------------------------------------- #
     # Persistence
     # --------------------------------------------------------------------- #
 
     def save(self, path: str | Path) -> Path:
-        """Decode the base64 payload and write the PNG file to *path*.
+        """Decode the base64 payload and write the image file to *path*.
 
-        Parent directories are created automatically.
+        If *path* ends with a different extension than :attr:`mime_type`
+        implies, the extension is replaced automatically.  Parent directories
+        are created as needed.
 
         Returns:
             The resolved :class:`Path` that was written.
         """
         dest = Path(path).expanduser().resolve()
+        dest = dest.with_suffix(self._extension)
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_bytes(base64.b64decode(self.base64))
         logger.info(
@@ -78,7 +88,7 @@ class BaseEye(ABC):
     """Abstract base for screen-capture backends.
 
     Every concrete implementation must provide :meth:`capture`, which returns a
-    :class:`Screenshot` encoded as a lossless PNG in base64.
+    :class:`Screenshot` with the image encoded as base64.
     """
 
     @abstractmethod

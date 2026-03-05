@@ -84,10 +84,10 @@ class MacEye(BaseEye):
         return self._scale_factor
 
     @staticmethod
-    def _image_to_base64_png(img: Image.Image) -> str:
-        """Encode a Pillow Image as a base64 PNG string (no data-URI prefix)."""
+    def _image_to_base64(img: Image.Image) -> str:
+        """Encode a Pillow Image as a base64 WebP string (no data-URI prefix)."""
         buf = io.BytesIO()
-        img.save(buf, format="PNG")
+        img.save(buf, format="WEBP", quality=100)
         return base64.b64encode(buf.getvalue()).decode("ascii")
 
     # ------------------------------------------------------------------ #
@@ -103,7 +103,7 @@ class MacEye(BaseEye):
             2. Detect the Retina scaling factor (cached after first call).
             3. If Retina (scale > 1), resize down to logical resolution
                using Lanczos resampling so coordinates stay consistent.
-            4. Encode as lossless PNG and wrap in a :class:`Screenshot`.
+            4. Encode as WebP (quality=100) and wrap in a :class:`Screenshot`.
 
         Raises:
             RuntimeError: If PyAutoGUI fails to capture the screen.
@@ -141,7 +141,7 @@ class MacEye(BaseEye):
             img = raw_img
             logical_w, logical_h = physical_w, physical_h
 
-        b64 = self._image_to_base64_png(img)
+        b64 = self._image_to_base64(img)
 
         screenshot = Screenshot(
             base64=b64,

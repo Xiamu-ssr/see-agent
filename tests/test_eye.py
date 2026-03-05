@@ -50,7 +50,9 @@ class TestScreenshot:
 
     def test_screenshot_save(self, tmp_path):
         """save() writes a file whose content matches the decoded base64 data."""
-        shot = Screenshot(base64=TINY_PNG_B64, width=100, height=100)
+        shot = Screenshot(
+            base64=TINY_PNG_B64, width=100, height=100, mime_type="image/png"
+        )
         dest = tmp_path / "test_shot.png"
 
         returned_path = shot.save(dest)
@@ -61,11 +63,23 @@ class TestScreenshot:
 
     def test_screenshot_save_creates_parents(self, tmp_path):
         """save() creates parent directories automatically."""
-        shot = Screenshot(base64=TINY_PNG_B64, width=100, height=100)
+        shot = Screenshot(
+            base64=TINY_PNG_B64, width=100, height=100, mime_type="image/png"
+        )
         dest = tmp_path / "a" / "b" / "c" / "nested_shot.png"
 
         returned_path = shot.save(dest)
         assert returned_path.exists()
+
+    def test_screenshot_save_webp_extension(self, tmp_path):
+        """save() replaces extension based on mime_type."""
+        shot = Screenshot(base64=TINY_PNG_B64, width=100, height=100)
+        dest = tmp_path / "shot.png"
+
+        returned_path = shot.save(dest)
+
+        assert returned_path.suffix == ".webp"
+        assert returned_path.name == "shot.webp"
 
     def test_screenshot_physical_dimensions(self):
         """scale_factor=2.0 doubles the physical dimensions."""

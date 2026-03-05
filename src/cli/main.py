@@ -140,7 +140,7 @@ def _print_task_result(result: RunResult) -> None:
     from pathlib import Path
 
     task_path = Path(result.task_dir)
-    n_screenshots = len(list(task_path.glob("*.png"))) if task_path.is_dir() else 0
+    n_screenshots = len(list(task_path.glob("*.webp"))) if task_path.is_dir() else 0
     typer.echo(f"\U0001f4c1 截图已保存: {result.task_dir} ({n_screenshots} 张)")
     typer.echo(f"\u23f1\ufe0f  总耗时: {result.elapsed_seconds:.0f}s\n")
 

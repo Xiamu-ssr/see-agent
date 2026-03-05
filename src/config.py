@@ -2,6 +2,7 @@
 
 import json
 import logging
+import logging.handlers
 import os
 import shutil
 from datetime import datetime
@@ -98,6 +99,10 @@ _logging_configured = False
 def setup_logging() -> None:
     """Configure the root logger to write to ``~/.see-agent/logs/YYYY-MM-DD.log``.
 
+    Uses :class:`RotatingFileHandler` (10 MB per file, 5 backups) so logs
+    don't grow unbounded.  ``httpx`` and ``openai`` loggers are pinned to
+    INFO to prevent base64 request bodies from bloating the log.
+
     Safe to call multiple times — only the first invocation takes effect.
     """
     global _logging_configured  # noqa: PLW0603
@@ -108,7 +113,12 @@ def setup_logging() -> None:
     ensure_workspace()
     log_file = LOGS_DIR / f"{datetime.now().strftime('%Y-%m-%d')}.log"
 
-    file_handler = logging.FileHandler(log_file, encoding="utf-8")
+    file_handler = logging.handlers.RotatingFileHandler(
+        log_file,
+        maxBytes=10 * 1024 * 1024,  # 10 MB
+        backupCount=5,
+        encoding="utf-8",
+    )
     file_handler.setLevel(logging.DEBUG)
     file_handler.setFormatter(
         logging.Formatter(
@@ -120,3 +130,9 @@ def setup_logging() -> None:
     root = logging.getLogger()
     root.setLevel(logging.DEBUG)
     root.addHandler(file_handler)
+
+    # Suppress verbose DEBUG logs from HTTP clients that dump full request
+    # bodies (including base64 screenshot payloads).
+    logging.getLogger("httpx").setLevel(logging.INFO)
+    logging.getLogger("openai").setLevel(logging.INFO)
+    logging.getLogger("httpcore").setLevel(logging.INFO)
