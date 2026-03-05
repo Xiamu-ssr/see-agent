@@ -1,0 +1,59 @@
+"""FastAPI application factory for the see-agent server."""
+
+from __future__ import annotations
+
+import logging
+from contextlib import asynccontextmanager
+from typing import AsyncIterator
+
+from fastapi import FastAPI
+
+from src.config import load_config
+from src.server.routes import chat, health, task, ws
+
+logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Application lifespan handler: runs setup on startup and teardown on shutdown.
+
+    On startup:
+        - Load configuration from ``~/.see-agent/config.json`` (with env overrides).
+        - Initialise shared state containers for tasks and WebSocket subscribers.
+        - Log a startup message.
+
+    On shutdown:
+        - Log a shutdown message.
+    """
+    # ── Startup ────────────────────────────────────────────────────────
+    config = load_config()
+    app.state.config = config
+
+    # Shared mutable state accessible from route handlers via ``request.app.state``.
+    app.state.tasks = {}
+    app.state.ws_subscribers = {}
+
+    logger.info(
+        "see-agent server started  model=%s  max_steps=%s",
+        config.get("llm", {}).get("model", "?"),
+        config.get("max_steps", "?"),
+    )
+
+    yield
+
+    # ── Shutdown ───────────────────────────────────────────────────────
+    logger.info("see-agent server shutting down")
+
+
+app = FastAPI(
+    title="see-agent",
+    version="0.1.0",
+    lifespan=lifespan,
+)
+
+# ── Register route routers ─────────────────────────────────────────────
+app.include_router(health.router)
+app.include_router(chat.router)
+app.include_router(task.router)
+app.include_router(ws.router)

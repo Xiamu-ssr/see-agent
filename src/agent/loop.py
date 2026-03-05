@@ -1,0 +1,330 @@
+"""Main agent loop -- orchestrates eye, brain, and hand modules.
+
+The :class:`AgentLoop` drives a single task from start to finish:
+
+1. Capture an initial screenshot.
+2. Build a :class:`ConversationContext` with the system prompt and screenshot.
+3. Repeatedly ask the LLM for the next action, execute it via the
+   :class:`ToolRegistry`, capture a fresh screenshot, and feed everything
+   back into the context.
+4. Stop when the LLM calls ``finished``, the step budget is exhausted, or
+   consecutive errors exceed the safety limit.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+import time
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Any, Awaitable, Callable
+
+from src.agent.context import ConversationContext
+from src.brain.base import BaseBrain, BrainResponse
+from src.config import SCREENSHOTS_DIR
+from src.eye.base import BaseEye
+from src.hand.tool import ToolRegistry
+
+logger = logging.getLogger(__name__)
+
+# -------------------------------------------------------------------- #
+# Public data types
+# -------------------------------------------------------------------- #
+
+MAX_CONSECUTIVE_ERRORS = 3
+NO_PROGRESS_LIMIT = 3
+
+
+@dataclass
+class StepEvent:
+    """Snapshot of a single agent step, emitted via the *on_step* callback."""
+
+    step: int
+    max_steps: int
+    thought: str
+    tool_name: str
+    tool_args: dict[str, Any]
+    tool_result: str
+    screenshot_path: str
+    wait_ms: int = 0
+
+
+@dataclass
+class RunResult:
+    """Result returned by :meth:`AgentLoop.run`."""
+
+    summary: str
+    task_dir: str
+    total_steps: int
+    elapsed_seconds: float
+
+
+StepCallback = Callable[[StepEvent], Awaitable[None]]
+"""Async callback invoked after each successful tool-execution step."""
+
+UserInputCallback = Callable[[str], Awaitable[str]]
+"""Async callback invoked when the agent calls ``call_user``.
+
+Receives the question string and must return the user's reply.
+"""
+
+
+# -------------------------------------------------------------------- #
+# Agent loop
+# -------------------------------------------------------------------- #
+
+
+class AgentLoop:
+    """Drives a single task to completion by coordinating eye, brain, and hand.
+
+    Parameters:
+        brain: LLM backend used for reasoning.
+        eye: Screen-capture backend.
+        registry: Registry of available tools (already populated).
+        config: Application configuration dict (see ``src/config.py``).
+        on_step: Optional async callback fired after each tool-execution step.
+        on_user_input: Optional async callback for ``call_user`` interactions.
+    """
+
+    def __init__(
+        self,
+        brain: BaseBrain,
+        eye: BaseEye,
+        registry: ToolRegistry,
+        config: dict[str, Any],
+        on_step: StepCallback | None = None,
+        on_user_input: UserInputCallback | None = None,
+    ) -> None:
+        self._brain = brain
+        self._eye = eye
+        self._registry = registry
+        self._config = config
+        self._on_step = on_step
+        self._on_user_input = on_user_input
+
+        # Configurable knobs with sensible defaults.
+        self._max_steps: int = int(config.get("max_steps", 50))
+        self._max_images: int = int(config.get("max_images", 5))
+        self._screenshot_interval_ms: int = int(
+            config.get("screenshot_interval_ms", 500)
+        )
+
+    # ------------------------------------------------------------------ #
+    # Public entry point
+    # ------------------------------------------------------------------ #
+
+    async def run(self, task: str) -> RunResult:
+        """Execute *task* and return a :class:`RunResult`.
+
+        Parameters:
+            task: The user-facing task description.
+
+        Returns:
+            A :class:`RunResult` containing the summary, task directory,
+            total steps executed, and elapsed wall-clock time.
+        """
+        t0 = time.monotonic()
+        final_step = 0
+
+        # ── 1. Create task-specific screenshot directory ──────────────
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        task_dir = SCREENSHOTS_DIR / f"task_{timestamp}"
+        task_dir.mkdir(parents=True, exist_ok=True)
+        logger.info("Task dir: %s", task_dir)
+
+        # ── 2. Initial screenshot ─────────────────────────────────────
+        screenshot = await self._eye.capture()
+        initial_path = task_dir / "step_000.png"
+        screenshot.save(initial_path)
+
+        # ── 3. Build conversation context ─────────────────────────────
+        from src.brain.prompts import build_system_prompt
+
+        system_prompt = build_system_prompt(self._config)
+        ctx = ConversationContext(system_prompt, max_images=self._max_images)
+        ctx.add_user_task(task, screenshot.base64, screenshot.detail)
+
+        # ── 4. Main loop ──────────────────────────────────────────────
+        consecutive_errors = 0
+        no_progress_count = 0
+        last_screenshot_hash: str | None = None
+        tools_schema = self._registry.get_openai_schemas()
+
+        for step in range(1, self._max_steps + 1):
+            logger.info("=== Step %d / %d ===", step, self._max_steps)
+
+            # ── 4a. Ask the LLM ──────────────────────────────────────
+            try:
+                response: BrainResponse = await self._brain.chat(
+                    ctx.get_messages(), tools_schema
+                )
+                consecutive_errors = 0
+            except Exception:
+                consecutive_errors += 1
+                logger.exception(
+                    "Brain error (%d/%d)",
+                    consecutive_errors,
+                    MAX_CONSECUTIVE_ERRORS,
+                )
+                if consecutive_errors >= MAX_CONSECUTIVE_ERRORS:
+                    logger.error(
+                        "Max consecutive errors reached -- aborting task"
+                    )
+                    return RunResult(
+                        summary="Error: max consecutive LLM errors reached.",
+                        task_dir=str(task_dir),
+                        total_steps=final_step,
+                        elapsed_seconds=time.monotonic() - t0,
+                    )
+                continue
+
+            thought = response.content or ""
+            if thought:
+                logger.info("Thought: %s", thought[:200])
+
+            # ── 4b. No tool calls -- LLM wants to stop ──────────────
+            if not response.tool_calls:
+                logger.info("No tool calls returned -- ending loop")
+                ctx.add_assistant(response.raw)
+                break
+
+            # Take only the first tool call (GUI ops must be serial).
+            tc = response.tool_calls[0]
+            logger.info(
+                "Tool call: %s(%s)", tc.name, tc.arguments
+            )
+
+            # Append the full assistant message (may include text + tool_calls).
+            ctx.add_assistant(response.raw)
+
+            # ── 4c. Handle "finished" ────────────────────────────────
+            if tc.name == "finished":
+                summary = tc.arguments.get("summary", "Task completed.")
+                ctx.add_tool_result(tc.id, summary)
+                logger.info("Task finished: %s", summary)
+                final_step = step
+                return RunResult(
+                    summary=summary,
+                    task_dir=str(task_dir),
+                    total_steps=final_step,
+                    elapsed_seconds=time.monotonic() - t0,
+                )
+
+            # ── 4d. Handle "call_user" ───────────────────────────────
+            if tc.name == "call_user":
+                question = tc.arguments.get("question", "")
+                logger.info("call_user: %s", question)
+
+                if self._on_user_input is not None:
+                    user_reply = await self._on_user_input(question)
+                else:
+                    user_reply = "已处理，请继续"
+
+                ctx.add_tool_result(tc.id, f"User replied: {user_reply}")
+                ctx.add_user_reply(user_reply)
+
+                # Take a fresh screenshot after user interaction.
+                screenshot = await self._eye.capture()
+                shot_path = task_dir / f"step_{step:03d}.png"
+                screenshot.save(shot_path)
+                ctx.add_screenshot(screenshot.base64, screenshot.detail)
+                continue
+
+            # ── 4e. Execute tool via registry ─────────────────────────
+            try:
+                result = await self._registry.execute(tc.name, tc.arguments)
+                consecutive_errors = 0
+            except Exception as exc:
+                consecutive_errors += 1
+                result = f"Error: {exc}"
+                logger.exception(
+                    "Tool execution error (%d/%d)",
+                    consecutive_errors,
+                    MAX_CONSECUTIVE_ERRORS,
+                )
+                if consecutive_errors >= MAX_CONSECUTIVE_ERRORS:
+                    logger.error(
+                        "Max consecutive tool errors -- aborting task"
+                    )
+                    return RunResult(
+                        summary="Error: max consecutive tool errors reached.",
+                        task_dir=str(task_dir),
+                        total_steps=final_step,
+                        elapsed_seconds=time.monotonic() - t0,
+                    )
+
+            # ── 4f. Wait for UI to settle ─────────────────────────────
+            await asyncio.sleep(self._screenshot_interval_ms / 1000.0)
+
+            # ── 4g. Take new screenshot, save to disk ─────────────────
+            screenshot = await self._eye.capture()
+            shot_path = task_dir / f"step_{step:03d}.png"
+            screenshot.save(shot_path)
+
+            # ── 4h. Add to context ────────────────────────────────────
+            ctx.add_tool_result(
+                tc.id, result, screenshot.base64, screenshot.detail
+            )
+
+            # ── 4i. No-progress detection (screenshot hash) ──────────
+            current_hash = _screenshot_hash(screenshot.base64)
+            if current_hash == last_screenshot_hash:
+                no_progress_count += 1
+                logger.warning(
+                    "No progress detected (%d/%d)",
+                    no_progress_count,
+                    NO_PROGRESS_LIMIT,
+                )
+                if no_progress_count >= NO_PROGRESS_LIMIT:
+                    ctx.add_system_hint(
+                        "Warning: the screen has not changed for "
+                        f"{no_progress_count} consecutive steps. "
+                        "Please re-analyse the current state and try a "
+                        "completely different strategy."
+                    )
+                    no_progress_count = 0
+            else:
+                no_progress_count = 0
+            last_screenshot_hash = current_hash
+
+            # ── 4j. Fire step callback ────────────────────────────────
+            final_step = step
+            if self._on_step is not None:
+                event = StepEvent(
+                    step=step,
+                    max_steps=self._max_steps,
+                    thought=thought,
+                    tool_name=tc.name,
+                    tool_args=tc.arguments,
+                    tool_result=result,
+                    screenshot_path=str(shot_path),
+                    wait_ms=self._screenshot_interval_ms,
+                )
+                try:
+                    await self._on_step(event)
+                except Exception:
+                    logger.exception("on_step callback error (non-fatal)")
+
+        # ── 5. Budget exhausted ───────────────────────────────────────
+        logger.warning("Max steps (%d) reached", self._max_steps)
+        return RunResult(
+            summary=f"Max steps ({self._max_steps}) reached. Task may be incomplete.",
+            task_dir=str(task_dir),
+            total_steps=final_step,
+            elapsed_seconds=time.monotonic() - t0,
+        )
+
+
+# -------------------------------------------------------------------- #
+# Helpers
+# -------------------------------------------------------------------- #
+
+
+def _screenshot_hash(b64: str) -> str:
+    """Return a fast, non-cryptographic hash of a screenshot's base64 data.
+
+    Only the first 1000 characters are hashed to keep the comparison cheap
+    while still being sensitive to any visible change on screen.
+    """
+    return str(hash(b64[:1000]))

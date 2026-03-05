@@ -1,0 +1,12 @@
+{
+    "llm": {
+        "base_url": "https://api.openai.com/v1",
+        "api_key": "",
+        "model": "gpt-4o"
+    },
+    "language": "zh",
+    "max_steps": 50,
+    "max_images": 5,
+    "screenshot_interval_ms": 500,
+    "soul_path": "~/.see-agent/SOUL.md"
+}
