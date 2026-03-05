@@ -62,12 +62,14 @@ def _validate_api_key(config: dict) -> None:
         raise typer.Exit(code=1)
 
 
-def _build_components(config: dict):  # noqa: ANN202
+def _build_components(config: dict, *, no_overlay: bool = False):  # noqa: ANN202
     """Instantiate the Eye, Brain, ToolRegistry, and AgentLoop from *config*.
 
     Returns:
         An ``AgentLoop`` ready to call ``loop.run(task)``.
     """
+    import logging
+
     from src.agent.loop import AgentLoop
     from src.brain.openai_client import OpenAIBrain
     from src.eye.mac import MacEye
@@ -82,6 +84,17 @@ def _build_components(config: dict):  # noqa: ANN202
     )
     registry = create_registry(eye)
 
+    overlay = None
+    if not no_overlay and config.get("show_overlay", True):
+        try:
+            from src.overlay.mac_overlay import MacOverlayRenderer
+
+            overlay = MacOverlayRenderer()
+        except Exception:
+            logging.getLogger(__name__).warning(
+                "Failed to initialize overlay, continuing without it"
+            )
+
     loop = AgentLoop(
         brain=brain,
         eye=eye,
@@ -89,6 +102,7 @@ def _build_components(config: dict):  # noqa: ANN202
         config=config,
         on_step=_on_step_async,
         on_user_input=_on_user_input_async,
+        overlay=overlay,
     )
     return loop
 
@@ -204,14 +218,16 @@ def serve(
 
 
 @app.command()
-def chat() -> None:
+def chat(
+    no_overlay: bool = typer.Option(False, "--no-overlay", help="Disable visual overlay."),
+) -> None:
     """Interactive conversation mode — keep asking, keep executing."""
     ensure_workspace()
     setup_logging()
     config = load_config()
     _validate_api_key(config)
 
-    loop = _build_components(config)
+    loop = _build_components(config, no_overlay=no_overlay)
 
     typer.echo("\U0001f916 see-agent v0.1 已启动")
     typer.echo("Enter a task description (Ctrl+C to exit).\n")
@@ -238,6 +254,7 @@ def chat() -> None:
 @app.command()
 def run(
     task: str = typer.Argument(..., help="Task description to execute."),
+    no_overlay: bool = typer.Option(False, "--no-overlay", help="Disable visual overlay."),
 ) -> None:
     """Execute a single task and exit."""
     ensure_workspace()
@@ -245,7 +262,7 @@ def run(
     config = load_config()
     _validate_api_key(config)
 
-    loop = _build_components(config)
+    loop = _build_components(config, no_overlay=no_overlay)
 
     typer.echo(f"\U0001f680 Running task: {task}\n")
 

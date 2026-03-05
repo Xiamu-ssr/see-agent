@@ -25,6 +25,7 @@ from src.brain.base import BaseBrain, BrainResponse
 from src.config import SCREENSHOTS_DIR
 from src.eye.base import BaseEye
 from src.hand.tool import ToolRegistry
+from src.overlay.base import OverlayRenderer
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +89,7 @@ class AgentLoop:
         config: Application configuration dict (see ``src/config.py``).
         on_step: Optional async callback fired after each tool-execution step.
         on_user_input: Optional async callback for ``call_user`` interactions.
+        overlay: Optional screen overlay renderer for visual feedback.
     """
 
     def __init__(
@@ -98,6 +100,7 @@ class AgentLoop:
         config: dict[str, Any],
         on_step: StepCallback | None = None,
         on_user_input: UserInputCallback | None = None,
+        overlay: OverlayRenderer | None = None,
     ) -> None:
         self._brain = brain
         self._eye = eye
@@ -105,6 +108,7 @@ class AgentLoop:
         self._config = config
         self._on_step = on_step
         self._on_user_input = on_user_input
+        self._overlay = overlay
 
         # Configurable knobs with sensible defaults.
         self._max_steps: int = int(config.get("max_steps", 50))
@@ -212,6 +216,8 @@ class AgentLoop:
 
             # ── 4c. Handle "finished" ────────────────────────────────
             if tc.name == "finished":
+                if self._overlay:
+                    _show_overlay(self._overlay, "finished", tc.arguments)
                 summary = tc.arguments.get("summary", "Task completed.")
                 ctx.add_tool_result(tc.id, summary)
                 logger.info("Task finished: %s", summary)
@@ -228,6 +234,9 @@ class AgentLoop:
                 question = tc.arguments.get("question", "")
                 logger.info("call_user: %s", question)
 
+                if self._overlay:
+                    _show_overlay(self._overlay, "call_user", tc.arguments)
+
                 if self._on_user_input is not None:
                     user_reply = await self._on_user_input(question)
                 else:
@@ -235,6 +244,10 @@ class AgentLoop:
 
                 ctx.add_tool_result(tc.id, f"User replied: {user_reply}")
                 ctx.add_user_reply(user_reply)
+
+                # Dismiss overlay before taking screenshot.
+                if self._overlay:
+                    self._overlay.dismiss()
 
                 # Take a fresh screenshot after user interaction.
                 screenshot = await self._eye.capture()
@@ -246,7 +259,10 @@ class AgentLoop:
                 )
                 continue
 
-            # ── 4e. Execute tool via registry ─────────────────────────
+            # ── 4e. Show overlay then execute tool via registry ──────
+            if self._overlay:
+                _show_overlay(self._overlay, tc.name, tc.arguments)
+
             try:
                 result = await self._registry.execute(tc.name, tc.arguments)
                 consecutive_errors = 0
@@ -273,7 +289,9 @@ class AgentLoop:
                         success=False,
                     )
 
-            # ── 4f. Wait for UI to settle ─────────────────────────────
+            # ── 4f. Dismiss overlay, then wait for UI to settle ────────
+            if self._overlay:
+                self._overlay.dismiss()
             await asyncio.sleep(self._screenshot_interval_ms / 1000.0)
 
             # ── 4g. Take new screenshot, save to disk ─────────────────
@@ -390,3 +408,37 @@ def _action_key(tool_name: str, args: dict[str, Any]) -> str:
             v = round(v / 10) * 10
         normalised[k] = v
     return f"{tool_name}:{normalised}"
+
+
+def _show_overlay(overlay: OverlayRenderer, tool_name: str, args: dict[str, Any]) -> None:
+    """Dispatch a visual overlay for the given tool call."""
+    try:
+        match tool_name:
+            case "click":
+                overlay.show_click(args["x"], args["y"], args.get("double", False))
+            case "type_text":
+                overlay.show_type(args["text"])
+            case "drag":
+                overlay.show_drag(
+                    args["start_x"], args["start_y"],
+                    args["end_x"], args["end_y"],
+                )
+            case "scroll":
+                overlay.show_scroll(
+                    args["x"], args["y"],
+                    args["direction"], args.get("amount", 3),
+                )
+            case "hotkey":
+                overlay.show_hotkey(args["keys"])
+            case "shell":
+                overlay.show_shell(args["command"])
+            case "wait":
+                overlay.show_wait(args.get("seconds", 2))
+            case "screenshot":
+                overlay.show_screenshot()
+            case "call_user":
+                overlay.show_call_user(args.get("question", ""))
+            case "finished":
+                overlay.show_finished(args.get("summary", ""))
+    except Exception:
+        logger.exception("Overlay error (non-fatal)")

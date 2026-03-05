@@ -30,6 +30,7 @@ FAKE_CONFIG: dict = {
     "max_steps": 3,
     "max_images": 2,
     "screenshot_interval_ms": 0,
+    "show_overlay": False,
 }
 
 
