@@ -62,7 +62,7 @@ def _validate_api_key(config: dict) -> None:
         raise typer.Exit(code=1)
 
 
-def _build_components(config: dict, *, no_overlay: bool = False):  # noqa: ANN202
+def _build_components(config: dict, *, no_overlay: bool = False, no_scaling: bool = False):  # noqa: ANN202
     """Instantiate the Eye, Brain, ToolRegistry, and AgentLoop from *config*.
 
     Returns:
@@ -94,6 +94,9 @@ def _build_components(config: dict, *, no_overlay: bool = False):  # noqa: ANN20
             logging.getLogger(__name__).warning(
                 "Failed to initialize overlay, continuing without it"
             )
+
+    if no_scaling:
+        config = {**config, "scaling_enabled": False}
 
     loop = AgentLoop(
         brain=brain,
@@ -172,10 +175,15 @@ async def _on_step_async(event: StepEvent) -> None:
     # Tool invocation
     if event.tool_name:
         formatted = _format_tool_args(event.tool_args or {})
-        typer.echo(
+        line = (
             f"\U0001f590\ufe0f  [Step {event.step}/{event.max_steps}] "
             f"{event.tool_name}: {formatted}"
         )
+        # When coordinate scaling is active, show screen-space args too.
+        if event.screen_tool_args is not None:
+            screen_fmt = _format_tool_args(event.screen_tool_args)
+            line += f"  \u2192 screen: {screen_fmt}"
+        typer.echo(line)
 
     # Wait hint
     if event.wait_ms > 0:
@@ -220,6 +228,7 @@ def serve(
 @app.command()
 def chat(
     no_overlay: bool = typer.Option(False, "--no-overlay", help="Disable visual overlay."),
+    no_scaling: bool = typer.Option(False, "--no-scaling", help="Disable coordinate scaling."),
 ) -> None:
     """Interactive conversation mode — keep asking, keep executing."""
     ensure_workspace()
@@ -227,7 +236,7 @@ def chat(
     config = load_config()
     _validate_api_key(config)
 
-    loop = _build_components(config, no_overlay=no_overlay)
+    loop = _build_components(config, no_overlay=no_overlay, no_scaling=no_scaling)
 
     typer.echo("\U0001f916 see-agent v0.1 已启动")
     typer.echo("Enter a task description (Ctrl+C to exit).\n")
@@ -255,6 +264,7 @@ def chat(
 def run(
     task: str = typer.Argument(..., help="Task description to execute."),
     no_overlay: bool = typer.Option(False, "--no-overlay", help="Disable visual overlay."),
+    no_scaling: bool = typer.Option(False, "--no-scaling", help="Disable coordinate scaling."),
 ) -> None:
     """Execute a single task and exit."""
     ensure_workspace()
@@ -262,7 +272,7 @@ def run(
     config = load_config()
     _validate_api_key(config)
 
-    loop = _build_components(config, no_overlay=no_overlay)
+    loop = _build_components(config, no_overlay=no_overlay, no_scaling=no_scaling)
 
     typer.echo(f"\U0001f680 Running task: {task}\n")
 

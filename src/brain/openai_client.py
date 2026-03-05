@@ -11,6 +11,52 @@ from src.brain.base import BaseBrain, BrainResponse, ToolCallInfo
 
 logger = logging.getLogger(__name__)
 
+_TEXT_TRUNCATE = 500
+
+
+def _summarise_messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return a lightweight summary of *messages* for logging.
+
+    - Text content is truncated to ``_TEXT_TRUNCATE`` characters.
+    - ``image_url`` entries are replaced with a size placeholder so
+      base64 blobs never appear in the log.
+    """
+    summaries: list[dict[str, Any]] = []
+    for msg in messages:
+        role = msg.get("role", "?")
+        content = msg.get("content")
+
+        # Tool result messages — preserve tool_call_id.
+        if "tool_call_id" in msg:
+            entry: dict[str, Any] = {"role": role, "tool_call_id": msg["tool_call_id"]}
+            if content is not None:
+                entry["content"] = str(content)[:_TEXT_TRUNCATE]
+            summaries.append(entry)
+        elif isinstance(content, str):
+            text = content[:_TEXT_TRUNCATE] + ("…" if len(content) > _TEXT_TRUNCATE else "")
+            summaries.append({"role": role, "content": text})
+        elif isinstance(content, list):
+            parts: list[Any] = []
+            for part in content:
+                if isinstance(part, dict) and part.get("type") == "image_url":
+                    img = part.get("image_url", {})
+                    url: str = img.get("url", "")
+                    parts.append({
+                        "type": "image",
+                        "detail": img.get("detail", "auto"),
+                        "size": f"{len(url)} chars",
+                    })
+                elif isinstance(part, dict) and part.get("type") == "text":
+                    text = (part.get("text") or "")[:_TEXT_TRUNCATE]
+                    parts.append({"type": "text", "text": text})
+                else:
+                    parts.append(part)
+            summaries.append({"role": role, "content": parts})
+        else:
+            # Other message types (e.g. assistant with no content).
+            summaries.append({"role": role})
+    return summaries
+
 
 class OpenAIBrain(BaseBrain):
     """Brain implementation that talks to any OpenAI-compatible endpoint.
@@ -44,6 +90,10 @@ class OpenAIBrain(BaseBrain):
             self._model,
             len(messages),
             len(tools),
+        )
+        logger.info(
+            "LLM request messages: %s",
+            json.dumps(_summarise_messages(messages), ensure_ascii=False),
         )
 
         try:

@@ -155,3 +155,61 @@ class TestToolRegistry:
 
         with pytest.raises(KeyError, match="Unknown tool"):
             await registry.execute("nonexistent", {})
+
+
+# -------------------------------------------------------------------- #
+# Tests for HotkeyTool key aliases
+# -------------------------------------------------------------------- #
+
+
+class TestHotkeyAliases:
+    """Verify KEY_ALIASES normalisation in HotkeyTool."""
+
+    def test_aliases_defined(self):
+        from src.hand.tools.hotkey import KEY_ALIASES
+
+        assert KEY_ALIASES["control"] == "ctrl"
+        assert KEY_ALIASES["cmd"] == "command"
+        assert KEY_ALIASES["option"] == "alt"
+        assert KEY_ALIASES["enter"] == "return"
+        assert KEY_ALIASES["esc"] == "escape"
+
+    @pytest.mark.asyncio
+    async def test_normalise_control_to_ctrl(self):
+        """'control' should be normalised to 'ctrl' before pyautogui."""
+        from unittest.mock import patch
+
+        from src.hand.tools.hotkey import HotkeyTool
+
+        tool = HotkeyTool()
+        with patch("src.hand.tools.hotkey.pyautogui") as mock_pag:
+            result = await tool.execute(keys=["control", "c"])
+
+        mock_pag.hotkey.assert_called_once_with("ctrl", "c")
+        assert "ctrl+c" in result
+
+    @pytest.mark.asyncio
+    async def test_already_correct_keys_unchanged(self):
+        """Keys that need no normalisation pass through unchanged."""
+        from unittest.mock import patch
+
+        from src.hand.tools.hotkey import HotkeyTool
+
+        tool = HotkeyTool()
+        with patch("src.hand.tools.hotkey.pyautogui") as mock_pag:
+            await tool.execute(keys=["command", "v"])
+
+        mock_pag.hotkey.assert_called_once_with("command", "v")
+
+    @pytest.mark.asyncio
+    async def test_case_insensitive(self):
+        """Alias lookup should be case-insensitive."""
+        from unittest.mock import patch
+
+        from src.hand.tools.hotkey import HotkeyTool
+
+        tool = HotkeyTool()
+        with patch("src.hand.tools.hotkey.pyautogui") as mock_pag:
+            await tool.execute(keys=["Control", "Esc"])
+
+        mock_pag.hotkey.assert_called_once_with("ctrl", "escape")

@@ -22,6 +22,9 @@ class Screenshot:
         height: Logical height in pixels (CSS / point resolution).
         scale_factor: Ratio of physical to logical pixels (e.g. 2.0 on Retina).
         mime_type: MIME type of the encoded image (e.g. ``"image/webp"``).
+        screen_width: Original screen width before scaling for the LLM.
+            ``None`` means no scaling was applied (width == screen width).
+        screen_height: Original screen height before scaling for the LLM.
     """
 
     base64: str
@@ -29,6 +32,8 @@ class Screenshot:
     height: int
     scale_factor: float = field(default=1.0)
     mime_type: str = field(default="image/webp")
+    screen_width: int | None = field(default=None)
+    screen_height: int | None = field(default=None)
 
     # --------------------------------------------------------------------- #
     # Derived helpers

@@ -1,17 +1,21 @@
 # pyright: reportAttributeAccessIssue=false, reportPossiblyUnboundVariable=false
 """macOS overlay renderer using PyObjC (AppKit + Quartz).
 
-A daemon thread owns a full-screen, transparent, mouse-passthrough
-:class:`NSWindow`.  Draw commands are dispatched via a thread-safe queue
-and the thread pumps ``NSRunLoop`` at ~60 fps.
+A daemon **subprocess** owns a full-screen, transparent, mouse-passthrough
+:class:`NSWindow`.  The subprocess's *main thread* satisfies the macOS
+requirement that all AppKit UI must be created on the main thread.
+
+Draw commands are dispatched via :class:`multiprocessing.Queue` and the
+subprocess pumps ``NSRunLoop`` at ~60 fps.
 """
 
 from __future__ import annotations
 
 import logging
 import math
+import multiprocessing
+import multiprocessing.synchronize
 import queue
-import threading
 import time
 from dataclasses import dataclass, field
 from typing import Any
@@ -65,7 +69,7 @@ def _truncate(text: str, max_len: int = 10) -> str:
 
 @dataclass
 class _DrawCmd:
-    """Instruction for the overlay thread."""
+    """Instruction for the overlay subprocess (created inside the child)."""
 
     kind: str
     params: dict[str, Any]
@@ -75,13 +79,6 @@ class _DrawCmd:
     @property
     def expired(self) -> bool:
         return time.monotonic() - self.created_at > self.duration
-
-
-@dataclass
-class _DismissCmd:
-    """Sentinel: clear the overlay and signal the caller."""
-
-    done: threading.Event = field(default_factory=threading.Event)
 
 
 # ---------------------------------------------------------------------------
@@ -264,6 +261,115 @@ if _PYOBJC_OK:
 
 
 # ---------------------------------------------------------------------------
+# Subprocess entry point
+# ---------------------------------------------------------------------------
+
+
+def _overlay_process_entry(
+    cmd_queue: multiprocessing.Queue,  # type: ignore[type-arg]
+    ready_event: multiprocessing.synchronize.Event,
+    dismiss_event: multiprocessing.synchronize.Event,
+) -> None:
+    """Run in a subprocess — the child's **main thread** creates NSWindow.
+
+    This satisfies macOS's requirement that all AppKit UI operations
+    happen on the main thread.
+    """
+    try:
+        pool = NSAutoreleasePool.alloc().init()  # noqa: F841
+
+        app = NSApplication.sharedApplication()
+        app.setActivationPolicy_(2)  # NSApplicationActivationPolicyProhibited
+
+        screen = NSScreen.mainScreen()
+        frame = screen.frame()
+
+        window = NSWindow.alloc().initWithContentRect_styleMask_backing_defer_(
+            frame,
+            NSWindowStyleMaskBorderless,
+            NSBackingStoreBuffered,
+            False,
+        )
+        window.setLevel_(1000)  # kCGScreenSaverWindowLevel
+        window.setBackgroundColor_(NSColor.clearColor())
+        window.setOpaque_(False)
+        window.setIgnoresMouseEvents_(True)
+        window.setHasShadow_(False)
+        # Stay on all Spaces / desktops.
+        window.setCollectionBehavior_(1 | (1 << 4))
+
+        view = _OverlayView.alloc().initWithFrame_(frame)
+        window.setContentView_(view)
+        window.orderFrontRegardless()
+
+        ready_event.set()
+
+        _overlay_loop(window, view, cmd_queue, dismiss_event)
+
+    except Exception:
+        # Re-import logger in child process.
+        import logging as _logging
+
+        _logging.getLogger(__name__).exception("Overlay process crashed")
+        ready_event.set()  # unblock parent even on failure
+
+
+def _overlay_loop(
+    window: Any,
+    view: Any,
+    cmd_queue: multiprocessing.Queue,  # type: ignore[type-arg]
+    dismiss_event: multiprocessing.synchronize.Event,
+) -> None:
+    """Pump the command queue and NSRunLoop forever."""
+    current: _DrawCmd | None = None
+
+    while True:
+        # 1. Drain queue.
+        try:
+            msg = cmd_queue.get(timeout=0.016)
+            cmd_type = msg[0]
+
+            if cmd_type == "dismiss":
+                current = None
+                view._cmd = None
+                window.setAlphaValue_(1.0)
+                view.setNeedsDisplay_(True)
+                window.display()  # force immediate
+                dismiss_event.set()
+
+            elif cmd_type == "draw":
+                _, kind, params, duration = msg
+                current = _DrawCmd(kind=kind, params=params, duration=duration)
+                view._cmd = current
+                window.setAlphaValue_(1.0)
+                view.setNeedsDisplay_(True)
+
+            elif cmd_type == "quit":
+                break
+
+        except queue.Empty:
+            pass
+
+        # 2. Auto-expire / fade.
+        if current is not None:
+            elapsed = time.monotonic() - current.created_at
+            remaining = current.duration - elapsed
+            if remaining <= 0:
+                current = None
+                view._cmd = None
+                window.setAlphaValue_(1.0)
+                view.setNeedsDisplay_(True)
+            elif current.duration > _FADE_DURATION and remaining <= _FADE_DURATION:
+                window.setAlphaValue_(remaining / _FADE_DURATION)
+
+        # 3. Pump NSRunLoop.
+        NSRunLoop.currentRunLoop().runMode_beforeDate_(
+            "NSDefaultRunLoopMode",
+            NSDate.dateWithTimeIntervalSinceNow_(0.016),
+        )
+
+
+# ---------------------------------------------------------------------------
 # Public renderer
 # ---------------------------------------------------------------------------
 
@@ -271,9 +377,10 @@ if _PYOBJC_OK:
 class MacOverlayRenderer(OverlayRenderer):
     """Concrete :class:`OverlayRenderer` for macOS using PyObjC.
 
-    Creates a full-screen, transparent, mouse-passthrough window on a
-    background daemon thread.  All ``show_*`` methods are non-blocking;
-    :meth:`dismiss` blocks until the overlay is confirmed cleared.
+    Creates a full-screen, transparent, mouse-passthrough window in a
+    daemon **subprocess** whose main thread satisfies the macOS requirement
+    for AppKit UI.  All ``show_*`` methods are non-blocking; :meth:`dismiss`
+    blocks until the overlay is confirmed cleared.
     """
 
     def __init__(self) -> None:
@@ -281,97 +388,23 @@ class MacOverlayRenderer(OverlayRenderer):
             raise RuntimeError(
                 "PyObjC (AppKit) is required for MacOverlayRenderer"
             )
-        self._queue: queue.Queue[_DrawCmd | _DismissCmd] = queue.Queue()
-        self._ready = threading.Event()
-        self._thread = threading.Thread(
-            target=self._run, daemon=True, name="see-agent-overlay"
+        self._cmd_queue: multiprocessing.Queue[tuple[Any, ...]] = multiprocessing.Queue()
+        self._ready = multiprocessing.Event()
+        self._dismiss_done = multiprocessing.Event()
+
+        self._process = multiprocessing.Process(
+            target=_overlay_process_entry,
+            args=(self._cmd_queue, self._ready, self._dismiss_done),
+            daemon=True,
+            name="see-agent-overlay",
         )
-        self._thread.start()
+        self._process.start()
+
         if not self._ready.wait(timeout=5.0):
-            logger.warning("Overlay thread did not become ready in time")
-
-    # ------------------------------------------------------------------ #
-    # Background thread
-    # ------------------------------------------------------------------ #
-
-    def _run(self) -> None:
-        """Entry point for the daemon overlay thread."""
-        try:
-            pool = NSAutoreleasePool.alloc().init()  # noqa: F841
-
-            app = NSApplication.sharedApplication()
-            app.setActivationPolicy_(2)  # NSApplicationActivationPolicyProhibited
-
-            screen = NSScreen.mainScreen()
-            frame = screen.frame()
-
-            window = NSWindow.alloc().initWithContentRect_styleMask_backing_defer_(
-                frame,
-                NSWindowStyleMaskBorderless,
-                NSBackingStoreBuffered,
-                False,
-            )
-            window.setLevel_(1000)  # kCGScreenSaverWindowLevel
-            window.setBackgroundColor_(NSColor.clearColor())
-            window.setOpaque_(False)
-            window.setIgnoresMouseEvents_(True)
-            window.setHasShadow_(False)
-            # Stay on all Spaces / desktops.
-            window.setCollectionBehavior_(1 | (1 << 4))
-
-            view = _OverlayView.alloc().initWithFrame_(frame)
-            window.setContentView_(view)
-            window.orderFrontRegardless()
-
-            self._window = window
-            self._view = view
-            self._ready.set()
-
-            self._loop(window, view)
-
-        except Exception:
-            logger.exception("Overlay thread crashed")
-            self._ready.set()  # unblock caller even on failure
-
-    def _loop(self, window: Any, view: Any) -> None:  # noqa: ANN401
-        """Pump the queue and NSRunLoop forever."""
-        current: _DrawCmd | None = None
-
-        while True:
-            # 1. Drain queue.
-            try:
-                item = self._queue.get(timeout=0.016)
-                if isinstance(item, _DismissCmd):
-                    current = None
-                    view._cmd = None
-                    window.setAlphaValue_(1.0)
-                    view.setNeedsDisplay_(True)
-                    window.display()  # force immediate
-                    item.done.set()
-                else:
-                    current = item
-                    view._cmd = item
-                    window.setAlphaValue_(1.0)
-                    view.setNeedsDisplay_(True)
-            except queue.Empty:
-                pass
-
-            # 2. Auto-expire / fade.
-            if current is not None:
-                elapsed = time.monotonic() - current.created_at
-                remaining = current.duration - elapsed
-                if remaining <= 0:
-                    current = None
-                    view._cmd = None
-                    window.setAlphaValue_(1.0)
-                    view.setNeedsDisplay_(True)
-                elif current.duration > _FADE_DURATION and remaining <= _FADE_DURATION:
-                    window.setAlphaValue_(remaining / _FADE_DURATION)
-
-            # 3. Pump NSRunLoop.
-            NSRunLoop.currentRunLoop().runMode_beforeDate_(
-                "NSDefaultRunLoopMode",
-                NSDate.dateWithTimeIntervalSinceNow_(0.016),
+            self._process.terminate()
+            raise RuntimeError(
+                "Overlay process did not become ready in time — "
+                "check the log for details"
             )
 
     # ------------------------------------------------------------------ #
@@ -379,9 +412,9 @@ class MacOverlayRenderer(OverlayRenderer):
     # ------------------------------------------------------------------ #
 
     def _send(self, kind: str, params: dict[str, Any], duration: float) -> None:
-        if not self._thread.is_alive():
+        if not self._process.is_alive():
             return
-        self._queue.put(_DrawCmd(kind=kind, params=params, duration=duration))
+        self._cmd_queue.put(("draw", kind, params, duration))
 
     def show_click(self, x: int, y: int, double: bool = False) -> None:
         self._send("click", {"x": x, "y": y, "double": double}, 1.0)
@@ -418,8 +451,8 @@ class MacOverlayRenderer(OverlayRenderer):
         self._send("finished", {"summary": summary}, 2.0)
 
     def dismiss(self) -> None:
-        if not self._thread.is_alive():
+        if not self._process.is_alive():
             return
-        cmd = _DismissCmd()
-        self._queue.put(cmd)
-        cmd.done.wait(timeout=1.0)
+        self._dismiss_done.clear()
+        self._cmd_queue.put(("dismiss",))
+        self._dismiss_done.wait(timeout=1.0)

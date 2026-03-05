@@ -18,14 +18,18 @@ import logging
 import time
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Awaitable, Callable
+from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
 from src.agent.context import ConversationContext
 from src.brain.base import BaseBrain, BrainResponse
 from src.config import SCREENSHOTS_DIR
 from src.eye.base import BaseEye
+from src.eye.scaling import find_target_resolution, scale_screenshot, scale_tool_args
 from src.hand.tool import ToolRegistry
 from src.overlay.base import OverlayRenderer
+
+if TYPE_CHECKING:
+    from src.eye.base import Screenshot
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +55,10 @@ class StepEvent:
     tool_result: str
     screenshot_path: str
     wait_ms: int = 0
+    screen_tool_args: dict[str, Any] | None = None
+    """When coordinate scaling is active, this holds the screen-space
+    coordinates actually sent to pyautogui.  ``tool_args`` contains the
+    original model-space coordinates from the LLM."""
 
 
 @dataclass
@@ -116,6 +124,21 @@ class AgentLoop:
         self._screenshot_interval_ms: int = int(
             config.get("screenshot_interval_ms", 500)
         )
+        self._scaling_enabled: bool = bool(config.get("scaling_enabled", True))
+
+    # ------------------------------------------------------------------ #
+    # Scaling helper
+    # ------------------------------------------------------------------ #
+
+    def _maybe_scale(self, screenshot: Screenshot) -> Screenshot:
+        """Resize *screenshot* for the LLM if scaling is enabled."""
+        if not self._scaling_enabled:
+            return screenshot
+
+        target = find_target_resolution(screenshot.width, screenshot.height)
+        if target is None:
+            return screenshot
+        return scale_screenshot(screenshot, target)
 
     # ------------------------------------------------------------------ #
     # Public entry point
@@ -145,14 +168,17 @@ class AgentLoop:
         initial_path = task_dir / "step_000.webp"
         screenshot.save(initial_path)
 
+        # Scale for the LLM (the saved file stays at full resolution).
+        scaled = self._maybe_scale(screenshot)
+
         # ── 3. Build conversation context ─────────────────────────────
         from src.brain.prompts import build_system_prompt
 
         system_prompt = build_system_prompt(self._config)
         ctx = ConversationContext(system_prompt, max_images=self._max_images)
         ctx.add_user_task(
-            task, screenshot.base64, screenshot.detail,
-            mime_type=screenshot.mime_type,
+            task, scaled.base64, scaled.detail,
+            mime_type=scaled.mime_type,
         )
 
         # ── 4. Main loop ──────────────────────────────────────────────
@@ -253,18 +279,33 @@ class AgentLoop:
                 screenshot = await self._eye.capture()
                 shot_path = task_dir / f"step_{step:03d}.webp"
                 screenshot.save(shot_path)
+                scaled = self._maybe_scale(screenshot)
                 ctx.add_screenshot(
-                    screenshot.base64, screenshot.detail,
-                    mime_type=screenshot.mime_type,
+                    scaled.base64, scaled.detail,
+                    mime_type=scaled.mime_type,
                 )
                 continue
 
-            # ── 4e. Show overlay then execute tool via registry ──────
+            # ── 4e. Scale coordinates & show overlay, then execute ────
+            # If scaling is active, map model coordinates to screen
+            # coordinates for pyautogui and the overlay.
+            exec_args = tc.arguments
+            if scaled.screen_width is not None and scaled.screen_height is not None:
+                exec_args = scale_tool_args(
+                    tc.name, tc.arguments,
+                    scaled.width, scaled.height,
+                    scaled.screen_width, scaled.screen_height,
+                )
+                if exec_args != tc.arguments:
+                    logger.info(
+                        "Scaled args: %s -> %s", tc.arguments, exec_args,
+                    )
+
             if self._overlay:
-                _show_overlay(self._overlay, tc.name, tc.arguments)
+                _show_overlay(self._overlay, tc.name, exec_args)
 
             try:
-                result = await self._registry.execute(tc.name, tc.arguments)
+                result = await self._registry.execute(tc.name, exec_args)
                 consecutive_errors = 0
             except Exception as exc:
                 consecutive_errors += 1
@@ -298,11 +339,12 @@ class AgentLoop:
             screenshot = await self._eye.capture()
             shot_path = task_dir / f"step_{step:03d}.webp"
             screenshot.save(shot_path)
+            scaled = self._maybe_scale(screenshot)
 
             # ── 4h. Add to context ────────────────────────────────────
             ctx.add_tool_result(
-                tc.id, result, screenshot.base64, screenshot.detail,
-                mime_type=screenshot.mime_type,
+                tc.id, result, scaled.base64, scaled.detail,
+                mime_type=scaled.mime_type,
             )
 
             # ── 4i. No-progress detection (screenshot hash) ──────────
@@ -365,6 +407,7 @@ class AgentLoop:
                     tool_result=result,
                     screenshot_path=str(shot_path),
                     wait_ms=self._screenshot_interval_ms,
+                    screen_tool_args=exec_args if exec_args != tc.arguments else None,
                 )
                 try:
                     await self._on_step(event)

@@ -22,6 +22,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "max_images": 5,
     "screenshot_interval_ms": 500,
     "show_overlay": True,
+    "scaling_enabled": True,
     "soul_path": "~/.see-agent/SOUL.md",
 }
 

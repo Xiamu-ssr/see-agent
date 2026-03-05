@@ -81,6 +81,7 @@ def _build_loop(
     registry: Any,
     max_steps: int = 5,
     on_step: Any = None,
+    scaling_enabled: bool = False,
 ) -> AgentLoop:
     """Construct an AgentLoop with the given mocked components."""
     config: dict[str, Any] = {
@@ -88,6 +89,7 @@ def _build_loop(
         "max_steps": max_steps,
         "max_images": 5,
         "screenshot_interval_ms": 0,  # no real waiting in tests
+        "scaling_enabled": scaling_enabled,
     }
     return AgentLoop(
         brain=brain,
@@ -253,3 +255,66 @@ class TestAgentLoop:
         assert isinstance(result, RunResult)
         assert result.success is False
         assert "repeated action" in result.summary.lower()
+
+    @pytest.mark.asyncio
+    async def test_scaling_maps_coordinates(self, tmp_path):
+        """When scaling is enabled, tool args should be scaled to screen coords."""
+        # Return screenshots already marked as "scaled" so that the loop
+        # applies coordinate mapping without needing real image resize.
+        def _make_scaled_screenshot():
+            raw = f"PNG fake {id(object())}".encode()
+            return Screenshot(
+                base64=base64.b64encode(raw).decode("ascii"),
+                width=1280,
+                height=800,
+                mime_type="image/png",
+                screen_width=1728,
+                screen_height=1080,
+            )
+
+        brain = AsyncMock()
+        brain.chat = AsyncMock(side_effect=[
+            _make_click_response(1),
+            _make_finished_response("done"),
+        ])
+
+        eye = AsyncMock()
+        eye.capture = AsyncMock(side_effect=lambda: _make_scaled_screenshot())
+
+        registry = AsyncMock()
+        registry.get_openai_schemas.return_value = []
+        registry.execute = AsyncMock(return_value="Clicked")
+
+        step_events: list[StepEvent] = []
+
+        async def capture_step(event: StepEvent) -> None:
+            step_events.append(event)
+
+        loop = _build_loop(
+            brain, eye, registry, max_steps=10,
+            on_step=capture_step, scaling_enabled=True,
+        )
+
+        # Patch _maybe_scale to return the screenshot as-is (it already
+        # carries screen_width/screen_height for coordinate mapping).
+        loop._maybe_scale = lambda s: s  # type: ignore[assignment]
+
+        with patch("src.agent.loop.SCREENSHOTS_DIR", tmp_path):
+            result = await loop.run("click scaled")
+
+        assert result.success is True
+
+        # The registry.execute should have been called with scaled coords,
+        # not the raw model coords (100, 200).
+        exec_call = registry.execute.call_args
+        exec_args = exec_call[0][1]  # positional arg #1 is the args dict
+        # Model coords are 100, 200 in a 1280x800 model space
+        # Screen is 1728x1080 → x = round(100*1728/1280) = 135
+        #                      → y = round(200*1080/800) = 270
+        assert exec_args["x"] == round(100 * 1728 / 1280)
+        assert exec_args["y"] == round(200 * 1080 / 800)
+
+        # StepEvent should carry screen_tool_args.
+        assert len(step_events) == 1
+        assert step_events[0].screen_tool_args is not None
+        assert step_events[0].screen_tool_args["x"] == exec_args["x"]
