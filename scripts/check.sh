@@ -6,11 +6,13 @@ set +e  # 不要遇到失败就退出，跑完全部再汇总
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
-YELLOW='\033[0;33m'
 NC='\033[0m'
 
 PASS=0
 FAIL=0
+
+# 项目根目录
+cd "$(dirname "$0")/.." || exit 1
 
 run_step() {
     local name="$1"
@@ -29,16 +31,16 @@ run_step() {
 }
 
 # ── 1. 静态类型检查（抓接口问题）──
-run_step "pyright 类型检查" npx pyright@latest src/
+run_step "pyright 类型检查" npx pyright@latest src/ --pythonpath .venv/bin/python
 
 # ── 2. Lint（抓代码规范）──
-run_step "ruff lint" uv run ruff check src/ tests/
+run_step "ruff lint" .venv/bin/ruff check src/ tests/
 
 # ── 3. 单元测试（抓逻辑问题）──
-run_step "pytest 单元测试" uv run pytest tests/ -v
+run_step "pytest 单元测试" .venv/bin/pytest tests/ -v
 
 # ── 4. 端到端冒烟测试（抓组装问题）──
-run_step "CLI config show" uv run see-agent config show
+run_step "CLI config show" .venv/bin/see-agent config show
 
 # ── 汇总 ──
 echo ""
