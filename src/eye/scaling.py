@@ -31,37 +31,65 @@ SCALING_TARGETS: list[tuple[int, int]] = [
     (1024, 768),   # XGA   — 4:3   (1.333)
     (1280, 800),   # WXGA  — 16:10 (1.600)
     (1366, 768),   # FWXGA — ~16:9 (1.779)
-    (1440, 960),   # 3:2   — Mac Retina (1.500)
 ]
 
 ASPECT_TOLERANCE = 0.05  # 5%
 
 
-def find_target_resolution(width: int, height: int) -> tuple[int, int] | None:
+def find_target_resolution(
+    width: int,
+    height: int,
+    match_mode: str = "aspect_ratio",
+) -> tuple[int, int] | None:
     """Return the best standard target for the given screen dimensions.
 
-    Matches by aspect ratio with ``ASPECT_TOLERANCE`` tolerance.  Returns
-    ``None`` if no target is close enough or the image is already small.
+    Parameters:
+        width: Source image width.
+        height: Source image height.
+        match_mode: ``"aspect_ratio"`` (default) picks the target whose
+            aspect ratio is closest within ``ASPECT_TOLERANCE``.
+            ``"pixel_count"`` picks the target whose total pixel count
+            is closest to the source (still only from targets smaller
+            than the source).
+
+    Returns:
+        ``None`` if no target qualifies or the image is already small.
     """
     if width <= 0 or height <= 0:
         return None
 
+    # Filter to targets strictly smaller than the source.
+    candidates = [
+        (tw, th) for tw, th in SCALING_TARGETS
+        if not (tw >= width and th >= height)
+    ]
+    if not candidates:
+        return None
+
+    if match_mode == "pixel_count":
+        src_pixels = width * height
+        best: tuple[int, int] | None = None
+        best_diff = float("inf")
+        for tw, th in candidates:
+            diff = abs(src_pixels - tw * th)
+            if diff < best_diff:
+                best = (tw, th)
+                best_diff = diff
+        return best
+
+    # Default: aspect_ratio matching.
     aspect = width / height
+    best_ar: tuple[int, int] | None = None
+    best_ar_diff = float("inf")
 
-    best: tuple[int, int] | None = None
-    best_diff = float("inf")
-
-    for tw, th in SCALING_TARGETS:
-        # Skip targets that are bigger than the source.
-        if tw >= width and th >= height:
-            continue
+    for tw, th in candidates:
         target_aspect = tw / th
         diff = abs(aspect - target_aspect) / aspect
-        if diff < ASPECT_TOLERANCE and diff < best_diff:
-            best = (tw, th)
-            best_diff = diff
+        if diff < ASPECT_TOLERANCE and diff < best_ar_diff:
+            best_ar = (tw, th)
+            best_ar_diff = diff
 
-    return best
+    return best_ar
 
 
 def scale_screenshot(screenshot: Screenshot, target: tuple[int, int]) -> Screenshot:
@@ -87,7 +115,7 @@ def scale_screenshot(screenshot: Screenshot, target: tuple[int, int]) -> Screens
         img = img.resize((tw, th), Image.Resampling.LANCZOS)
 
     buf = io.BytesIO()
-    img.save(buf, format="WEBP", quality=100)
+    img.save(buf, format="WEBP", lossless=True)
     b64 = base64.b64encode(buf.getvalue()).decode("ascii")
 
     logger.info(

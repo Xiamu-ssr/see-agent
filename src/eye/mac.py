@@ -87,7 +87,7 @@ class MacEye(BaseEye):
     def _image_to_base64(img: Image.Image) -> str:
         """Encode a Pillow Image as a base64 WebP string (no data-URI prefix)."""
         buf = io.BytesIO()
-        img.save(buf, format="WEBP", quality=100)
+        img.save(buf, format="WEBP", lossless=True)
         return base64.b64encode(buf.getvalue()).decode("ascii")
 
     # ------------------------------------------------------------------ #

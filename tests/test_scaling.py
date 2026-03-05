@@ -26,7 +26,7 @@ _VALID_PNG_B64 = (
 
 
 class TestFindTargetResolution:
-    """Tests for aspect-ratio–based target selection."""
+    """Tests for target resolution selection."""
 
     def test_16_10_matches_wxga(self):
         """1728×1080 (~16:10) should match WXGA 1280×800."""
@@ -43,10 +43,19 @@ class TestFindTargetResolution:
         target = find_target_resolution(1600, 1200)
         assert target == (1024, 768)
 
-    def test_mac_m4_matches_1440x960(self):
-        """1728×1117 (~3:2, ratio 1.547) should match 1440×960 (ratio 1.500)."""
-        target = find_target_resolution(1728, 1117)
-        assert target == (1440, 960)
+    def test_mac_m4_aspect_ratio_returns_wxga(self):
+        """1728×1117 (ratio 1.547) — aspect_ratio mode matches 1280×800 (ratio 1.6, diff 3.4%)."""
+        target = find_target_resolution(1728, 1117, match_mode="aspect_ratio")
+        assert target == (1280, 800)
+
+    def test_mac_m4_pixel_count_returns_closest(self):
+        """1728×1117 — pixel_count mode picks the target with closest pixel count."""
+        target = find_target_resolution(1728, 1117, match_mode="pixel_count")
+        # 1728*1117 = 1,930,176 pixels
+        # 1366*768 = 1,049,088 (diff 881,088)
+        # 1280*800 = 1,024,000 (diff 906,176)
+        # 1024*768 =   786,432 (diff 1,143,744)
+        assert target == (1366, 768)
 
     def test_already_small_returns_none(self):
         """800×600 is smaller than any target → None."""
@@ -62,6 +71,10 @@ class TestFindTargetResolution:
 
     def test_zero_dimensions_returns_none(self):
         assert find_target_resolution(0, 0) is None
+
+    def test_pixel_count_small_returns_none(self):
+        """pixel_count mode also returns None when source is smaller."""
+        assert find_target_resolution(800, 600, match_mode="pixel_count") is None
 
 
 # -------------------------------------------------------------------- #

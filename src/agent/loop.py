@@ -125,6 +125,7 @@ class AgentLoop:
             config.get("screenshot_interval_ms", 800)
         )
         self._scaling_enabled: bool = bool(config.get("scaling_enabled", True))
+        self._scaling_match: str = str(config.get("scaling_match", "aspect_ratio"))
 
     # ------------------------------------------------------------------ #
     # Scaling helper
@@ -135,7 +136,9 @@ class AgentLoop:
         if not self._scaling_enabled:
             return screenshot
 
-        target = find_target_resolution(screenshot.width, screenshot.height)
+        target = find_target_resolution(
+            screenshot.width, screenshot.height, self._scaling_match,
+        )
         if target is None:
             return screenshot
         return scale_screenshot(screenshot, target)

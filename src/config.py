@@ -23,6 +23,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "screenshot_interval_ms": 800,
     "show_overlay": True,
     "scaling_enabled": True,
+    "scaling_match": "aspect_ratio",
     "soul_path": "~/.see-agent/SOUL.md",
 }
 
