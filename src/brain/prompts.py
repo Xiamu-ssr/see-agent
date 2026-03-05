@@ -45,7 +45,8 @@ def build_system_prompt(config: dict) -> str:
         parts.append(
             "<RULES>\n"
             "1. 每次只调用一个工具。调用后会收到新的截图，根据截图决定下一步。\n"
-            "2. 操作前先仔细观察截图，确认要点击的位置。描述你看到了什么、打算做什么。\n"
+            "2. 操作前先仔细观察截图，确认要点击的位置。"
+            "在思考中详细描述你看到了什么、打算做什么、为什么这样做。\n"
             "3. 每次操作后，仔细对比前后截图，确认操作是否生效。没有生效则分析原因重试或换方式。\n"
             "4. 如果操作后界面没有变化，可能是点错位置、需要等待加载、或需要滚动。\n"
             "5. 能用 shell 命令快速完成的事优先用 shell，如打开应用用 shell('open -a AppName')。\n"
@@ -58,6 +59,9 @@ def build_system_prompt(config: dict) -> str:
             "11. macOS 支持多桌面(Space)。如果截图中看不到目标窗口但应用已在运行，"
             "尝试 hotkey(['ctrl','right']) 或 hotkey(['ctrl','left']) 切换桌面，"
             "或用 shell('open -a AppName') 将其调到当前桌面。\n"
+            "12. 在思考中维护累积状态摘要：已完成的步骤、已检查的元素及其结果、"
+            "发现的 UI 规则或规律。早期截图会被裁剪，你的思考是唯一的历史记录，"
+            "后续步骤要利用之前记录的信息避免重复操作。\n"
             "</RULES>"
         )
     else:
@@ -66,7 +70,8 @@ def build_system_prompt(config: dict) -> str:
             "1. Call only one tool at a time. You will receive a new "
             "screenshot after each call; decide the next step based on it.\n"
             "2. Before acting, carefully observe the screenshot to confirm "
-            "the target position. Describe what you see and plan to do.\n"
+            "the target position. Describe in detail what you see, what you "
+            "plan to do, and why.\n"
             "3. After each action, compare before/after screenshots to "
             "verify the action took effect. If not, analyse and retry.\n"
             "4. If the screen does not change after an action, you may have "
@@ -87,6 +92,10 @@ def build_system_prompt(config: dict) -> str:
             "is not visible but the app is running, try hotkey(['ctrl','right']) "
             "or hotkey(['ctrl','left']) to switch desktops, or use "
             "shell('open -a AppName') to bring it to the current desktop.\n"
+            "12. Maintain a cumulative status summary in your thoughts: completed steps, "
+            "elements checked and their results, UI rules or patterns discovered. "
+            "Earlier screenshots will be pruned — your thoughts are the only history. "
+            "Use previously recorded information to avoid repeating actions.\n"
             "</RULES>"
         )
 
