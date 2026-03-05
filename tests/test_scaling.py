@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import pytest
+from PIL import Image
+
 from src.eye.base import Screenshot
 from src.eye.scaling import (
     find_target_resolution,
@@ -39,6 +42,11 @@ class TestFindTargetResolution:
         """1600×1200 (4:3) should match XGA 1024×768."""
         target = find_target_resolution(1600, 1200)
         assert target == (1024, 768)
+
+    def test_mac_m4_matches_1440x960(self):
+        """1728×1117 (~3:2, ratio 1.547) should match 1440×960 (ratio 1.500)."""
+        target = find_target_resolution(1728, 1117)
+        assert target == (1440, 960)
 
     def test_already_small_returns_none(self):
         """800×600 is smaller than any target → None."""
@@ -78,6 +86,16 @@ class TestScaleCoordinates:
         assert sx == round(640 * 1728 / 1280)
         assert sy == round(400 * 1080 / 800)
 
+    def test_string_coordinates_coerced(self):
+        """LLM may return string coordinates; they should be coerced to int."""
+        sx, sy = scale_coordinates("100", "200", 1280, 800, 1280, 800)  # type: ignore[arg-type]
+        assert (sx, sy) == (100, 200)
+
+    def test_invalid_coordinate_raises(self):
+        """Non-numeric strings should raise ValueError."""
+        with pytest.raises(ValueError):
+            scale_coordinates("abc", "200", 1280, 800, 1280, 800)  # type: ignore[arg-type]
+
 
 # -------------------------------------------------------------------- #
 # scale_tool_args
@@ -93,6 +111,13 @@ class TestScaleToolArgs:
         assert result["x"] == round(640 * 1920 / 1280)
         assert result["y"] == round(400 * 1200 / 800)
         assert result["button"] == "left"
+
+    def test_click_string_coords(self):
+        """String coordinates from LLM should be handled without error."""
+        args = {"x": "640", "y": "400"}
+        result = scale_tool_args("click", args, 1280, 800, 1920, 1200)
+        assert result["x"] == round(640 * 1920 / 1280)
+        assert result["y"] == round(400 * 1200 / 800)
 
     def test_drag_scaled(self):
         args = {"start_x": 100, "start_y": 200, "end_x": 300, "end_y": 400}
@@ -151,6 +176,26 @@ class TestScaleScreenshot:
         scaled = scale_screenshot(shot, (1280, 800))
         assert scaled.scale_factor == 2.0
 
+    def test_scale_prefers_pil_image(self):
+        """When Screenshot carries a PIL Image, scale_screenshot should use it
+        (avoiding double WebP compression) and the result should also carry image."""
+        pil_img = Image.new("RGB", (1728, 1080), color=(128, 64, 32))
+        shot = Screenshot(
+            base64=_VALID_PNG_B64, width=1728, height=1080,
+            mime_type="image/png", image=pil_img,
+        )
+        scaled = scale_screenshot(shot, (1280, 800))
+        assert scaled.width == 1280
+        assert scaled.height == 800
+        assert scaled.image is not None
+        assert scaled.image.size == (1280, 800)
+
+    def test_scale_output_is_webp(self):
+        """Scaled screenshots should always be WebP regardless of source format."""
+        shot = Screenshot(base64=_VALID_PNG_B64, width=1728, height=1080, mime_type="image/png")
+        scaled = scale_screenshot(shot, (1280, 800))
+        assert scaled.mime_type == "image/webp"
+
 
 # -------------------------------------------------------------------- #
 # Screenshot.screen_width / screen_height defaults
@@ -172,3 +217,12 @@ class TestScreenshotScreenDimensions:
         )
         assert shot.screen_width == 1728
         assert shot.screen_height == 1080
+
+    def test_image_field_default_none(self):
+        shot = Screenshot(base64=_VALID_PNG_B64, width=800, height=600)
+        assert shot.image is None
+
+    def test_image_field_set(self):
+        pil_img = Image.new("RGB", (800, 600))
+        shot = Screenshot(base64=_VALID_PNG_B64, width=800, height=600, image=pil_img)
+        assert shot.image is pil_img

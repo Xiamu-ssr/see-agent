@@ -31,6 +31,7 @@ SCALING_TARGETS: list[tuple[int, int]] = [
     (1024, 768),   # XGA   — 4:3   (1.333)
     (1280, 800),   # WXGA  — 16:10 (1.600)
     (1366, 768),   # FWXGA — ~16:9 (1.779)
+    (1440, 960),   # 3:2   — Mac Retina (1.500)
 ]
 
 ASPECT_TOLERANCE = 0.05  # 5%
@@ -69,14 +70,21 @@ def scale_screenshot(screenshot: Screenshot, target: tuple[int, int]) -> Screens
     The returned :class:`Screenshot` carries the original screen dimensions in
     ``screen_width`` / ``screen_height`` so that coordinates from the LLM can
     be mapped back.
+
+    When the source :class:`Screenshot` carries an ``image`` (PIL Image), we
+    resize from that lossless source to avoid double WebP compression.
     """
     tw, th = target
     if screenshot.width == tw and screenshot.height == th:
         return screenshot
 
-    img_data = base64.b64decode(screenshot.base64)
-    img = Image.open(io.BytesIO(img_data))
-    img = img.resize((tw, th), Image.Resampling.LANCZOS)
+    # Prefer the retained PIL Image (lossless) over base64-decode (lossy).
+    if screenshot.image is not None:
+        img = screenshot.image.resize((tw, th), Image.Resampling.LANCZOS)
+    else:
+        img_data = base64.b64decode(screenshot.base64)
+        img = Image.open(io.BytesIO(img_data))
+        img = img.resize((tw, th), Image.Resampling.LANCZOS)
 
     buf = io.BytesIO()
     img.save(buf, format="WEBP", quality=100)
@@ -93,21 +101,29 @@ def scale_screenshot(screenshot: Screenshot, target: tuple[int, int]) -> Screens
         width=tw,
         height=th,
         scale_factor=screenshot.scale_factor,
-        mime_type=screenshot.mime_type,
+        mime_type="image/webp",
         screen_width=screenshot.width,
         screen_height=screenshot.height,
+        image=img,
     )
 
 
 def scale_coordinates(
-    x: int,
-    y: int,
+    x: int | Any,
+    y: int | Any,
     model_width: int,
     model_height: int,
     screen_width: int,
     screen_height: int,
 ) -> tuple[int, int]:
-    """Map coordinates from model (scaled) space back to screen space."""
+    """Map coordinates from model (scaled) space back to screen space.
+
+    *x* and *y* are coerced to ``int`` so that string values returned by
+    some LLMs (e.g. ``"640"``) are handled gracefully.  Raises
+    :class:`ValueError` if conversion fails.
+    """
+    x = int(x)
+    y = int(y)
     sx = round(x * screen_width / model_width)
     sy = round(y * screen_height / model_height)
     return sx, sy

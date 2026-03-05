@@ -7,7 +7,7 @@ import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +25,9 @@ class Screenshot:
         screen_width: Original screen width before scaling for the LLM.
             ``None`` means no scaling was applied (width == screen width).
         screen_height: Original screen height before scaling for the LLM.
+        image: Optional PIL Image object retained from capture, so that
+            downstream scaling can resize from the lossless source instead
+            of decoding the base64-encoded WebP (avoiding double compression).
     """
 
     base64: str
@@ -34,6 +37,7 @@ class Screenshot:
     mime_type: str = field(default="image/webp")
     screen_width: int | None = field(default=None)
     screen_height: int | None = field(default=None)
+    image: Any = field(default=None, repr=False, compare=False)
 
     # --------------------------------------------------------------------- #
     # Derived helpers

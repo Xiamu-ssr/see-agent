@@ -300,11 +300,34 @@ class AgentLoop:
             # coordinates for pyautogui and the overlay.
             exec_args = tc.arguments
             if scaled.screen_width is not None and scaled.screen_height is not None:
-                exec_args = scale_tool_args(
-                    tc.name, tc.arguments,
-                    scaled.width, scaled.height,
-                    scaled.screen_width, scaled.screen_height,
-                )
+                try:
+                    exec_args = scale_tool_args(
+                        tc.name, tc.arguments,
+                        scaled.width, scaled.height,
+                        scaled.screen_width, scaled.screen_height,
+                    )
+                except (ValueError, TypeError) as exc:
+                    consecutive_errors += 1
+                    result = f"Error: invalid coordinate — {exc}"
+                    logger.warning(
+                        "Coordinate scaling failed (%d/%d): %s",
+                        consecutive_errors,
+                        MAX_CONSECUTIVE_ERRORS,
+                        exc,
+                    )
+                    ctx.add_tool_result(tc.id, result)
+                    if consecutive_errors >= MAX_CONSECUTIVE_ERRORS:
+                        return RunResult(
+                            summary=(
+                                "Error: max consecutive errors reached."
+                                f" (last: {exc})"
+                            ),
+                            task_dir=str(task_dir),
+                            total_steps=final_step,
+                            elapsed_seconds=time.monotonic() - t0,
+                            success=False,
+                        )
+                    continue
                 if exec_args != tc.arguments:
                     logger.info(
                         "Scaled args: %s -> %s", tc.arguments, exec_args,

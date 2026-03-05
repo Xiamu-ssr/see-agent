@@ -148,6 +148,7 @@ class MacEye(BaseEye):
             width=logical_w,
             height=logical_h,
             scale_factor=scale,
+            image=img,
         )
 
         logger.info(
