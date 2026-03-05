@@ -165,11 +165,9 @@ class AgentLoop:
 
         # ── 2. Initial screenshot ─────────────────────────────────────
         screenshot = await self._eye.capture()
-        initial_path = task_dir / "step_000.webp"
-        screenshot.save(initial_path)
-
-        # Scale for the LLM (the saved file stays at full resolution).
         scaled = self._maybe_scale(screenshot)
+        initial_path = task_dir / "step_000.webp"
+        scaled.save(initial_path)
 
         # ── 2b. Collect desktop environment info ──────────────────────
         from src.agent.environment import collect_environment
@@ -288,9 +286,9 @@ class AgentLoop:
                 # Take a fresh screenshot after user interaction.
                 # (Overlay uses setSharingType_(0) so it won't appear in screenshots.)
                 screenshot = await self._eye.capture()
-                shot_path = task_dir / f"step_{step:03d}.webp"
-                screenshot.save(shot_path)
                 scaled = self._maybe_scale(screenshot)
+                shot_path = task_dir / f"step_{step:03d}.webp"
+                scaled.save(shot_path)
                 ctx.add_screenshot(
                     scaled.base64, scaled.detail,
                     mime_type=scaled.mime_type,
@@ -350,9 +348,9 @@ class AgentLoop:
             if self._overlay:
                 self._overlay.show_screenshot()
             screenshot = await self._eye.capture()
-            shot_path = task_dir / f"step_{step:03d}.webp"
-            screenshot.save(shot_path)
             scaled = self._maybe_scale(screenshot)
+            shot_path = task_dir / f"step_{step:03d}.webp"
+            scaled.save(shot_path)
 
             # ── 4h. Add to context ────────────────────────────────────
             ctx.add_tool_result(
