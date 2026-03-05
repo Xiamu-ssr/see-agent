@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.agent.loop import AgentLoop
+from src.agent.loop import AgentLoop, RunResult
 from src.brain.base import BrainResponse, ToolCallInfo
 
 # -------------------------------------------------------------------- #
@@ -118,7 +118,8 @@ class TestCliBuildComponents:
         loop = _build_components(FAKE_CONFIG)
         result = asyncio.run(loop.run("hello"))
 
-        assert isinstance(result, str)
+        assert isinstance(result, RunResult)
+        assert isinstance(result.summary, str)
 
     @patch(_PATCHES_REGISTRY, return_value=MagicMock())
     @patch(_PATCHES_BRAIN, return_value=_make_mock_brain())

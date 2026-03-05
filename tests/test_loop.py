@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.agent.loop import AgentLoop, StepEvent
+from src.agent.loop import AgentLoop, RunResult, StepEvent
 from src.brain.base import BrainResponse, ToolCallInfo
 from src.eye.base import Screenshot
 
@@ -126,7 +126,9 @@ class TestAgentLoop:
             result = await loop.run("Open Safari")
 
         # -- Assert --
-        assert result == "All done!"
+        assert isinstance(result, RunResult)
+        assert result.summary == "All done!"
+        assert result.success is True
         # Brain was called exactly once
         brain.chat.assert_called_once()
         # Eye captured the initial screenshot
@@ -164,8 +166,10 @@ class TestAgentLoop:
             result = await loop.run("Do something forever")
 
         # -- Assert --
-        assert "Max steps" in result
-        assert str(max_steps) in result
+        assert isinstance(result, RunResult)
+        assert "Max steps" in result.summary
+        assert str(max_steps) in result.summary
+        assert result.success is False
         # Brain should have been called max_steps times
         assert brain.chat.call_count == max_steps
 
@@ -204,7 +208,9 @@ class TestAgentLoop:
             result = await loop.run("Click then finish")
 
         # -- Assert --
-        assert result == "Done after one click."
+        assert isinstance(result, RunResult)
+        assert result.summary == "Done after one click."
+        assert result.success is True
         # The callback should have been called once (for the click step; finished
         # returns immediately without going through the tool-execute + callback path).
         step_callback.assert_called_once()
@@ -216,3 +222,34 @@ class TestAgentLoop:
         assert event.tool_args == {"x": 100, "y": 200}
         assert event.tool_result == "Clicked (100, 200)"
         assert event.max_steps == 10
+
+    @pytest.mark.asyncio
+    async def test_repeated_action_abort(self, tmp_path):
+        """Agent stuck in identical clicks should abort after REPEAT_ABORT_LIMIT."""
+        brain = AsyncMock()
+        # Always return the same click at the same coordinate.
+        brain.chat = AsyncMock(side_effect=lambda msgs, tools: _make_click_response(step_id=1))
+
+        eye = AsyncMock()
+        call_count = 0
+
+        async def varying_capture():
+            nonlocal call_count
+            call_count += 1
+            raw = f"PNG fake screenshot data {call_count}".encode()
+            return _make_screenshot(b64=base64.b64encode(raw).decode("ascii"))
+
+        eye.capture = AsyncMock(side_effect=varying_capture)
+
+        registry = AsyncMock()
+        registry.get_openai_schemas.return_value = []
+        registry.execute = AsyncMock(return_value="Clicked (100, 200)")
+
+        loop = _build_loop(brain, eye, registry, max_steps=20)
+
+        with patch("src.agent.loop.SCREENSHOTS_DIR", tmp_path):
+            result = await loop.run("Click forever")
+
+        assert isinstance(result, RunResult)
+        assert result.success is False
+        assert "repeated action" in result.summary.lower()

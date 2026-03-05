@@ -112,29 +112,29 @@ def _flush_stdin() -> None:
     a silent no-op.
     """
     try:
-        import termios
+        import termios  # noqa: I001
 
         termios.tcflush(sys.stdin, termios.TCIFLUSH)
-    except (ImportError, termios.error):
+    except Exception:  # ImportError, termios.error, or others
         pass
 
 
 def _safe_input(prompt: str) -> str:
     """Read a line from stdin, tolerating garbled bytes from pyautogui."""
-    try:
-        return input(prompt).strip()
-    except UnicodeDecodeError:
-        typer.echo("(stdin contained garbled bytes — please re-enter)")
-        # Flush again after the bad read and retry once.
-        _flush_stdin()
-        return input(prompt).strip()
+    while True:
+        try:
+            _flush_stdin()
+            return input(prompt).strip()
+        except UnicodeDecodeError:
+            typer.echo("(stdin contained garbled bytes — please re-enter)")
 
 
 def _print_task_result(result: RunResult) -> None:
     """Print the post-task summary block matching PRD format."""
+    icon = "\u2705" if result.success else "\u274c"
+    label = "finished" if result.success else "aborted"
     typer.echo(
-        f"\n\u2705 [Step {result.total_steps}/{result.total_steps}] "
-        f"finished: {result.summary}"
+        f"\n{icon} [Step {result.total_steps}] {label}: {result.summary}"
     )
     # Count screenshots on disk.
     from pathlib import Path

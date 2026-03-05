@@ -118,11 +118,13 @@ async def _run_agent(
 
         tasks[task_id] = TaskStatus(
             task_id=task_id,
-            status="completed",
+            status="completed" if run_result.success else "failed",
             summary=run_result.summary,
             steps=step_count,
         )
-        logger.info("Task %s completed: %s", task_id, run_result.summary)
+        logger.info("Task %s %s: %s", task_id,
+                     "completed" if run_result.success else "failed",
+                     run_result.summary)
 
     except Exception as exc:
         logger.exception("Task %s failed", task_id)

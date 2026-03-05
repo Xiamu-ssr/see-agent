@@ -34,6 +34,8 @@ logger = logging.getLogger(__name__)
 
 MAX_CONSECUTIVE_ERRORS = 3
 NO_PROGRESS_LIMIT = 3
+REPEAT_WARN_LIMIT = 3
+REPEAT_ABORT_LIMIT = 5
 
 
 @dataclass
@@ -58,6 +60,7 @@ class RunResult:
     task_dir: str
     total_steps: int
     elapsed_seconds: float
+    success: bool = True
 
 
 StepCallback = Callable[[StepEvent], Awaitable[None]]
@@ -150,6 +153,8 @@ class AgentLoop:
         no_progress_count = 0
         last_screenshot_hash: str | None = None
         tools_schema = self._registry.get_openai_schemas()
+        repeat_count = 0
+        last_action_key: str | None = None
 
         for step in range(1, self._max_steps + 1):
             logger.info("=== Step %d / %d ===", step, self._max_steps)
@@ -160,7 +165,7 @@ class AgentLoop:
                     ctx.get_messages(), tools_schema
                 )
                 consecutive_errors = 0
-            except Exception:
+            except Exception as exc:
                 consecutive_errors += 1
                 logger.exception(
                     "Brain error (%d/%d)",
@@ -172,10 +177,14 @@ class AgentLoop:
                         "Max consecutive errors reached -- aborting task"
                     )
                     return RunResult(
-                        summary="Error: max consecutive LLM errors reached.",
+                        summary=(
+                            "Error: max consecutive LLM errors reached."
+                            f" (last: {exc})"
+                        ),
                         task_dir=str(task_dir),
                         total_steps=final_step,
                         elapsed_seconds=time.monotonic() - t0,
+                        success=False,
                     )
                 continue
 
@@ -248,10 +257,14 @@ class AgentLoop:
                         "Max consecutive tool errors -- aborting task"
                     )
                     return RunResult(
-                        summary="Error: max consecutive tool errors reached.",
+                        summary=(
+                            "Error: max consecutive tool errors reached."
+                            f" (last: {exc})"
+                        ),
                         task_dir=str(task_dir),
                         total_steps=final_step,
                         elapsed_seconds=time.monotonic() - t0,
+                        success=False,
                     )
 
             # ── 4f. Wait for UI to settle ─────────────────────────────
@@ -288,7 +301,34 @@ class AgentLoop:
                 no_progress_count = 0
             last_screenshot_hash = current_hash
 
-            # ── 4j. Fire step callback ────────────────────────────────
+            # ── 4j. Repeated-action detection ───────────────────────────
+            action_key = _action_key(tc.name, tc.arguments)
+            if action_key == last_action_key:
+                repeat_count += 1
+                logger.warning(
+                    "Repeated action (%d): %s", repeat_count, action_key
+                )
+                if repeat_count >= REPEAT_ABORT_LIMIT:
+                    logger.error("Aborting: agent stuck in repeated action loop")
+                    return RunResult(
+                        summary="Aborted: agent stuck in repeated action loop.",
+                        task_dir=str(task_dir),
+                        total_steps=step,
+                        elapsed_seconds=time.monotonic() - t0,
+                        success=False,
+                    )
+                if repeat_count >= REPEAT_WARN_LIMIT:
+                    ctx.add_system_hint(
+                        f"Warning: you have repeated the same action "
+                        f"{repeat_count} times with no visible change. "
+                        "Try a different approach or use call_user to ask "
+                        "the user for help."
+                    )
+            else:
+                repeat_count = 1
+            last_action_key = action_key
+
+            # ── 4k. Fire step callback ────────────────────────────────
             final_step = step
             if self._on_step is not None:
                 event = StepEvent(
@@ -313,6 +353,7 @@ class AgentLoop:
             task_dir=str(task_dir),
             total_steps=final_step,
             elapsed_seconds=time.monotonic() - t0,
+            success=False,
         )
 
 
@@ -328,3 +369,17 @@ def _screenshot_hash(b64: str) -> str:
     while still being sensitive to any visible change on screen.
     """
     return str(hash(b64[:1000]))
+
+
+def _action_key(tool_name: str, args: dict[str, Any]) -> str:
+    """Return a normalised key for an action, treating nearby coordinates as equal.
+
+    Coordinate values (``x``, ``y``) are rounded to the nearest 10 so that
+    clicks at (822, 91) and (818, 95) are considered the same action.
+    """
+    normalised: dict[str, Any] = {}
+    for k, v in sorted(args.items()):
+        if k in ("x", "y") and isinstance(v, (int, float)):
+            v = round(v / 10) * 10
+        normalised[k] = v
+    return f"{tool_name}:{normalised}"
