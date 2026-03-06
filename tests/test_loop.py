@@ -1,8 +1,9 @@
-"""Unit tests for AgentLoop with fully mocked components (src/agent/loop.py)."""
+"""Unit tests for AgentLoop with fully mocked components (see_agent/agent/loop.py)."""
 
 from __future__ import annotations
 
 import base64
+from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -100,6 +101,17 @@ def _build_loop(
     )
 
 
+def _patch_sessions(tmp_path: Path):
+    """Return a patch context manager that redirects SessionStore to tmp_path."""
+    return patch("see_agent.session.store.SESSIONS_DIR", tmp_path / "sessions")
+
+
+@pytest.fixture(autouse=True)
+def _setup_sessions_dir(tmp_path: Path):
+    """Ensure sessions subdir exists for every test."""
+    (tmp_path / "sessions").mkdir(exist_ok=True)
+
+
 # -------------------------------------------------------------------- #
 # Tests
 # -------------------------------------------------------------------- #
@@ -111,7 +123,6 @@ class TestAgentLoop:
     @pytest.mark.asyncio
     async def test_run_simple_task(self, tmp_path):
         """Brain returns 'finished' on the first response -- loop completes with summary."""
-        # -- Arrange --
         brain = AsyncMock()
         brain.chat = AsyncMock(return_value=_make_finished_response("All done!"))
 
@@ -123,35 +134,28 @@ class TestAgentLoop:
 
         loop = _build_loop(brain, eye, registry, max_steps=10)
 
-        # Patch SCREENSHOTS_DIR to use tmp_path so we don't pollute the real fs.
-        with patch("see_agent.agent.loop.SCREENSHOTS_DIR", tmp_path):
+        with _patch_sessions(tmp_path):
             result = await loop.run("Open Safari")
 
-        # -- Assert --
         assert isinstance(result, RunResult)
         assert result.summary == "All done!"
         assert result.success is True
-        # Brain was called exactly once
+        assert result.session_id  # session was created
         brain.chat.assert_called_once()
-        # Eye captured the initial screenshot
         assert eye.capture.call_count >= 1
 
     @pytest.mark.asyncio
     async def test_run_max_steps(self, tmp_path):
         """Brain never returns 'finished' -- loop stops at max_steps."""
-        # -- Arrange --
         brain = AsyncMock()
-        # Always return a non-finished click action
         brain.chat = AsyncMock(side_effect=lambda msgs, tools: _make_click_response())
 
         eye = AsyncMock()
-        # Return a *different* screenshot each call to avoid no-progress abort
         call_count = 0
 
         async def varying_capture():
             nonlocal call_count
             call_count += 1
-            # Each capture returns valid but distinct base64 data
             raw = f"PNG fake screenshot data {call_count}".encode()
             return _make_screenshot(b64=base64.b64encode(raw).decode("ascii"))
 
@@ -164,22 +168,18 @@ class TestAgentLoop:
         max_steps = 3
         loop = _build_loop(brain, eye, registry, max_steps=max_steps)
 
-        with patch("see_agent.agent.loop.SCREENSHOTS_DIR", tmp_path):
+        with _patch_sessions(tmp_path):
             result = await loop.run("Do something forever")
 
-        # -- Assert --
         assert isinstance(result, RunResult)
         assert "Max steps" in result.summary
         assert str(max_steps) in result.summary
         assert result.success is False
-        # Brain should have been called max_steps times
         assert brain.chat.call_count == max_steps
 
     @pytest.mark.asyncio
     async def test_on_step_callback(self, tmp_path):
         """The on_step callback is invoked with a StepEvent for each tool execution."""
-        # -- Arrange --
-        # First call -> click, second call -> finished
         responses = [
             _make_click_response(step_id=1),
             _make_finished_response("Done after one click."),
@@ -206,15 +206,12 @@ class TestAgentLoop:
 
         loop = _build_loop(brain, eye, registry, max_steps=10, on_step=step_callback)
 
-        with patch("see_agent.agent.loop.SCREENSHOTS_DIR", tmp_path):
+        with _patch_sessions(tmp_path):
             result = await loop.run("Click then finish")
 
-        # -- Assert --
         assert isinstance(result, RunResult)
         assert result.summary == "Done after one click."
         assert result.success is True
-        # The callback should have been called once (for the click step; finished
-        # returns immediately without going through the tool-execute + callback path).
         step_callback.assert_called_once()
 
         event: StepEvent = step_callback.call_args[0][0]
@@ -229,7 +226,6 @@ class TestAgentLoop:
     async def test_repeated_action_abort(self, tmp_path):
         """Agent stuck in identical clicks should abort after REPEAT_ABORT_LIMIT."""
         brain = AsyncMock()
-        # Always return the same click at the same coordinate.
         brain.chat = AsyncMock(side_effect=lambda msgs, tools: _make_click_response(step_id=1))
 
         eye = AsyncMock()
@@ -249,7 +245,7 @@ class TestAgentLoop:
 
         loop = _build_loop(brain, eye, registry, max_steps=20)
 
-        with patch("see_agent.agent.loop.SCREENSHOTS_DIR", tmp_path):
+        with _patch_sessions(tmp_path):
             result = await loop.run("Click forever")
 
         assert isinstance(result, RunResult)
@@ -259,8 +255,6 @@ class TestAgentLoop:
     @pytest.mark.asyncio
     async def test_scaling_maps_coordinates(self, tmp_path):
         """When scaling is enabled, tool args should be scaled to screen coords."""
-        # Return screenshots already marked as "scaled" so that the loop
-        # applies coordinate mapping without needing real image resize.
         def _make_scaled_screenshot():
             raw = f"PNG fake {id(object())}".encode()
             return Screenshot(
@@ -299,22 +293,16 @@ class TestAgentLoop:
         # carries screen_width/screen_height for coordinate mapping).
         loop._maybe_scale = lambda s: s  # type: ignore[assignment]
 
-        with patch("see_agent.agent.loop.SCREENSHOTS_DIR", tmp_path):
+        with _patch_sessions(tmp_path):
             result = await loop.run("click scaled")
 
         assert result.success is True
 
-        # The registry.execute should have been called with scaled coords,
-        # not the raw model coords (100, 200).
         exec_call = registry.execute.call_args
-        exec_args = exec_call[0][1]  # positional arg #1 is the args dict
-        # Model coords are 100, 200 in a 1280x800 model space
-        # Screen is 1728x1080 → x = round(100*1728/1280) = 135
-        #                      → y = round(200*1080/800) = 270
+        exec_args = exec_call[0][1]
         assert exec_args["x"] == round(100 * 1728 / 1280)
         assert exec_args["y"] == round(200 * 1080 / 800)
 
-        # StepEvent should carry screen_tool_args.
         assert len(step_events) == 1
         assert step_events[0].screen_tool_args is not None
         assert step_events[0].screen_tool_args["x"] == exec_args["x"]

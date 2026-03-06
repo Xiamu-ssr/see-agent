@@ -17,16 +17,15 @@ import asyncio
 import logging
 import time
 from dataclasses import dataclass
-from datetime import datetime
 from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
 from see_agent.agent.context import ConversationContext
 from see_agent.brain.base import BaseBrain, BrainResponse
-from see_agent.config import SCREENSHOTS_DIR
 from see_agent.eye.base import BaseEye
 from see_agent.eye.scaling import find_target_resolution, scale_screenshot, scale_tool_args
 from see_agent.hand.tool import ToolRegistry
 from see_agent.overlay.base import OverlayRenderer
+from see_agent.session.store import Session, SessionStore
 
 if TYPE_CHECKING:
     from see_agent.eye.base import Screenshot
@@ -70,6 +69,7 @@ class RunResult:
     total_steps: int
     elapsed_seconds: float
     success: bool = True
+    session_id: str = ""
 
 
 StepCallback = Callable[[StepEvent], Awaitable[None]]
@@ -131,6 +131,24 @@ class AgentLoop:
     # Scaling helper
     # ------------------------------------------------------------------ #
 
+    def _fail_result(
+        self, session: Session, steps: int, t0: float, summary: str,
+    ) -> RunResult:
+        """Build a failed :class:`RunResult` and update session meta."""
+        elapsed = time.monotonic() - t0
+        session.update_meta(
+            status="failed", total_steps=steps,
+            elapsed_seconds=round(elapsed, 1), summary=summary,
+        )
+        return RunResult(
+            summary=summary,
+            task_dir=str(session.dir),
+            total_steps=steps,
+            elapsed_seconds=elapsed,
+            success=False,
+            session_id=session.id,
+        )
+
     def _maybe_scale(self, screenshot: Screenshot) -> Screenshot:
         """Resize *screenshot* for the LLM if scaling is enabled."""
         if not self._scaling_enabled:
@@ -147,11 +165,13 @@ class AgentLoop:
     # Public entry point
     # ------------------------------------------------------------------ #
 
-    async def run(self, task: str) -> RunResult:
+    async def run(self, task: str, session_id: str | None = None) -> RunResult:
         """Execute *task* and return a :class:`RunResult`.
 
         Parameters:
             task: The user-facing task description.
+            session_id: Optional existing session to resume.  When ``None``
+                a new session is created automatically.
 
         Returns:
             A :class:`RunResult` containing the summary, task directory,
@@ -160,11 +180,16 @@ class AgentLoop:
         t0 = time.monotonic()
         final_step = 0
 
-        # ── 1. Create task-specific screenshot directory ──────────────
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        task_dir = SCREENSHOTS_DIR / f"task_{timestamp}"
+        # ── 1. Create or load session ─────────────────────────────────
+        if session_id:
+            session = SessionStore.load(session_id)
+            session.update_meta(status="running")
+        else:
+            session = SessionStore.create(task, self._config)
+
+        task_dir = session.screenshots_dir
         task_dir.mkdir(parents=True, exist_ok=True)
-        logger.info("Task dir: %s", task_dir)
+        logger.info("Session %s — task dir: %s", session.id, task_dir)
 
         # ── 2. Initial screenshot ─────────────────────────────────────
         screenshot = await self._eye.capture()
@@ -187,13 +212,18 @@ class AgentLoop:
         from see_agent.brain.prompts import build_system_prompt
 
         system_prompt = build_system_prompt(self._config)
-        ctx = ConversationContext(system_prompt, max_images=self._max_images)
+        ctx = ConversationContext(
+            system_prompt,
+            max_images=self._max_images,
+            on_append=session.append_message,
+        )
 
         # Prepend environment block to the user task text.
         task_text = f"{env_block}\n\n{task}" if env_block else task
         ctx.add_user_task(
             task_text, scaled.base64, scaled.detail,
             mime_type=scaled.mime_type,
+            screenshot_ref="step_000.webp",
         )
 
         # ── 4. Main loop ──────────────────────────────────────────────
@@ -224,15 +254,9 @@ class AgentLoop:
                     logger.error(
                         "Max consecutive errors reached -- aborting task"
                     )
-                    return RunResult(
-                        summary=(
-                            "Error: max consecutive LLM errors reached."
-                            f" (last: {exc})"
-                        ),
-                        task_dir=str(task_dir),
-                        total_steps=final_step,
-                        elapsed_seconds=time.monotonic() - t0,
-                        success=False,
+                    return self._fail_result(
+                        session, final_step, t0,
+                        f"Error: max consecutive LLM errors reached. (last: {exc})",
                     )
                 continue
 
@@ -263,11 +287,17 @@ class AgentLoop:
                 ctx.add_tool_result(tc.id, summary)
                 logger.info("Task finished: %s", summary)
                 final_step = step
+                elapsed = time.monotonic() - t0
+                session.update_meta(
+                    status="completed", total_steps=final_step,
+                    elapsed_seconds=round(elapsed, 1), summary=summary,
+                )
                 return RunResult(
                     summary=summary,
-                    task_dir=str(task_dir),
+                    task_dir=str(session.dir),
                     total_steps=final_step,
-                    elapsed_seconds=time.monotonic() - t0,
+                    elapsed_seconds=elapsed,
+                    session_id=session.id,
                 )
 
             # ── 4d. Handle "call_user" ───────────────────────────────
@@ -295,6 +325,7 @@ class AgentLoop:
                 ctx.add_screenshot(
                     scaled.base64, scaled.detail,
                     mime_type=scaled.mime_type,
+                    screenshot_ref=f"step_{step:03d}.webp",
                 )
                 continue
 
@@ -320,15 +351,9 @@ class AgentLoop:
                     )
                     ctx.add_tool_result(tc.id, result)
                     if consecutive_errors >= MAX_CONSECUTIVE_ERRORS:
-                        return RunResult(
-                            summary=(
-                                "Error: max consecutive errors reached."
-                                f" (last: {exc})"
-                            ),
-                            task_dir=str(task_dir),
-                            total_steps=final_step,
-                            elapsed_seconds=time.monotonic() - t0,
-                            success=False,
+                        return self._fail_result(
+                            session, final_step, t0,
+                            f"Error: max consecutive errors reached. (last: {exc})",
                         )
                     continue
                 if exec_args != tc.arguments:
@@ -354,15 +379,9 @@ class AgentLoop:
                     logger.error(
                         "Max consecutive tool errors -- aborting task"
                     )
-                    return RunResult(
-                        summary=(
-                            "Error: max consecutive tool errors reached."
-                            f" (last: {exc})"
-                        ),
-                        task_dir=str(task_dir),
-                        total_steps=final_step,
-                        elapsed_seconds=time.monotonic() - t0,
-                        success=False,
+                    return self._fail_result(
+                        session, final_step, t0,
+                        f"Error: max consecutive tool errors reached. (last: {exc})",
                     )
 
             # ── 4f. Wait for UI to settle ──────────────────────────────
@@ -382,6 +401,7 @@ class AgentLoop:
             ctx.add_tool_result(
                 tc.id, result, scaled.base64, scaled.detail,
                 mime_type=scaled.mime_type,
+                screenshot_ref=f"step_{step:03d}.webp",
             )
 
             # ── 4i. No-progress detection (screenshot hash) ──────────
@@ -414,12 +434,9 @@ class AgentLoop:
                 )
                 if repeat_count >= REPEAT_ABORT_LIMIT:
                     logger.error("Aborting: agent stuck in repeated action loop")
-                    return RunResult(
-                        summary="Aborted: agent stuck in repeated action loop.",
-                        task_dir=str(task_dir),
-                        total_steps=step,
-                        elapsed_seconds=time.monotonic() - t0,
-                        success=False,
+                    return self._fail_result(
+                        session, step, t0,
+                        "Aborted: agent stuck in repeated action loop.",
                     )
                 if repeat_count >= REPEAT_WARN_LIMIT:
                     ctx.add_system_hint(
@@ -453,12 +470,9 @@ class AgentLoop:
 
         # ── 5. Budget exhausted ───────────────────────────────────────
         logger.warning("Max steps (%d) reached", self._max_steps)
-        return RunResult(
-            summary=f"Max steps ({self._max_steps}) reached. Task may be incomplete.",
-            task_dir=str(task_dir),
-            total_steps=final_step,
-            elapsed_seconds=time.monotonic() - t0,
-            success=False,
+        return self._fail_result(
+            session, final_step, t0,
+            f"Max steps ({self._max_steps}) reached. Task may be incomplete.",
         )
 
 

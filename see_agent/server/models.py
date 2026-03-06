@@ -9,6 +9,7 @@ class ChatRequest(BaseModel):
     """Request body for POST /api/chat."""
 
     task: str
+    session_id: str | None = None
 
 
 class ChatResponse(BaseModel):

@@ -30,6 +30,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
 WORKSPACE_DIR = Path.home() / ".see-agent"
 CONFIG_PATH = WORKSPACE_DIR / "config.json"
 SCREENSHOTS_DIR = WORKSPACE_DIR / "screenshots"
+SESSIONS_DIR = WORKSPACE_DIR / "sessions"
 LOGS_DIR = WORKSPACE_DIR / "logs"
 
 # Path to bundled workspace templates
@@ -40,6 +41,7 @@ def ensure_workspace() -> None:
     """Ensure ~/.see-agent/ exists with default files."""
     WORKSPACE_DIR.mkdir(parents=True, exist_ok=True)
     SCREENSHOTS_DIR.mkdir(exist_ok=True)
+    SESSIONS_DIR.mkdir(exist_ok=True)
     LOGS_DIR.mkdir(exist_ok=True)
 
     if not CONFIG_PATH.exists():

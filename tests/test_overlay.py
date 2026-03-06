@@ -197,7 +197,8 @@ class TestLoopOverlayIntegration:
             overlay=overlay,
         )
 
-        with patch("see_agent.agent.loop.SCREENSHOTS_DIR", tmp_path):
+        (tmp_path / "sessions").mkdir(exist_ok=True)
+        with patch("see_agent.session.store.SESSIONS_DIR", tmp_path / "sessions"):
             result = await loop.run("click then finish")
 
         assert result.success is True
@@ -250,7 +251,8 @@ class TestLoopOverlayIntegration:
             overlay=overlay,
         )
 
-        with patch("see_agent.agent.loop.SCREENSHOTS_DIR", tmp_path):
+        (tmp_path / "sessions").mkdir(exist_ok=True)
+        with patch("see_agent.session.store.SESSIONS_DIR", tmp_path / "sessions"):
             await loop.run("click then finish")
 
         # show_click should appear before the post-tool capture,
@@ -280,7 +282,8 @@ class TestLoopOverlayIntegration:
             config={"max_steps": 5, "max_images": 5, "screenshot_interval_ms": 0},
         )
 
-        with patch("see_agent.agent.loop.SCREENSHOTS_DIR", tmp_path):
+        (tmp_path / "sessions").mkdir(exist_ok=True)
+        with patch("see_agent.session.store.SESSIONS_DIR", tmp_path / "sessions"):
             result = await loop.run("hello")
 
         assert result.success is True

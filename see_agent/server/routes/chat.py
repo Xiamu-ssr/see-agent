@@ -46,6 +46,7 @@ async def _run_agent(
     config: dict[str, Any],
     tasks: dict[str, TaskStatus],
     subscribers: dict[str, list[asyncio.Queue[dict | None]]],
+    session_id: str | None = None,
 ) -> None:
     """Create and run the :class:`AgentLoop`, updating shared state as it progresses.
 
@@ -114,7 +115,7 @@ async def _run_agent(
             config=config,
             on_step=on_step,
         )
-        run_result = await agent.run(task)
+        run_result = await agent.run(task, session_id=session_id)
 
         tasks[task_id] = TaskStatus(
             task_id=task_id,
@@ -167,7 +168,7 @@ async def chat(body: ChatRequest, request: Request) -> ChatResponse:
 
     # Spawn the agent loop as a background asyncio task.
     asyncio.create_task(
-        _run_agent(task_id, body.task, config, tasks, subscribers),
+        _run_agent(task_id, body.task, config, tasks, subscribers, session_id=body.session_id),
         name=f"agent-{task_id}",
     )
 

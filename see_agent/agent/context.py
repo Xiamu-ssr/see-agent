@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import copy
 import logging
-from typing import Any
+from typing import Any, Callable
 
 logger = logging.getLogger(__name__)
 
@@ -25,11 +25,21 @@ class ConversationContext:
             text message so the LLM still knows a screenshot *was* present.
     """
 
-    def __init__(self, system_prompt: str, max_images: int = 5) -> None:
+    def __init__(
+        self,
+        system_prompt: str,
+        max_images: int = 5,
+        on_append: Callable[[dict[str, Any]], None] | None = None,
+    ) -> None:
         self._messages: list[dict[str, Any]] = [
             {"role": "system", "content": system_prompt},
         ]
         self._max_images = max_images
+        self._on_append = on_append
+
+        # Persist the system message.
+        if self._on_append:
+            self._on_append({"type": "system", "content": system_prompt})
 
     # ------------------------------------------------------------------ #
     # Public mutators
@@ -38,6 +48,7 @@ class ConversationContext:
     def add_user_task(
         self, text: str, screenshot_b64: str, detail: str,
         mime_type: str = "image/webp",
+        screenshot_ref: str | None = None,
     ) -> None:
         """Append the initial user task message together with the first screenshot.
 
@@ -46,6 +57,7 @@ class ConversationContext:
             screenshot_b64: Base64-encoded image of the current screen.
             detail: OpenAI vision detail level (``"low"`` or ``"high"``).
             mime_type: MIME type of the encoded image.
+            screenshot_ref: Optional filename for JSONL persistence (no base64).
         """
         self._messages.append(
             {
@@ -63,6 +75,13 @@ class ConversationContext:
             }
         )
         logger.debug("Added user task with screenshot (detail=%s)", detail)
+        if self._on_append:
+            self._on_append({
+                "type": "user_task",
+                "text": text,
+                "screenshot": screenshot_ref,
+                "detail": detail,
+            })
 
     def add_assistant(self, message: Any) -> None:
         """Append the raw assistant message returned by the LLM.
@@ -71,8 +90,22 @@ class ConversationContext:
             message: The raw API response object; ``message.model_dump()`` is
                 called to convert it into a serialisable dict.
         """
-        self._messages.append(message.model_dump())
+        dumped = message.model_dump()
+        self._messages.append(dumped)
         logger.debug("Added assistant message")
+        if self._on_append:
+            # Persist content + tool_calls (no base64 here).
+            entry: dict[str, Any] = {"type": "assistant"}
+            if dumped.get("content"):
+                entry["content"] = dumped["content"]
+            if dumped.get("tool_calls"):
+                entry["tool_calls"] = [
+                    {"id": tc["id"], "name": tc["function"]["name"],
+                     "args": tc["function"].get("arguments", "")}
+                    for tc in dumped["tool_calls"]
+                    if tc.get("function")
+                ]
+            self._on_append(entry)
 
     def add_tool_result(
         self,
@@ -81,6 +114,7 @@ class ConversationContext:
         screenshot_b64: str | None = None,
         detail: str = "high",
         mime_type: str = "image/webp",
+        screenshot_ref: str | None = None,
     ) -> None:
         """Append a tool-result message and an optional follow-up screenshot.
 
@@ -94,6 +128,7 @@ class ConversationContext:
             screenshot_b64: Optional base64-encoded image taken after execution.
             detail: OpenAI vision detail level for the screenshot.
             mime_type: MIME type of the encoded image.
+            screenshot_ref: Optional filename for JSONL persistence (no base64).
         """
         self._messages.append(
             {
@@ -102,6 +137,13 @@ class ConversationContext:
                 "content": result,
             }
         )
+        if self._on_append:
+            self._on_append({
+                "type": "tool_result",
+                "tool_call_id": tool_call_id,
+                "result": result,
+                "screenshot": screenshot_ref,
+            })
         if screenshot_b64 is not None:
             self.add_screenshot(screenshot_b64, detail, mime_type=mime_type)
         logger.debug(
@@ -113,6 +155,7 @@ class ConversationContext:
     def add_screenshot(
         self, screenshot_b64: str, detail: str = "high",
         mime_type: str = "image/webp",
+        screenshot_ref: str | None = None,
     ) -> None:
         """Append a standalone screenshot as a user message.
 
@@ -120,6 +163,7 @@ class ConversationContext:
             screenshot_b64: Base64-encoded image data.
             detail: OpenAI vision detail level (``"low"`` or ``"high"``).
             mime_type: MIME type of the encoded image.
+            screenshot_ref: Optional filename for JSONL persistence (no base64).
         """
         self._messages.append(
             {
@@ -136,6 +180,12 @@ class ConversationContext:
             }
         )
         logger.debug("Added standalone screenshot (detail=%s)", detail)
+        if self._on_append and screenshot_ref:
+            self._on_append({
+                "type": "screenshot",
+                "screenshot": screenshot_ref,
+                "detail": detail,
+            })
 
     def add_user_reply(self, text: str) -> None:
         """Append a plain-text user reply (e.g. after ``call_user``).
@@ -145,6 +195,8 @@ class ConversationContext:
         """
         self._messages.append({"role": "user", "content": text})
         logger.debug("Added user reply")
+        if self._on_append:
+            self._on_append({"type": "user_reply", "text": text})
 
     def add_system_hint(self, text: str) -> None:
         """Inject a system-level hint into the conversation.
@@ -157,6 +209,8 @@ class ConversationContext:
         """
         self._messages.append({"role": "user", "content": text})
         logger.debug("Added system hint: %s", text[:80])
+        if self._on_append:
+            self._on_append({"type": "system_hint", "text": text})
 
     # ------------------------------------------------------------------ #
     # Context retrieval with sliding window

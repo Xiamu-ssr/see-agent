@@ -37,6 +37,13 @@ config_app = typer.Typer(
 )
 app.add_typer(config_app, name="config")
 
+sessions_app = typer.Typer(
+    name="sessions",
+    help="List, inspect, and clean up sessions.",
+    add_completion=False,
+)
+app.add_typer(sessions_app, name="sessions")
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -156,9 +163,15 @@ def _print_task_result(result: RunResult) -> None:
     # Count screenshots on disk.
     from pathlib import Path
 
-    task_path = Path(result.task_dir)
-    n_screenshots = len(list(task_path.glob("*.webp"))) if task_path.is_dir() else 0
+    screenshots_dir = Path(result.task_dir) / "screenshots"
+    if screenshots_dir.is_dir():
+        n_screenshots = len(list(screenshots_dir.glob("*.webp")))
+    else:
+        task_path = Path(result.task_dir)
+        n_screenshots = len(list(task_path.glob("*.webp"))) if task_path.is_dir() else 0
     typer.echo(f"\U0001f4c1 截图已保存: {result.task_dir} ({n_screenshots} 张)")
+    if result.session_id:
+        typer.echo(f"\U0001f4cb 会话 ID: {result.session_id}")
     typer.echo(f"\u23f1\ufe0f  总耗时: {result.elapsed_seconds:.0f}s\n")
 
 
@@ -236,9 +249,13 @@ def chat(
     config = load_config()
     _validate_api_key(config)
 
+    from see_agent.session import SessionStore
+
     loop = _build_components(config, no_overlay=no_overlay, no_scaling=no_scaling)
+    session = SessionStore.create("interactive-chat", config)
 
     typer.echo("\U0001f916 see-agent v0.1 已启动")
+    typer.echo(f"\U0001f4cb 会话 ID: {session.id}")
     typer.echo("Enter a task description (Ctrl+C to exit).\n")
 
     try:
@@ -252,7 +269,7 @@ def chat(
             if not task:
                 continue
 
-            result: RunResult = asyncio.run(loop.run(task))
+            result: RunResult = asyncio.run(loop.run(task, session_id=session.id))
             _print_task_result(result)
 
     except KeyboardInterrupt:
@@ -342,6 +359,143 @@ def config_init() -> None:
 
     save_config(config)
     typer.echo("\n\u2705 Configuration saved.")
+
+
+# ---------------------------------------------------------------------------
+# Sessions sub-commands
+# ---------------------------------------------------------------------------
+
+@sessions_app.command("list")
+def sessions_list(
+    status: str | None = typer.Option(None, "--status", "-s", help="Filter by status."),
+    limit: int = typer.Option(20, "--limit", "-n", help="Max sessions to show."),
+) -> None:
+    """List recent sessions."""
+    from see_agent.session import SessionStore
+
+    sessions = SessionStore.list(status=status, limit=limit)
+    if not sessions:
+        typer.echo("No sessions found.")
+        return
+
+    # Header
+    typer.echo(
+        f"{'ID':<28} {'TASK':<24} {'STATUS':<12} {'STEPS':>5} {'TIME':>8} {'DATE':<16}"
+    )
+    typer.echo("-" * 95)
+    for s in sessions:
+        task_display = s.task[:22] + ".." if len(s.task) > 24 else s.task
+        elapsed = _format_elapsed(s.elapsed_seconds)
+        date = s.created_at[:16].replace("T", " ") if s.created_at else ""
+        typer.echo(
+            f"{s.id:<28} {task_display:<24} {s.status:<12}"
+            f" {s.total_steps:>5} {elapsed:>8} {date:<16}"
+        )
+
+
+@sessions_app.command("show")
+def sessions_show(
+    session_id: str = typer.Argument(..., help="Session ID to inspect."),
+) -> None:
+    """Show details of a session."""
+    from see_agent.session import SessionStore
+
+    try:
+        session = SessionStore.load(session_id)
+    except FileNotFoundError:
+        typer.echo(f"Session not found: {session_id}", err=True)
+        raise typer.Exit(code=1)
+
+    typer.echo(json.dumps(session.meta, indent=2, ensure_ascii=False))
+
+    messages = session.read_messages()
+    typer.echo(f"\nMessages: {len(messages)}")
+    ss_dir = session.screenshots_dir
+    screenshots = list(ss_dir.glob("*.webp")) if ss_dir.exists() else []
+    typer.echo(f"Screenshots: {len(screenshots)}")
+
+
+@sessions_app.command("clean")
+def sessions_clean(
+    keep: str = typer.Option("7d", "--keep", help="Keep sessions newer than this (e.g. 3d, 0)."),
+    empty: bool = typer.Option(
+        False, "--empty", help="Only clean empty sessions (no screenshots).",
+    ),
+) -> None:
+    """Clean up old or empty sessions."""
+    from see_agent.session import SessionStore
+
+    if keep == "0":
+        keep_days = 0
+    elif keep.endswith("d"):
+        keep_days = int(keep[:-1])
+    else:
+        keep_days = int(keep)
+
+    deleted, freed = SessionStore.clean(keep_days=keep_days, empty_only=empty)
+    freed_mb = freed / (1024 * 1024)
+    typer.echo(f"\U0001f9f9 Cleaned {deleted} sessions ({freed_mb:.1f}MB freed)")
+
+
+# ---------------------------------------------------------------------------
+# Resume command
+# ---------------------------------------------------------------------------
+
+@app.command()
+def resume(
+    session_id: str = typer.Argument(None, help="Session ID to resume (omit for latest)."),
+    last: bool = typer.Option(False, "--last", help="Resume the most recent session."),
+    no_overlay: bool = typer.Option(False, "--no-overlay", help="Disable visual overlay."),
+    no_scaling: bool = typer.Option(False, "--no-scaling", help="Disable coordinate scaling."),
+) -> None:
+    """Resume a previous session."""
+    ensure_workspace()
+    setup_logging()
+    config = load_config()
+    _validate_api_key(config)
+
+    from see_agent.session import SessionStore
+
+    if last or session_id is None:
+        sessions = SessionStore.list(limit=1)
+        if not sessions:
+            typer.echo("No sessions found.", err=True)
+            raise typer.Exit(code=1)
+        session_id = sessions[0].id
+
+    try:
+        session = SessionStore.load(session_id)
+    except FileNotFoundError:
+        typer.echo(f"Session not found: {session_id}", err=True)
+        raise typer.Exit(code=1)
+
+    loop = _build_components(config, no_overlay=no_overlay, no_scaling=no_scaling)
+
+    typer.echo(f"\U0001f504 Resuming session: {session.id}")
+    typer.echo(f"\U0001f4cb Task: {session.task}")
+    typer.echo("Enter a follow-up task (Ctrl+C to exit).\n")
+
+    try:
+        while True:
+            _flush_stdin()
+            try:
+                task = _safe_input("> ")
+            except EOFError:
+                break
+            if not task:
+                continue
+            result: RunResult = asyncio.run(loop.run(task, session_id=session.id))
+            _print_task_result(result)
+    except KeyboardInterrupt:
+        typer.echo("\n\nBye!")
+        raise typer.Exit()
+
+
+def _format_elapsed(seconds: float) -> str:
+    """Format seconds as Xm Ys."""
+    m = int(seconds) // 60
+    s = int(seconds) % 60
+    return f"{m}m{s:02d}s"
 
 
 # ---------------------------------------------------------------------------
