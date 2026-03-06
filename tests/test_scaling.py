@@ -5,8 +5,8 @@ from __future__ import annotations
 import pytest
 from PIL import Image
 
-from src.eye.base import Screenshot
-from src.eye.scaling import (
+from see_agent.eye.base import Screenshot
+from see_agent.eye.scaling import (
     find_target_resolution,
     scale_coordinates,
     scale_screenshot,

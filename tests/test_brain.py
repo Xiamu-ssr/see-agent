@@ -1,9 +1,9 @@
 """Unit tests for brain prompts and base data types."""
 
 
-from src.brain.base import BrainResponse, ToolCallInfo
-from src.brain.openai_client import _summarise_messages
-from src.brain.prompts import build_system_prompt
+from see_agent.brain.base import BrainResponse, ToolCallInfo
+from see_agent.brain.openai_client import _summarise_messages
+from see_agent.brain.prompts import build_system_prompt
 
 # -------------------------------------------------------------------- #
 # Tests for build_system_prompt

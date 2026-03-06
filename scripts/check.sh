@@ -31,10 +31,10 @@ run_step() {
 }
 
 # ── 1. 静态类型检查（抓接口问题）──
-run_step "pyright 类型检查" npx pyright@latest src/ --pythonpath .venv/bin/python
+run_step "pyright 类型检查" npx pyright@latest see_agent/ --pythonpath .venv/bin/python
 
 # ── 2. Lint（抓代码规范）──
-run_step "ruff lint" .venv/bin/ruff check src/ tests/
+run_step "ruff lint" .venv/bin/ruff check see_agent/ tests/
 
 # ── 3. 单元测试（抓逻辑问题）──
 run_step "pytest 单元测试" .venv/bin/pytest tests/ -v

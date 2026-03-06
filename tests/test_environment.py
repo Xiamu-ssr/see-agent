@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
-from src.agent.environment import collect_environment
+from see_agent.agent.environment import collect_environment
 
 
 @pytest.mark.asyncio
@@ -22,7 +22,7 @@ async def test_collect_environment_full():
             return "Safari\nTerminal\nNotes"
         return ""
 
-    with patch("src.agent.environment._run", side_effect=fake_run):
+    with patch("see_agent.agent.environment._run", side_effect=fake_run):
         result = await collect_environment(1920, 1080)
 
     assert "<ENVIRONMENT>" in result
@@ -42,7 +42,7 @@ async def test_collect_environment_partial():
             return "Finder"
         return ""
 
-    with patch("src.agent.environment._run", side_effect=fake_run):
+    with patch("see_agent.agent.environment._run", side_effect=fake_run):
         result = await collect_environment(1440, 900)
 
     assert "<ENVIRONMENT>" in result
@@ -60,7 +60,7 @@ async def test_collect_environment_all_fail():
     async def fake_run(cmd: str) -> str:
         return ""
 
-    with patch("src.agent.environment._run", side_effect=fake_run):
+    with patch("see_agent.agent.environment._run", side_effect=fake_run):
         result = await collect_environment(800, 600)
 
     assert "<ENVIRONMENT>" in result
@@ -82,7 +82,7 @@ async def test_installed_apps_truncated():
             return "\n".join(app_names)
         return ""
 
-    with patch("src.agent.environment._run", side_effect=fake_run):
+    with patch("see_agent.agent.environment._run", side_effect=fake_run):
         result = await collect_environment(1920, 1080)
 
     # App39 should be present (index 39, the 40th app).

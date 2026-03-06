@@ -4,7 +4,7 @@ import base64
 
 import pytest
 
-from src.eye.base import Screenshot
+from see_agent.eye.base import Screenshot
 
 # -------------------------------------------------------------------- #
 # Helpers

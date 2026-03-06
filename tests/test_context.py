@@ -1,7 +1,7 @@
 """Unit tests for ConversationContext (src/agent/context.py)."""
 
 
-from src.agent.context import ConversationContext
+from see_agent.agent.context import ConversationContext
 
 # -------------------------------------------------------------------- #
 # Helpers

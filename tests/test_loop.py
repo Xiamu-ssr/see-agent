@@ -8,9 +8,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.agent.loop import AgentLoop, RunResult, StepEvent
-from src.brain.base import BrainResponse, ToolCallInfo
-from src.eye.base import Screenshot
+from see_agent.agent.loop import AgentLoop, RunResult, StepEvent
+from see_agent.brain.base import BrainResponse, ToolCallInfo
+from see_agent.eye.base import Screenshot
 
 # -------------------------------------------------------------------- #
 # Helpers
@@ -124,7 +124,7 @@ class TestAgentLoop:
         loop = _build_loop(brain, eye, registry, max_steps=10)
 
         # Patch SCREENSHOTS_DIR to use tmp_path so we don't pollute the real fs.
-        with patch("src.agent.loop.SCREENSHOTS_DIR", tmp_path):
+        with patch("see_agent.agent.loop.SCREENSHOTS_DIR", tmp_path):
             result = await loop.run("Open Safari")
 
         # -- Assert --
@@ -164,7 +164,7 @@ class TestAgentLoop:
         max_steps = 3
         loop = _build_loop(brain, eye, registry, max_steps=max_steps)
 
-        with patch("src.agent.loop.SCREENSHOTS_DIR", tmp_path):
+        with patch("see_agent.agent.loop.SCREENSHOTS_DIR", tmp_path):
             result = await loop.run("Do something forever")
 
         # -- Assert --
@@ -206,7 +206,7 @@ class TestAgentLoop:
 
         loop = _build_loop(brain, eye, registry, max_steps=10, on_step=step_callback)
 
-        with patch("src.agent.loop.SCREENSHOTS_DIR", tmp_path):
+        with patch("see_agent.agent.loop.SCREENSHOTS_DIR", tmp_path):
             result = await loop.run("Click then finish")
 
         # -- Assert --
@@ -249,7 +249,7 @@ class TestAgentLoop:
 
         loop = _build_loop(brain, eye, registry, max_steps=20)
 
-        with patch("src.agent.loop.SCREENSHOTS_DIR", tmp_path):
+        with patch("see_agent.agent.loop.SCREENSHOTS_DIR", tmp_path):
             result = await loop.run("Click forever")
 
         assert isinstance(result, RunResult)
@@ -299,7 +299,7 @@ class TestAgentLoop:
         # carries screen_width/screen_height for coordinate mapping).
         loop._maybe_scale = lambda s: s  # type: ignore[assignment]
 
-        with patch("src.agent.loop.SCREENSHOTS_DIR", tmp_path):
+        with patch("see_agent.agent.loop.SCREENSHOTS_DIR", tmp_path):
             result = await loop.run("click scaled")
 
         assert result.success is True

@@ -13,8 +13,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.agent.loop import AgentLoop, RunResult
-from src.brain.base import BrainResponse, ToolCallInfo
+from see_agent.agent.loop import AgentLoop, RunResult
+from see_agent.brain.base import BrainResponse, ToolCallInfo
 
 # -------------------------------------------------------------------- #
 # Shared helpers
@@ -86,9 +86,9 @@ def _make_mock_brain() -> MagicMock:
 
 
 # Patch targets — CLI uses lazy imports so we patch at source modules.
-_PATCHES_EYE = "src.eye.mac.MacEye"
-_PATCHES_BRAIN = "src.brain.openai_client.OpenAIBrain"
-_PATCHES_REGISTRY = "src.hand.tools.create_registry"
+_PATCHES_EYE = "see_agent.eye.mac.MacEye"
+_PATCHES_BRAIN = "see_agent.brain.openai_client.OpenAIBrain"
+_PATCHES_REGISTRY = "see_agent.hand.tools.create_registry"
 
 
 # -------------------------------------------------------------------- #
@@ -104,7 +104,7 @@ class TestCliBuildComponents:
     @patch(_PATCHES_EYE, return_value=_make_mock_eye())
     def test_returns_agent_loop(self, _eye, _brain, _reg):
         """_build_components should return an AgentLoop without TypeError."""
-        from src.cli.main import _build_components
+        from see_agent.cli.main import _build_components
 
         loop = _build_components(FAKE_CONFIG)
 
@@ -115,7 +115,7 @@ class TestCliBuildComponents:
     @patch(_PATCHES_EYE, return_value=_make_mock_eye())
     def test_loop_run_accepts_task_only(self, _eye, _brain, _reg):
         """loop.run(task) must work with a single positional str argument."""
-        from src.cli.main import _build_components
+        from see_agent.cli.main import _build_components
 
         loop = _build_components(FAKE_CONFIG)
         result = asyncio.run(loop.run("hello"))
@@ -128,7 +128,7 @@ class TestCliBuildComponents:
     @patch(_PATCHES_EYE, return_value=_make_mock_eye())
     def test_config_values_propagate(self, _eye, _brain, _reg):
         """AgentLoop should read max_steps / max_images from config."""
-        from src.cli.main import _build_components
+        from see_agent.cli.main import _build_components
 
         loop = _build_components(FAKE_CONFIG)
 
@@ -150,8 +150,8 @@ class TestServerRunAgent:
     @pytest.mark.asyncio
     async def test_run_agent_no_type_error(self, _eye, _brain, _reg):
         """_run_agent should construct AgentLoop and call run() without TypeError."""
-        from src.server.models import TaskStatus
-        from src.server.routes.chat import _run_agent
+        from see_agent.server.models import TaskStatus
+        from see_agent.server.routes.chat import _run_agent
 
         tasks: dict[str, TaskStatus] = {}
         await _run_agent("test123", "say hello", FAKE_CONFIG, tasks, {})
@@ -165,8 +165,8 @@ class TestServerRunAgent:
     @pytest.mark.asyncio
     async def test_run_agent_summary_propagates(self, _eye, _brain, _reg):
         """The finished-tool summary should appear in the final TaskStatus."""
-        from src.server.models import TaskStatus
-        from src.server.routes.chat import _run_agent
+        from see_agent.server.models import TaskStatus
+        from see_agent.server.routes.chat import _run_agent
 
         tasks: dict[str, TaskStatus] = {}
         await _run_agent("t1", "greet", FAKE_CONFIG, tasks, {})
@@ -179,8 +179,8 @@ class TestServerRunAgent:
     @pytest.mark.asyncio
     async def test_run_agent_broadcasts_sentinel(self, _eye, _brain, _reg):
         """After completion, _run_agent must broadcast None sentinel to subscribers."""
-        from src.server.models import TaskStatus
-        from src.server.routes.chat import _run_agent
+        from see_agent.server.models import TaskStatus
+        from see_agent.server.routes.chat import _run_agent
 
         queue: asyncio.Queue[dict | None] = asyncio.Queue()
         subscribers: dict = {"done1": [queue]}

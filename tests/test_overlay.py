@@ -7,9 +7,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.agent.loop import AgentLoop, _show_overlay
-from src.brain.base import BrainResponse, ToolCallInfo
-from src.eye.base import Screenshot
+from see_agent.agent.loop import AgentLoop, _show_overlay
+from see_agent.brain.base import BrainResponse, ToolCallInfo
+from see_agent.eye.base import Screenshot
 
 # -------------------------------------------------------------------- #
 # Helpers
@@ -197,7 +197,7 @@ class TestLoopOverlayIntegration:
             overlay=overlay,
         )
 
-        with patch("src.agent.loop.SCREENSHOTS_DIR", tmp_path):
+        with patch("see_agent.agent.loop.SCREENSHOTS_DIR", tmp_path):
             result = await loop.run("click then finish")
 
         assert result.success is True
@@ -250,7 +250,7 @@ class TestLoopOverlayIntegration:
             overlay=overlay,
         )
 
-        with patch("src.agent.loop.SCREENSHOTS_DIR", tmp_path):
+        with patch("see_agent.agent.loop.SCREENSHOTS_DIR", tmp_path):
             await loop.run("click then finish")
 
         # show_click should appear before the post-tool capture,
@@ -280,7 +280,7 @@ class TestLoopOverlayIntegration:
             config={"max_steps": 5, "max_images": 5, "screenshot_interval_ms": 0},
         )
 
-        with patch("src.agent.loop.SCREENSHOTS_DIR", tmp_path):
+        with patch("see_agent.agent.loop.SCREENSHOTS_DIR", tmp_path):
             result = await loop.run("hello")
 
         assert result.success is True
