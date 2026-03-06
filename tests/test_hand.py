@@ -1,10 +1,10 @@
-"""Unit tests for Tool base class and ToolRegistry (src/hand/tool.py)."""
+"""Unit tests for Tool base class, ToolResult, and ToolRegistry (see_agent/hand/tool.py)."""
 
 from typing import Any
 
 import pytest
 
-from see_agent.hand.tool import Tool, ToolRegistry
+from see_agent.hand.tool import Tool, ToolRegistry, ToolResult, ToolResultImage
 
 # -------------------------------------------------------------------- #
 # Dummy tool for testing
@@ -141,12 +141,14 @@ class TestToolRegistry:
 
     @pytest.mark.asyncio
     async def test_registry_execute(self):
-        """execute() routes to the correct tool and returns its result."""
+        """execute() routes to the correct tool and returns a ToolResult."""
         registry = ToolRegistry()
         registry.register(DummyTool())
 
         result = await registry.execute("dummy", {"text": "hello world"})
-        assert result == "echo: hello world"
+        assert isinstance(result, ToolResult)
+        assert result.text == "echo: hello world"
+        assert result.images == []
 
     @pytest.mark.asyncio
     async def test_registry_execute_unknown(self):
@@ -155,6 +157,48 @@ class TestToolRegistry:
 
         with pytest.raises(KeyError, match="Unknown tool"):
             await registry.execute("nonexistent", {})
+
+    @pytest.mark.asyncio
+    async def test_registry_execute_wraps_str_to_tool_result(self):
+        """A tool returning str gets auto-wrapped into ToolResult."""
+        registry = ToolRegistry()
+        registry.register(DummyTool())
+
+        result = await registry.execute("dummy", {"text": "wrap me"})
+        assert isinstance(result, ToolResult)
+        assert result.text == "echo: wrap me"
+
+    @pytest.mark.asyncio
+    async def test_registry_execute_passes_through_tool_result(self):
+        """A tool returning ToolResult is passed through without wrapping."""
+
+        class ImageTool(Tool):
+            @property
+            def name(self) -> str:
+                return "img"
+
+            @property
+            def description(self) -> str:
+                return "Returns an image."
+
+            @property
+            def parameters(self) -> dict[str, Any]:
+                return {"type": "object", "properties": {}}
+
+            async def execute(self, **kwargs: Any) -> ToolResult:
+                return ToolResult(
+                    text="image captured",
+                    images=[ToolResultImage(base64="abc123", mime_type="image/png")],
+                )
+
+        registry = ToolRegistry()
+        registry.register(ImageTool())
+
+        result = await registry.execute("img", {})
+        assert isinstance(result, ToolResult)
+        assert result.text == "image captured"
+        assert len(result.images) == 1
+        assert result.images[0].base64 == "abc123"
 
 
 # -------------------------------------------------------------------- #

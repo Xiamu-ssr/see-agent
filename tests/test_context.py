@@ -2,6 +2,7 @@
 
 
 from see_agent.agent.context import ConversationContext
+from see_agent.hand.tool import ToolResult, ToolResultImage
 
 # -------------------------------------------------------------------- #
 # Helpers
@@ -184,3 +185,32 @@ class TestConversationContext:
 
         # 2 images were dropped -> 2 placeholders
         assert _count_omitted_placeholders(msgs) == 2
+
+    def test_add_tool_result_with_tool_result_object(self):
+        """add_tool_result accepts a ToolResult and injects its images."""
+        ctx = ConversationContext(SYSTEM_PROMPT, max_images=10)
+
+        tr = ToolResult(
+            text="截图完成 (800x600)",
+            images=[ToolResultImage(base64=FAKE_B64, mime_type="image/webp", detail="high")],
+        )
+        ctx.add_tool_result("tc_1", tr)
+
+        msgs = ctx.get_messages()
+        # system + tool_result + screenshot_from_images
+        assert len(msgs) == 3
+        assert msgs[1]["role"] == "tool"
+        assert msgs[1]["content"] == "截图完成 (800x600)"
+        # Image injected as user message
+        assert msgs[2]["role"] == "user"
+        assert _count_image_parts(msgs) == 1
+
+    def test_add_tool_result_str_backward_compat(self):
+        """add_tool_result still works with a plain str."""
+        ctx = ConversationContext(SYSTEM_PROMPT)
+        ctx.add_tool_result("tc_1", "Clicked OK")
+
+        msgs = ctx.get_messages()
+        assert len(msgs) == 2
+        assert msgs[1]["role"] == "tool"
+        assert msgs[1]["content"] == "Clicked OK"

@@ -1,10 +1,38 @@
-"""Tool base class and ToolRegistry for managing tool lifecycle."""
+"""Tool base class, ToolResult data types, and ToolRegistry."""
 
 import logging
 from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+
+# -------------------------------------------------------------------- #
+# Tool result data types
+# -------------------------------------------------------------------- #
+
+
+@dataclass
+class ToolResultImage:
+    """An image returned as part of a tool result."""
+
+    base64: str
+    mime_type: str = "image/webp"
+    detail: str = "high"
+
+
+@dataclass
+class ToolResult:
+    """Rich result from tool execution, supporting text + optional images."""
+
+    text: str
+    images: list[ToolResultImage] = field(default_factory=list)
+
+
+# -------------------------------------------------------------------- #
+# Tool ABC
+# -------------------------------------------------------------------- #
 
 
 class Tool(ABC):
@@ -35,8 +63,11 @@ class Tool(ABC):
         ...
 
     @abstractmethod
-    async def execute(self, **kwargs: Any) -> str:
-        """Run the tool with the given arguments and return a textual result.
+    async def execute(self, **kwargs: Any) -> str | ToolResult:
+        """Run the tool with the given arguments and return a result.
+
+        May return a plain ``str`` (backward-compatible) or a :class:`ToolResult`
+        for richer responses including images.
 
         All implementations must be async-safe even if the underlying operation
         is synchronous (wrap with ``asyncio.to_thread`` when appropriate).
@@ -102,10 +133,11 @@ class ToolRegistry:
         """Return OpenAI function-calling definitions for all registered tools."""
         return [tool.to_openai_schema() for tool in self._tools.values()]
 
-    async def execute(self, name: str, args: dict[str, Any]) -> str:
+    async def execute(self, name: str, args: dict[str, Any]) -> ToolResult:
         """Look up the tool by *name* and execute it with *args*.
 
-        Returns the string result produced by the tool.
+        Returns a :class:`ToolResult`.  If the tool returns a plain ``str``
+        it is automatically wrapped.
 
         Raises ``KeyError`` for unknown tools and propagates any exception
         raised by the tool itself.
@@ -113,8 +145,12 @@ class ToolRegistry:
         tool = self.get(name)
         logger.info("Executing tool '%s' with args: %s", name, args)
         try:
-            result = await tool.execute(**args)
-            logger.info("Tool '%s' result: %s", name, result)
+            raw = await tool.execute(**args)
+            if isinstance(raw, ToolResult):
+                result = raw
+            else:
+                result = ToolResult(text=str(raw))
+            logger.info("Tool '%s' result: %s", name, result.text)
             return result
         except Exception:
             logger.exception("Tool '%s' raised an exception", name)

@@ -42,6 +42,9 @@ def _make_fake_screenshot() -> MagicMock:
     shot.width = 800
     shot.height = 600
     shot.detail = "low"
+    shot.mime_type = "image/webp"
+    shot.screen_width = None
+    shot.screen_height = None
     shot.save = MagicMock(return_value=None)
     return shot
 

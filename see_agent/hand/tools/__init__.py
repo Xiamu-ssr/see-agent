@@ -1,3 +1,7 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Callable
+
 from see_agent.eye.base import BaseEye
 from see_agent.hand.tool import ToolRegistry
 from see_agent.hand.tools.call_user import CallUserTool
@@ -11,9 +15,20 @@ from see_agent.hand.tools.shell import ShellTool
 from see_agent.hand.tools.type_text import TypeTextTool
 from see_agent.hand.tools.wait import WaitTool
 
+if TYPE_CHECKING:
+    from see_agent.eye.base import Screenshot
 
-def create_registry(eye: BaseEye) -> ToolRegistry:
-    """Create a ToolRegistry with all tools registered."""
+
+def create_registry(
+    eye: BaseEye,
+    scale_fn: Callable[[Screenshot], Screenshot] | None = None,
+) -> ToolRegistry:
+    """Create a ToolRegistry with all tools registered.
+
+    Parameters:
+        eye: Screen-capture backend for the ScreenshotTool.
+        scale_fn: Optional function to resize screenshots for the LLM.
+    """
     registry = ToolRegistry()
     registry.register(ClickTool())
     registry.register(TypeTextTool())
@@ -22,7 +37,7 @@ def create_registry(eye: BaseEye) -> ToolRegistry:
     registry.register(DragTool())
     registry.register(ShellTool())
     registry.register(WaitTool())
-    registry.register(ScreenshotTool(eye=eye))
+    registry.register(ScreenshotTool(eye=eye, scale_fn=scale_fn))
     registry.register(FinishedTool())
     registry.register(CallUserTool())
     return registry

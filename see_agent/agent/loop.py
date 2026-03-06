@@ -23,7 +23,7 @@ from see_agent.agent.context import ConversationContext
 from see_agent.brain.base import BaseBrain, BrainResponse
 from see_agent.eye.base import BaseEye
 from see_agent.eye.scaling import find_target_resolution, scale_screenshot, scale_tool_args
-from see_agent.hand.tool import ToolRegistry
+from see_agent.hand.tool import ToolRegistry, ToolResult
 from see_agent.overlay.base import OverlayRenderer
 from see_agent.session.store import Session, SessionStore
 
@@ -40,6 +40,7 @@ MAX_CONSECUTIVE_ERRORS = 3
 NO_PROGRESS_LIMIT = 3
 REPEAT_WARN_LIMIT = 3
 REPEAT_ABORT_LIMIT = 5
+MAX_STEPS_WITHOUT_SCREENSHOT = 5
 
 
 @dataclass
@@ -52,7 +53,7 @@ class StepEvent:
     tool_name: str
     tool_args: dict[str, Any]
     tool_result: str
-    screenshot_path: str
+    screenshot_path: str | None
     wait_ms: int = 0
     screen_tool_args: dict[str, Any] | None = None
     """When coordinate scaling is active, this holds the screen-space
@@ -98,6 +99,7 @@ class AgentLoop:
         on_step: Optional async callback fired after each tool-execution step.
         on_user_input: Optional async callback for ``call_user`` interactions.
         overlay: Optional screen overlay renderer for visual feedback.
+        memory: Optional memory backend for cross-session knowledge.
     """
 
     def __init__(
@@ -109,6 +111,7 @@ class AgentLoop:
         on_step: StepCallback | None = None,
         on_user_input: UserInputCallback | None = None,
         overlay: OverlayRenderer | None = None,
+        memory: Any | None = None,
     ) -> None:
         self._brain = brain
         self._eye = eye
@@ -117,6 +120,7 @@ class AgentLoop:
         self._on_step = on_step
         self._on_user_input = on_user_input
         self._overlay = overlay
+        self._memory = memory
 
         # Configurable knobs with sensible defaults.
         self._max_steps: int = int(config.get("max_steps", 50))
@@ -124,6 +128,7 @@ class AgentLoop:
         self._screenshot_interval_ms: int = int(
             config.get("screenshot_interval_ms", 800)
         )
+        self._tool_delay_ms: int = int(config.get("tool_delay_ms", 200))
         self._scaling_enabled: bool = bool(config.get("scaling_enabled", True))
         self._scaling_match: str = str(config.get("scaling_match", "aspect_ratio"))
 
@@ -160,6 +165,16 @@ class AgentLoop:
         if target is None:
             return screenshot
         return scale_screenshot(screenshot, target)
+
+    def _save_memory(self, ctx: ConversationContext, session_id: str) -> None:
+        """Persist conversation to memory backend (if configured)."""
+        if self._memory is None:
+            return
+        try:
+            messages = _strip_base64(ctx.get_messages())
+            self._memory.add(messages, session_id)
+        except Exception:
+            logger.warning("Memory save failed", exc_info=True)
 
     # ------------------------------------------------------------------ #
     # Public entry point
@@ -217,8 +232,27 @@ class AgentLoop:
 
         # ── 3. Build conversation context ─────────────────────────────
         from see_agent.brain.prompts import build_system_prompt
+        from see_agent.skill.loader import load_skills
 
-        system_prompt = build_system_prompt(self._config)
+        # Load skills
+        skills_dirs = self._config.get("skills_dirs", [])
+        skills = load_skills(skills_dirs) if skills_dirs else []
+
+        # Load memory (if available)
+        memory_block = ""
+        if self._memory is not None:
+            try:
+                memories = self._memory.search(task, limit=5)
+                if memories:
+                    memory_block = "\n".join(f"- {m}" for m in memories)
+            except Exception:
+                logger.warning("Memory search failed", exc_info=True)
+
+        system_prompt = build_system_prompt(
+            self._config,
+            skills=skills or None,
+            memory_block=memory_block,
+        )
 
         if session_id:
             # Resume: restore full conversation history from JSONL + screenshots.
@@ -258,6 +292,7 @@ class AgentLoop:
         tools_schema = self._registry.get_openai_schemas()
         repeat_count = 0
         last_action_key: str | None = None
+        steps_since_screenshot = 0
 
         for step in range(1, self._max_steps + 1):
             logger.info("=== Step %d / %d ===", step, self._max_steps)
@@ -295,205 +330,203 @@ class AgentLoop:
                 ctx.add_assistant(response.raw)
                 break
 
-            # Take only the first tool call (GUI ops must be serial).
-            tc = response.tool_calls[0]
-            logger.info(
-                "Tool call: %s(%s)", tc.name, tc.arguments
-            )
-
             # Append the full assistant message (may include text + tool_calls).
             ctx.add_assistant(response.raw)
 
-            # ── 4c. Handle "finished" ────────────────────────────────
-            if tc.name == "finished":
-                if self._overlay:
-                    _show_overlay(self._overlay, "finished", tc.arguments)
-                summary = tc.arguments.get("summary", "Task completed.")
-                ctx.add_tool_result(tc.id, summary)
-                logger.info("Task finished: %s", summary)
-                final_step = step
-                elapsed = time.monotonic() - t0
-                session.update_meta(
-                    status="completed", total_steps=final_step,
-                    elapsed_seconds=round(elapsed, 1), summary=summary,
-                )
-                return RunResult(
-                    summary=summary,
-                    task_dir=str(session.dir),
-                    total_steps=final_step,
-                    elapsed_seconds=elapsed,
-                    session_id=session.id,
-                )
+            # ── 4c. Execute all tool calls serially ──────────────────
 
-            # ── 4d. Handle "call_user" ───────────────────────────────
-            if tc.name == "call_user":
-                question = tc.arguments.get("question", "")
-                logger.info("call_user: %s", question)
+            for tc in response.tool_calls:
+                logger.info("Tool call: %s(%s)", tc.name, tc.arguments)
 
-                if self._overlay:
-                    _show_overlay(self._overlay, "call_user", tc.arguments)
-
-                if self._on_user_input is not None:
-                    user_reply = await self._on_user_input(question)
-                else:
-                    user_reply = "已处理，请继续"
-
-                ctx.add_tool_result(tc.id, f"User replied: {user_reply}")
-                ctx.add_user_reply(user_reply)
-
-                # Take a fresh screenshot after user interaction.
-                # (Overlay uses setSharingType_(0) so it won't appear in screenshots.)
-                screenshot = await self._eye.capture()
-                scaled = self._maybe_scale(screenshot)
-                shot_num = step_offset + step
-                shot_path = task_dir / f"step_{shot_num:03d}.webp"
-                scaled.save(shot_path)
-                ctx.add_screenshot(
-                    scaled.base64, scaled.detail,
-                    mime_type=scaled.mime_type,
-                    screenshot_ref=f"step_{shot_num:03d}.webp",
-                )
-                continue
-
-            # ── 4e. Scale coordinates & show overlay, then execute ────
-            # If scaling is active, map model coordinates to screen
-            # coordinates for pyautogui and the overlay.
-            exec_args = tc.arguments
-            if scaled.screen_width is not None and scaled.screen_height is not None:
-                try:
-                    exec_args = scale_tool_args(
-                        tc.name, tc.arguments,
-                        scaled.width, scaled.height,
-                        scaled.screen_width, scaled.screen_height,
+                # ── Handle "finished" ────────────────────────────────
+                if tc.name == "finished":
+                    if self._overlay:
+                        _show_overlay(self._overlay, "finished", tc.arguments)
+                    summary = tc.arguments.get("summary", "Task completed.")
+                    ctx.add_tool_result(tc.id, summary)
+                    logger.info("Task finished: %s", summary)
+                    final_step = step
+                    elapsed = time.monotonic() - t0
+                    session.update_meta(
+                        status="completed", total_steps=final_step,
+                        elapsed_seconds=round(elapsed, 1), summary=summary,
                     )
-                except (ValueError, TypeError) as exc:
+                    self._save_memory(ctx, session.id)
+                    return RunResult(
+                        summary=summary,
+                        task_dir=str(session.dir),
+                        total_steps=final_step,
+                        elapsed_seconds=elapsed,
+                        session_id=session.id,
+                    )
+
+                # ── Handle "call_user" ───────────────────────────────
+                if tc.name == "call_user":
+                    question = tc.arguments.get("question", "")
+                    logger.info("call_user: %s", question)
+
+                    if self._overlay:
+                        _show_overlay(self._overlay, "call_user", tc.arguments)
+
+                    if self._on_user_input is not None:
+                        user_reply = await self._on_user_input(question)
+                    else:
+                        user_reply = "已处理，请继续"
+
+                    ctx.add_tool_result(tc.id, f"User replied: {user_reply}")
+                    ctx.add_user_reply(user_reply)
+                    continue
+
+                # ── Scale coordinates & show overlay, then execute ────
+                exec_args = tc.arguments
+                if scaled.screen_width is not None and scaled.screen_height is not None:
+                    try:
+                        exec_args = scale_tool_args(
+                            tc.name, tc.arguments,
+                            scaled.width, scaled.height,
+                            scaled.screen_width, scaled.screen_height,
+                        )
+                    except (ValueError, TypeError) as exc:
+                        consecutive_errors += 1
+                        err_result = f"Error: invalid coordinate — {exc}"
+                        logger.warning(
+                            "Coordinate scaling failed (%d/%d): %s",
+                            consecutive_errors,
+                            MAX_CONSECUTIVE_ERRORS,
+                            exc,
+                        )
+                        ctx.add_tool_result(tc.id, err_result)
+                        if consecutive_errors >= MAX_CONSECUTIVE_ERRORS:
+                            return self._fail_result(
+                                session, final_step, t0,
+                                f"Error: max consecutive errors reached. (last: {exc})",
+                            )
+                        continue
+                    if exec_args != tc.arguments:
+                        logger.info(
+                            "Scaled args: %s -> %s", tc.arguments, exec_args,
+                        )
+
+                if self._overlay:
+                    _show_overlay(self._overlay, tc.name, exec_args)
+
+                try:
+                    result: ToolResult = await self._registry.execute(tc.name, exec_args)
+                    consecutive_errors = 0
+                except Exception as exc:
                     consecutive_errors += 1
-                    result = f"Error: invalid coordinate — {exc}"
-                    logger.warning(
-                        "Coordinate scaling failed (%d/%d): %s",
+                    result = ToolResult(text=f"Error: {exc}")
+                    logger.exception(
+                        "Tool execution error (%d/%d)",
                         consecutive_errors,
                         MAX_CONSECUTIVE_ERRORS,
-                        exc,
                     )
-                    ctx.add_tool_result(tc.id, result)
                     if consecutive_errors >= MAX_CONSECUTIVE_ERRORS:
+                        logger.error(
+                            "Max consecutive tool errors -- aborting task"
+                        )
                         return self._fail_result(
                             session, final_step, t0,
-                            f"Error: max consecutive errors reached. (last: {exc})",
+                            f"Error: max consecutive tool errors reached. (last: {exc})",
                         )
-                    continue
-                if exec_args != tc.arguments:
-                    logger.info(
-                        "Scaled args: %s -> %s", tc.arguments, exec_args,
-                    )
 
-            if self._overlay:
-                _show_overlay(self._overlay, tc.name, exec_args)
+                # Save tool-returned images to disk
+                shot_path: str | None = None
+                for img in result.images:
+                    shot_num = step_offset + step
+                    img_path = task_dir / f"step_{shot_num:03d}.webp"
+                    import base64 as b64mod
+                    img_path.parent.mkdir(parents=True, exist_ok=True)
+                    img_path.write_bytes(b64mod.b64decode(img.base64))
+                    shot_path = str(img_path)
 
-            try:
-                result = await self._registry.execute(tc.name, exec_args)
-                consecutive_errors = 0
-            except Exception as exc:
-                consecutive_errors += 1
-                result = f"Error: {exc}"
-                logger.exception(
-                    "Tool execution error (%d/%d)",
-                    consecutive_errors,
-                    MAX_CONSECUTIVE_ERRORS,
+                # Add tool result to context (images auto-injected via ToolResult)
+                ctx.add_tool_result(
+                    tc.id, result,
+                    screenshot_ref=f"step_{step_offset + step:03d}.webp" if shot_path else None,
                 )
-                if consecutive_errors >= MAX_CONSECUTIVE_ERRORS:
-                    logger.error(
-                        "Max consecutive tool errors -- aborting task"
+
+                # Track screenshot presence for no-screenshot warning
+                if result.images:
+                    steps_since_screenshot = 0
+                    # No-progress detection based on screenshot hash
+                    current_hash = _screenshot_hash(result.images[0].base64)
+                    if current_hash == last_screenshot_hash:
+                        no_progress_count += 1
+                        logger.warning(
+                            "No progress detected (%d/%d)",
+                            no_progress_count,
+                            NO_PROGRESS_LIMIT,
+                        )
+                        if no_progress_count >= NO_PROGRESS_LIMIT:
+                            ctx.add_system_hint(
+                                "Warning: the screen has not changed for "
+                                f"{no_progress_count} consecutive steps. "
+                                "Please re-analyse the current state and try a "
+                                "completely different strategy."
+                            )
+                            no_progress_count = 0
+                    else:
+                        no_progress_count = 0
+                    last_screenshot_hash = current_hash
+                else:
+                    steps_since_screenshot += 1
+
+                # Repeated-action detection
+                action_key = _action_key(tc.name, tc.arguments)
+                if action_key == last_action_key:
+                    repeat_count += 1
+                    logger.warning(
+                        "Repeated action (%d): %s", repeat_count, action_key
                     )
-                    return self._fail_result(
-                        session, final_step, t0,
-                        f"Error: max consecutive tool errors reached. (last: {exc})",
+                    if repeat_count >= REPEAT_ABORT_LIMIT:
+                        logger.error("Aborting: agent stuck in repeated action loop")
+                        return self._fail_result(
+                            session, step, t0,
+                            "Aborted: agent stuck in repeated action loop.",
+                        )
+                    if repeat_count >= REPEAT_WARN_LIMIT:
+                        ctx.add_system_hint(
+                            f"Warning: you have repeated the same action "
+                            f"{repeat_count} times with no visible change. "
+                            "Try a different approach or use call_user to ask "
+                            "the user for help."
+                        )
+                else:
+                    repeat_count = 1
+                last_action_key = action_key
+
+                # Fire step callback
+                final_step = step
+                if self._on_step is not None:
+                    event = StepEvent(
+                        step=step,
+                        max_steps=self._max_steps,
+                        thought=thought,
+                        tool_name=tc.name,
+                        tool_args=tc.arguments,
+                        tool_result=result.text,
+                        screenshot_path=shot_path,
+                        wait_ms=self._tool_delay_ms,
+                        screen_tool_args=exec_args if exec_args != tc.arguments else None,
                     )
+                    try:
+                        await self._on_step(event)
+                    except Exception:
+                        logger.exception("on_step callback error (non-fatal)")
 
-            # ── 4f. Wait for UI to settle ──────────────────────────────
-            # Overlay stays visible (setSharingType_(0) keeps it out of
-            # screenshots).  It will be replaced by the next show_overlay call.
-            await asyncio.sleep(self._screenshot_interval_ms / 1000.0)
+                # Inter-tool delay
+                if self._tool_delay_ms > 0:
+                    await asyncio.sleep(self._tool_delay_ms / 1000.0)
 
-            # ── 4g. Take new screenshot, save to disk ─────────────────
-            if self._overlay:
-                self._overlay.show_screenshot()
-            screenshot = await self._eye.capture()
-            scaled = self._maybe_scale(screenshot)
-            shot_num = step_offset + step
-            shot_path = task_dir / f"step_{shot_num:03d}.webp"
-            scaled.save(shot_path)
-
-            # ── 4h. Add to context ────────────────────────────────────
-            ctx.add_tool_result(
-                tc.id, result, scaled.base64, scaled.detail,
-                mime_type=scaled.mime_type,
-                screenshot_ref=f"step_{shot_num:03d}.webp",
-            )
-
-            # ── 4i. No-progress detection (screenshot hash) ──────────
-            current_hash = _screenshot_hash(screenshot.base64)
-            if current_hash == last_screenshot_hash:
-                no_progress_count += 1
-                logger.warning(
-                    "No progress detected (%d/%d)",
-                    no_progress_count,
-                    NO_PROGRESS_LIMIT,
+            # ── 4d. No-screenshot warning ────────────────────────────
+            if steps_since_screenshot >= MAX_STEPS_WITHOUT_SCREENSHOT:
+                ctx.add_system_hint(
+                    f"Hint: you have not taken a screenshot for "
+                    f"{steps_since_screenshot} steps. Consider calling "
+                    "the screenshot tool to check the current screen state."
                 )
-                if no_progress_count >= NO_PROGRESS_LIMIT:
-                    ctx.add_system_hint(
-                        "Warning: the screen has not changed for "
-                        f"{no_progress_count} consecutive steps. "
-                        "Please re-analyse the current state and try a "
-                        "completely different strategy."
-                    )
-                    no_progress_count = 0
-            else:
-                no_progress_count = 0
-            last_screenshot_hash = current_hash
-
-            # ── 4j. Repeated-action detection ───────────────────────────
-            action_key = _action_key(tc.name, tc.arguments)
-            if action_key == last_action_key:
-                repeat_count += 1
-                logger.warning(
-                    "Repeated action (%d): %s", repeat_count, action_key
-                )
-                if repeat_count >= REPEAT_ABORT_LIMIT:
-                    logger.error("Aborting: agent stuck in repeated action loop")
-                    return self._fail_result(
-                        session, step, t0,
-                        "Aborted: agent stuck in repeated action loop.",
-                    )
-                if repeat_count >= REPEAT_WARN_LIMIT:
-                    ctx.add_system_hint(
-                        f"Warning: you have repeated the same action "
-                        f"{repeat_count} times with no visible change. "
-                        "Try a different approach or use call_user to ask "
-                        "the user for help."
-                    )
-            else:
-                repeat_count = 1
-            last_action_key = action_key
-
-            # ── 4k. Fire step callback ────────────────────────────────
-            final_step = step
-            if self._on_step is not None:
-                event = StepEvent(
-                    step=step,
-                    max_steps=self._max_steps,
-                    thought=thought,
-                    tool_name=tc.name,
-                    tool_args=tc.arguments,
-                    tool_result=result,
-                    screenshot_path=str(shot_path),
-                    wait_ms=self._screenshot_interval_ms,
-                    screen_tool_args=exec_args if exec_args != tc.arguments else None,
-                )
-                try:
-                    await self._on_step(event)
-                except Exception:
-                    logger.exception("on_step callback error (non-fatal)")
+                steps_since_screenshot = 0
 
         # ── 5. Budget exhausted ───────────────────────────────────────
         logger.warning("Max steps (%d) reached", self._max_steps)
@@ -515,6 +548,34 @@ def _screenshot_hash(b64: str) -> str:
     while still being sensitive to any visible change on screen.
     """
     return str(hash(b64[:1000]))
+
+
+def _strip_base64(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return a copy of *messages* with base64 image data removed.
+
+    Used before persisting to memory to avoid storing large blobs.
+    """
+    import copy
+    import re
+
+    stripped: list[dict[str, Any]] = []
+    data_uri_re = re.compile(r"data:[^;]+;base64,[A-Za-z0-9+/=]+")
+
+    for msg in messages:
+        msg = copy.deepcopy(msg)
+        content = msg.get("content")
+        if isinstance(content, list):
+            new_parts = []
+            for part in content:
+                if isinstance(part, dict) and part.get("type") == "image_url":
+                    new_parts.append({"type": "text", "text": "[image]"})
+                else:
+                    new_parts.append(part)
+            msg["content"] = new_parts
+        elif isinstance(content, str):
+            msg["content"] = data_uri_re.sub("[image]", content)
+        stripped.append(msg)
+    return stripped
 
 
 def _action_key(tool_name: str, args: dict[str, Any]) -> str:

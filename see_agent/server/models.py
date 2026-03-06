@@ -38,4 +38,4 @@ class StepMessage(BaseModel):
     tool_name: str
     tool_args: dict
     tool_result: str
-    screenshot_path: str
+    screenshot_path: str | None = None

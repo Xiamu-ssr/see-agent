@@ -21,6 +21,12 @@ dev = [
     "pytest-asyncio>=0.25.0",
     "ruff>=0.8.0",
 ]
+memory = [
+    "mem0ai>=1.0.0",
+]
+mcp = [
+    "mcp>=1.0.0",
+]
 
 [project.scripts]
 see-agent = "see_agent.cli.main:app"

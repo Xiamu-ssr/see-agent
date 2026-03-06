@@ -21,10 +21,16 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "max_steps": 50,
     "max_images": 5,
     "screenshot_interval_ms": 800,
+    "tool_delay_ms": 200,
     "show_overlay": True,
     "scaling_enabled": True,
     "scaling_match": "aspect_ratio",
     "soul_path": "~/.see-agent/SOUL.md",
+    "profile": None,
+    "skills_dirs": ["~/.see-agent/skills", "~/.openclaw/skills"],
+    "memory": {"enabled": False, "provider": "mem0", "mem0": {}},
+    "env": {},
+    "mcp_servers": {},
 }
 
 WORKSPACE_DIR = Path.home() / ".see-agent"
@@ -32,6 +38,7 @@ CONFIG_PATH = WORKSPACE_DIR / "config.json"
 SCREENSHOTS_DIR = WORKSPACE_DIR / "screenshots"
 SESSIONS_DIR = WORKSPACE_DIR / "sessions"
 LOGS_DIR = WORKSPACE_DIR / "logs"
+PROFILES_DIR = WORKSPACE_DIR / "profiles"
 
 # Path to bundled workspace templates
 _TEMPLATE_DIR = Path(__file__).parent.parent / "workspace"
@@ -43,6 +50,7 @@ def ensure_workspace() -> None:
     SCREENSHOTS_DIR.mkdir(exist_ok=True)
     SESSIONS_DIR.mkdir(exist_ok=True)
     LOGS_DIR.mkdir(exist_ok=True)
+    PROFILES_DIR.mkdir(exist_ok=True)
 
     if not CONFIG_PATH.exists():
         CONFIG_PATH.write_text(json.dumps(DEFAULT_CONFIG, indent=4, ensure_ascii=False))
@@ -54,8 +62,33 @@ def ensure_workspace() -> None:
             shutil.copy(template_soul, soul_path)
 
 
-def load_config() -> dict[str, Any]:
-    """Load configuration from config.json, with env var overrides."""
+def _deep_merge(base: dict[str, Any], overlay: dict[str, Any]) -> dict[str, Any]:
+    """Recursively merge *overlay* into *base*, returning a new dict.
+
+    Nested dicts are merged recursively; all other values in *overlay*
+    overwrite those in *base*.
+    """
+    result = base.copy()
+    for key, value in overlay.items():
+        if (
+            key in result
+            and isinstance(result[key], dict)
+            and isinstance(value, dict)
+        ):
+            result[key] = _deep_merge(result[key], value)
+        else:
+            result[key] = value
+    return result
+
+
+def load_config(profile: str | None = None) -> dict[str, Any]:
+    """Load configuration with priority: DEFAULT → config.json → profile → env vars.
+
+    Parameters:
+        profile: Optional profile name.  Looks for
+            ``~/.see-agent/profiles/{profile}.json`` and merges it on top of
+            the base config.  ``None`` means no profile overlay.
+    """
     ensure_workspace()
 
     if CONFIG_PATH.exists():
@@ -64,7 +97,25 @@ def load_config() -> dict[str, Any]:
     else:
         config = DEFAULT_CONFIG.copy()
 
-    # Environment variable overrides
+    # Apply defaults for missing keys (deep merge with DEFAULT_CONFIG as base).
+    config = _deep_merge(DEFAULT_CONFIG, config)
+
+    # If no explicit profile, check config-level default.
+    if profile is None:
+        profile = config.get("profile")
+
+    # Profile overlay
+    if profile is not None:
+        profile_path = PROFILES_DIR / f"{profile}.json"
+        if not profile_path.exists():
+            raise FileNotFoundError(
+                f"Profile not found: {profile_path}"
+            )
+        with open(profile_path) as f:
+            profile_data = json.load(f)
+        config = _deep_merge(config, profile_data)
+
+    # Environment variable overrides (highest priority)
     env_base_url = os.environ.get("SEE_AGENT_BASE_URL")
     env_api_key = os.environ.get("SEE_AGENT_API_KEY")
     env_model = os.environ.get("SEE_AGENT_MODEL")
@@ -78,11 +129,6 @@ def load_config() -> dict[str, Any]:
         config["llm"]["api_key"] = env_api_key
     if env_model:
         config["llm"]["model"] = env_model
-
-    # Apply defaults for missing keys
-    for key, value in DEFAULT_CONFIG.items():
-        if key not in config:
-            config[key] = value
 
     return config
 

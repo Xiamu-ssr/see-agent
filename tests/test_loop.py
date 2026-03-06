@@ -12,6 +12,7 @@ import pytest
 from see_agent.agent.loop import AgentLoop, RunResult, StepEvent
 from see_agent.brain.base import BrainResponse, ToolCallInfo
 from see_agent.eye.base import Screenshot
+from see_agent.hand.tool import ToolResult
 
 # -------------------------------------------------------------------- #
 # Helpers
@@ -90,6 +91,7 @@ def _build_loop(
         "max_steps": max_steps,
         "max_images": 5,
         "screenshot_interval_ms": 0,  # no real waiting in tests
+        "tool_delay_ms": 0,
         "scaling_enabled": scaling_enabled,
     }
     return AgentLoop(
@@ -163,7 +165,7 @@ class TestAgentLoop:
 
         registry = AsyncMock()
         registry.get_openai_schemas.return_value = []
-        registry.execute = AsyncMock(return_value="Clicked (100, 200)")
+        registry.execute = AsyncMock(return_value=ToolResult(text="Clicked (100, 200)"))
 
         max_steps = 3
         loop = _build_loop(brain, eye, registry, max_steps=max_steps)
@@ -200,7 +202,7 @@ class TestAgentLoop:
 
         registry = AsyncMock()
         registry.get_openai_schemas.return_value = []
-        registry.execute = AsyncMock(return_value="Clicked (100, 200)")
+        registry.execute = AsyncMock(return_value=ToolResult(text="Clicked (100, 200)"))
 
         step_callback = AsyncMock()
 
@@ -241,7 +243,7 @@ class TestAgentLoop:
 
         registry = AsyncMock()
         registry.get_openai_schemas.return_value = []
-        registry.execute = AsyncMock(return_value="Clicked (100, 200)")
+        registry.execute = AsyncMock(return_value=ToolResult(text="Clicked (100, 200)"))
 
         loop = _build_loop(brain, eye, registry, max_steps=20)
 
@@ -277,7 +279,7 @@ class TestAgentLoop:
 
         registry = AsyncMock()
         registry.get_openai_schemas.return_value = []
-        registry.execute = AsyncMock(return_value="Clicked")
+        registry.execute = AsyncMock(return_value=ToolResult(text="Clicked"))
 
         step_events: list[StepEvent] = []
 
@@ -396,3 +398,140 @@ class TestAgentLoop:
         messages = session.read_messages()
         system_msgs = [m for m in messages if m.get("type") == "system"]
         assert len(system_msgs) == 1
+
+    @pytest.mark.asyncio
+    async def test_multi_tool_serial_execution(self, tmp_path):
+        """Multiple tool calls in one response are all executed serially."""
+        raw = MagicMock()
+        raw.model_dump.return_value = {
+            "role": "assistant",
+            "content": "I'll click and type.",
+            "tool_calls": [
+                {
+                    "id": "tc_a",
+                    "type": "function",
+                    "function": {"name": "click", "arguments": '{"x": 10, "y": 20}'},
+                },
+                {
+                    "id": "tc_b",
+                    "type": "function",
+                    "function": {"name": "type_text", "arguments": '{"text": "hi"}'},
+                },
+            ],
+        }
+        multi_response = BrainResponse(
+            content="I'll click and type.",
+            tool_calls=[
+                ToolCallInfo(id="tc_a", name="click", arguments={"x": 10, "y": 20}),
+                ToolCallInfo(id="tc_b", name="type_text", arguments={"text": "hi"}),
+            ],
+            raw=raw,
+        )
+
+        brain = AsyncMock()
+        brain.chat = AsyncMock(side_effect=[
+            multi_response,
+            _make_finished_response("done"),
+        ])
+
+        eye = AsyncMock()
+        eye.capture = AsyncMock(return_value=_make_screenshot())
+
+        exec_order: list[str] = []
+
+        async def mock_execute(name, args):
+            exec_order.append(name)
+            return ToolResult(text=f"{name} ok")
+
+        registry = AsyncMock()
+        registry.get_openai_schemas.return_value = []
+        registry.execute = AsyncMock(side_effect=mock_execute)
+
+        loop = _build_loop(brain, eye, registry, max_steps=10)
+
+        with _patch_sessions(tmp_path):
+            result = await loop.run("Multi tool test")
+
+        assert result.success is True
+        assert exec_order == ["click", "type_text"]
+
+    @pytest.mark.asyncio
+    async def test_pure_text_response_ends_loop(self, tmp_path):
+        """When LLM returns no tool_calls, the loop ends gracefully."""
+        raw = MagicMock()
+        raw.model_dump.return_value = {
+            "role": "assistant",
+            "content": "I'm done thinking, no actions needed.",
+        }
+        text_response = BrainResponse(
+            content="I'm done thinking, no actions needed.",
+            tool_calls=[],
+            raw=raw,
+        )
+
+        brain = AsyncMock()
+        brain.chat = AsyncMock(return_value=text_response)
+
+        eye = AsyncMock()
+        eye.capture = AsyncMock(return_value=_make_screenshot())
+
+        registry = MagicMock()
+        registry.get_openai_schemas.return_value = []
+
+        loop = _build_loop(brain, eye, registry, max_steps=10)
+
+        with _patch_sessions(tmp_path):
+            await loop.run("Just think")
+
+        # Loop ends at step budget since no finished was called, but
+        # only 1 brain.chat call should have been made (exits on no tool_calls).
+        assert brain.chat.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_finished_in_multi_tool_stops_immediately(self, tmp_path):
+        """If 'finished' appears mid-batch, the loop returns immediately."""
+        raw = MagicMock()
+        raw.model_dump.return_value = {
+            "role": "assistant",
+            "content": "Finishing.",
+            "tool_calls": [
+                {
+                    "id": "tc_fin",
+                    "type": "function",
+                    "function": {"name": "finished", "arguments": '{"summary": "bye"}'},
+                },
+                {
+                    "id": "tc_extra",
+                    "type": "function",
+                    "function": {"name": "click", "arguments": '{"x": 1, "y": 2}'},
+                },
+            ],
+        }
+        response = BrainResponse(
+            content="Finishing.",
+            tool_calls=[
+                ToolCallInfo(id="tc_fin", name="finished", arguments={"summary": "bye"}),
+                ToolCallInfo(id="tc_extra", name="click", arguments={"x": 1, "y": 2}),
+            ],
+            raw=raw,
+        )
+
+        brain = AsyncMock()
+        brain.chat = AsyncMock(return_value=response)
+
+        eye = AsyncMock()
+        eye.capture = AsyncMock(return_value=_make_screenshot())
+
+        registry = AsyncMock()
+        registry.get_openai_schemas.return_value = []
+        registry.execute = AsyncMock(return_value=ToolResult(text="clicked"))
+
+        loop = _build_loop(brain, eye, registry, max_steps=10)
+
+        with _patch_sessions(tmp_path):
+            result = await loop.run("Finish early")
+
+        assert result.success is True
+        assert result.summary == "bye"
+        # The click after finished should NOT have been executed.
+        registry.execute.assert_not_called()

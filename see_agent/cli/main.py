@@ -44,6 +44,13 @@ sessions_app = typer.Typer(
 )
 app.add_typer(sessions_app, name="sessions")
 
+mcp_app = typer.Typer(
+    name="mcp",
+    help="Manage MCP server connections.",
+    add_completion=False,
+)
+app.add_typer(mcp_app, name="mcp")
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -89,7 +96,28 @@ def _build_components(config: dict, *, no_overlay: bool = False, no_scaling: boo
         api_key=llm_cfg["api_key"],
         model=llm_cfg["model"],
     )
-    registry = create_registry(eye)
+
+    if no_scaling:
+        config = {**config, "scaling_enabled": False}
+
+    # Build a scale function for the screenshot tool if scaling is enabled.
+    scale_fn = None
+    if config.get("scaling_enabled", True):
+        from see_agent.eye.scaling import find_target_resolution, scale_screenshot
+
+        scaling_match = config.get("scaling_match", "aspect_ratio")
+
+        def _scale(screenshot):  # type: ignore[no-untyped-def]
+            target = find_target_resolution(
+                screenshot.width, screenshot.height, scaling_match,
+            )
+            if target is None:
+                return screenshot
+            return scale_screenshot(screenshot, target)
+
+        scale_fn = _scale
+
+    registry = create_registry(eye, scale_fn=scale_fn)
 
     overlay = None
     if not no_overlay and config.get("show_overlay", True):
@@ -102,8 +130,18 @@ def _build_components(config: dict, *, no_overlay: bool = False, no_scaling: boo
                 "Failed to initialize overlay, continuing without it"
             )
 
-    if no_scaling:
-        config = {**config, "scaling_enabled": False}
+    # Memory backend (optional)
+    memory = None
+    mem_cfg = config.get("memory", {})
+    if mem_cfg.get("enabled", False):
+        try:
+            from see_agent.memory.mem0_backend import Mem0Memory
+
+            memory = Mem0Memory(config=mem_cfg.get("mem0") or None)
+        except Exception:
+            logging.getLogger(__name__).warning(
+                "Failed to initialize memory backend, continuing without it"
+            )
 
     loop = AgentLoop(
         brain=brain,
@@ -113,6 +151,7 @@ def _build_components(config: dict, *, no_overlay: bool = False, no_scaling: boo
         on_step=_on_step_async,
         on_user_input=_on_user_input_async,
         overlay=overlay,
+        memory=memory,
     )
     return loop
 
@@ -224,11 +263,12 @@ async def _on_user_input_async(question: str) -> str:
 @app.command()
 def serve(
     port: int = typer.Option(8000, "--port", "-p", help="Port to listen on."),
+    profile: str | None = typer.Option(None, "--profile", "-P", help="Configuration profile."),
 ) -> None:
     """Start the see-agent API server (FastAPI + WebSocket)."""
     ensure_workspace()
     setup_logging()
-    config = load_config()
+    config = load_config(profile=profile)
     _validate_api_key(config)
 
     typer.echo(f"Starting see-agent server on 0.0.0.0:{port} ...")
@@ -242,11 +282,12 @@ def serve(
 def chat(
     no_overlay: bool = typer.Option(False, "--no-overlay", help="Disable visual overlay."),
     no_scaling: bool = typer.Option(False, "--no-scaling", help="Disable coordinate scaling."),
+    profile: str | None = typer.Option(None, "--profile", "-P", help="Configuration profile."),
 ) -> None:
     """Interactive conversation mode — keep asking, keep executing."""
     ensure_workspace()
     setup_logging()
-    config = load_config()
+    config = load_config(profile=profile)
     _validate_api_key(config)
 
     from see_agent.session import SessionStore
@@ -282,11 +323,12 @@ def run(
     task: str = typer.Argument(..., help="Task description to execute."),
     no_overlay: bool = typer.Option(False, "--no-overlay", help="Disable visual overlay."),
     no_scaling: bool = typer.Option(False, "--no-scaling", help="Disable coordinate scaling."),
+    profile: str | None = typer.Option(None, "--profile", "-P", help="Configuration profile."),
 ) -> None:
     """Execute a single task and exit."""
     ensure_workspace()
     setup_logging()
-    config = load_config()
+    config = load_config(profile=profile)
     _validate_api_key(config)
 
     loop = _build_components(config, no_overlay=no_overlay, no_scaling=no_scaling)
@@ -307,9 +349,11 @@ def run(
 # ---------------------------------------------------------------------------
 
 @config_app.command("show")
-def config_show() -> None:
+def config_show(
+    profile: str | None = typer.Option(None, "--profile", "-P", help="Configuration profile."),
+) -> None:
     """Pretty-print the current configuration (API key masked)."""
-    config = load_config()
+    config = load_config(profile=profile)
 
     # Mask the API key for display
     display = json.loads(json.dumps(config))  # deep copy
@@ -447,11 +491,12 @@ def resume(
     last: bool = typer.Option(False, "--last", help="Resume the most recent session."),
     no_overlay: bool = typer.Option(False, "--no-overlay", help="Disable visual overlay."),
     no_scaling: bool = typer.Option(False, "--no-scaling", help="Disable coordinate scaling."),
+    profile: str | None = typer.Option(None, "--profile", "-P", help="Configuration profile."),
 ) -> None:
     """Resume a previous session."""
     ensure_workspace()
     setup_logging()
-    config = load_config()
+    config = load_config(profile=profile)
     _validate_api_key(config)
 
     from see_agent.session import SessionStore
@@ -496,6 +541,58 @@ def _format_elapsed(seconds: float) -> str:
     m = int(seconds) // 60
     s = int(seconds) % 60
     return f"{m}m{s:02d}s"
+
+
+# ---------------------------------------------------------------------------
+# MCP sub-commands
+# ---------------------------------------------------------------------------
+
+@mcp_app.command("list")
+def mcp_list(
+    profile: str | None = typer.Option(None, "--profile", "-P", help="Configuration profile."),
+) -> None:
+    """List configured MCP servers."""
+    config = load_config(profile=profile)
+    servers = config.get("mcp_servers", {})
+    if not servers:
+        typer.echo("No MCP servers configured.")
+        return
+    for name, cfg in servers.items():
+        cmd = cfg.get("command", cfg.get("url", "?"))
+        typer.echo(f"  {name}: {cmd}")
+
+
+@mcp_app.command("add")
+def mcp_add(
+    name: str = typer.Argument(..., help="Server name."),
+    command: str = typer.Argument(..., help="Command to start the server."),
+    args: list[str] | None = typer.Option(None, "--arg", help="Arguments for the command."),
+) -> None:
+    """Add an MCP server to the configuration."""
+    config = load_config()
+    if "mcp_servers" not in config:
+        config["mcp_servers"] = {}
+    config["mcp_servers"][name] = {
+        "command": command,
+        "args": args or [],
+    }
+    save_config(config)
+    typer.echo(f"Added MCP server: {name}")
+
+
+@mcp_app.command("remove")
+def mcp_remove(
+    name: str = typer.Argument(..., help="Server name to remove."),
+) -> None:
+    """Remove an MCP server from the configuration."""
+    config = load_config()
+    servers = config.get("mcp_servers", {})
+    if name not in servers:
+        typer.echo(f"MCP server not found: {name}", err=True)
+        raise typer.Exit(code=1)
+    del servers[name]
+    save_config(config)
+    typer.echo(f"Removed MCP server: {name}")
 
 
 # ---------------------------------------------------------------------------

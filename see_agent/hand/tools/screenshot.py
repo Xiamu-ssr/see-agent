@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Callable
 
-from see_agent.hand.tool import Tool
+from see_agent.hand.tool import Tool, ToolResult, ToolResultImage
 
 if TYPE_CHECKING:
-    from see_agent.eye.base import BaseEye
+    from see_agent.eye.base import BaseEye, Screenshot
 
 logger = logging.getLogger(__name__)
 
@@ -18,10 +18,18 @@ class ScreenshotTool(Tool):
 
     Unlike most other tools this one requires an ``eye`` (``BaseEye``) instance
     to be injected at construction time so it can delegate the actual capture.
+
+    An optional ``scale_fn`` callback can be provided to resize the screenshot
+    before returning it (e.g. for LLM-compatible resolutions).
     """
 
-    def __init__(self, eye: BaseEye) -> None:
+    def __init__(
+        self,
+        eye: BaseEye,
+        scale_fn: Callable[[Screenshot], Screenshot] | None = None,
+    ) -> None:
         self._eye = eye
+        self._scale_fn = scale_fn
 
     @property
     def name(self) -> str:
@@ -39,12 +47,18 @@ class ScreenshotTool(Tool):
             "required": [],
         }
 
-    async def execute(self, **_kwargs: Any) -> str:
+    async def execute(self, **_kwargs: Any) -> ToolResult:
         logger.info("screenshot: capturing current screen")
         screenshot = await self._eye.capture()
-        # The actual base64 image data is attached to the conversation context
-        # by the agent loop -- here we just return a confirmation string along
-        # with basic metadata so the LLM knows the capture succeeded.
-        return (
-            f"截图完成 ({screenshot.width}x{screenshot.height})"
+        if self._scale_fn is not None:
+            screenshot = self._scale_fn(screenshot)
+        return ToolResult(
+            text=f"截图完成 ({screenshot.width}x{screenshot.height})",
+            images=[
+                ToolResultImage(
+                    base64=screenshot.base64,
+                    mime_type=screenshot.mime_type,
+                    detail=screenshot.detail,
+                )
+            ],
         )

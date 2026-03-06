@@ -68,7 +68,25 @@ async def _run_agent(
         api_key=llm_cfg.get("api_key", ""),
         model=llm_cfg.get("model", "gpt-4o"),
     )
-    registry = create_registry(eye)
+
+    # Build scale function for screenshot tool if scaling is enabled.
+    scale_fn = None
+    if config.get("scaling_enabled", True):
+        from see_agent.eye.scaling import find_target_resolution, scale_screenshot
+
+        scaling_match = config.get("scaling_match", "aspect_ratio")
+
+        def _scale(screenshot):  # type: ignore[no-untyped-def]
+            target = find_target_resolution(
+                screenshot.width, screenshot.height, scaling_match,
+            )
+            if target is None:
+                return screenshot
+            return scale_screenshot(screenshot, target)
+
+        scale_fn = _scale
+
+    registry = create_registry(eye, scale_fn=scale_fn)
 
     step_count = 0
 

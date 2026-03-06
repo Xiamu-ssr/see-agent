@@ -10,7 +10,10 @@ from __future__ import annotations
 
 import copy
 import logging
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any, Callable
+
+if TYPE_CHECKING:
+    from see_agent.hand.tool import ToolResult
 
 logger = logging.getLogger(__name__)
 
@@ -110,45 +113,66 @@ class ConversationContext:
     def add_tool_result(
         self,
         tool_call_id: str,
-        result: str,
+        result: str | ToolResult,
         screenshot_b64: str | None = None,
         detail: str = "high",
         mime_type: str = "image/webp",
         screenshot_ref: str | None = None,
     ) -> None:
-        """Append a tool-result message and an optional follow-up screenshot.
+        """Append a tool-result message and optional follow-up screenshot(s).
 
-        The screenshot (if provided) is appended as a *separate* user message
-        so that the model sees the updated screen state immediately after the
-        tool output.
+        Accepts either a plain ``str`` (backward-compatible) or a
+        :class:`ToolResult`.  When a ``ToolResult`` is provided, its images
+        are automatically appended via :meth:`add_screenshot`.
+
+        The explicit *screenshot_b64* parameter is still honoured for callers
+        that pass a separate screenshot (legacy path).
 
         Parameters:
             tool_call_id: The ``id`` of the tool call this result corresponds to.
-            result: Textual result returned by the tool.
+            result: Textual result or a :class:`ToolResult` returned by the tool.
             screenshot_b64: Optional base64-encoded image taken after execution.
             detail: OpenAI vision detail level for the screenshot.
             mime_type: MIME type of the encoded image.
             screenshot_ref: Optional filename for JSONL persistence (no base64).
         """
+        from see_agent.hand.tool import ToolResult as _ToolResult
+
+        # Normalise to text + images
+        if isinstance(result, _ToolResult):
+            text = result.text
+            images = result.images
+        else:
+            text = result
+            images = []
+
         self._messages.append(
             {
                 "role": "tool",
                 "tool_call_id": tool_call_id,
-                "content": result,
+                "content": text,
             }
         )
         if self._on_append:
             self._on_append({
                 "type": "tool_result",
                 "tool_call_id": tool_call_id,
-                "result": result,
+                "result": text,
                 "screenshot": screenshot_ref,
             })
+
+        # Append images from ToolResult
+        for img in images:
+            self.add_screenshot(img.base64, img.detail, mime_type=img.mime_type)
+
+        # Legacy explicit screenshot parameter
         if screenshot_b64 is not None:
             self.add_screenshot(screenshot_b64, detail, mime_type=mime_type)
+
         logger.debug(
-            "Added tool result (id=%s, has_screenshot=%s)",
+            "Added tool result (id=%s, images=%d, has_legacy_screenshot=%s)",
             tool_call_id,
+            len(images),
             screenshot_b64 is not None,
         )
 

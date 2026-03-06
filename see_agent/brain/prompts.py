@@ -4,10 +4,21 @@ No template placeholders; everything is assembled by plain string
 concatenation to avoid the bootstrapping trap described in the PRD.
 """
 
+from __future__ import annotations
+
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from see_agent.skill.loader import SkillInfo
 
 
-def build_system_prompt(config: dict) -> str:
+def build_system_prompt(
+    config: dict,
+    *,
+    skills: list[SkillInfo] | None = None,
+    memory_block: str = "",
+) -> str:
     """Build the full system prompt from *config*.
 
     Parameters:
@@ -16,6 +27,8 @@ def build_system_prompt(config: dict) -> str:
             - ``language`` (``"zh"`` | ``"en"``, default ``"zh"``)
             - ``max_steps`` (int, default 50)
             - ``soul_path`` (str | None, optional path to personality file)
+        skills: Optional list of loaded skill definitions to inject.
+        memory_block: Optional pre-formatted memory text to inject.
 
     Returns:
         The assembled system prompt string.
@@ -30,6 +43,7 @@ def build_system_prompt(config: dict) -> str:
         parts.append(
             "你是一个能操作 Mac 电脑的 AI 助手。"
             "你可以看到屏幕截图，并通过工具操作鼠标、键盘和终端。\n"
+            "你可以自由对话，也可以主动截图确认当前状态。\n"
             "使用中文思考和回复。"
         )
     else:
@@ -37,6 +51,8 @@ def build_system_prompt(config: dict) -> str:
             "You are an AI assistant that can operate a Mac computer. "
             "You can see screenshots and operate the mouse, keyboard, "
             "and terminal through tools.\n"
+            "You can converse freely and proactively take screenshots "
+            "to verify the current state.\n"
             "Think and reply in English."
         )
 
@@ -44,10 +60,10 @@ def build_system_prompt(config: dict) -> str:
     if lang == "zh":
         parts.append(
             "<RULES>\n"
-            "1. 每次只调用一个工具。调用后会收到新的截图，根据截图决定下一步。\n"
+            "1. 你可以在一次回复中调用多个工具，它们会按顺序执行。\n"
             "2. 操作前先仔细观察截图，确认要点击的位置。"
             "在思考中详细描述你看到了什么、打算做什么、为什么这样做。\n"
-            "3. 每次操作后，仔细对比前后截图，确认操作是否生效。没有生效则分析原因重试或换方式。\n"
+            "3. 需要确认操作结果时，主动调用 screenshot 工具获取最新画面。\n"
             "4. 如果操作后界面没有变化，可能是点错位置、需要等待加载、或需要滚动。\n"
             "5. 能用 shell 命令快速完成的事优先用 shell，如打开应用用 shell('open -a AppName')。\n"
             "6. 输入中文前确认输入法状态，不确定则先用 hotkey 切换。\n"
@@ -67,13 +83,13 @@ def build_system_prompt(config: dict) -> str:
     else:
         parts.append(
             "<RULES>\n"
-            "1. Call only one tool at a time. You will receive a new "
-            "screenshot after each call; decide the next step based on it.\n"
+            "1. You can call multiple tools in a single response; they "
+            "will be executed sequentially.\n"
             "2. Before acting, carefully observe the screenshot to confirm "
             "the target position. Describe in detail what you see, what you "
             "plan to do, and why.\n"
-            "3. After each action, compare before/after screenshots to "
-            "verify the action took effect. If not, analyse and retry.\n"
+            "3. When you need to verify an action's result, proactively call "
+            "the screenshot tool to get the latest screen state.\n"
             "4. If the screen does not change after an action, you may have "
             "clicked the wrong position, need to wait, or need to scroll.\n"
             "5. Prefer shell commands when they can accomplish the task "
@@ -116,6 +132,21 @@ def build_system_prompt(config: dict) -> str:
             "- Do NOT access or leak passwords, secrets, or other sensitive information\n"
             "</CONSTRAINTS>"
         )
+
+    # ── Skills (optional) ─────────────────────────────────────────────
+    if skills:
+        skill_lines = []
+        for s in skills:
+            skill_lines.append(f"- **{s.name}**: {s.description}")
+        parts.append(
+            "<SKILLS>\n"
+            + "\n".join(skill_lines)
+            + "\n</SKILLS>"
+        )
+
+    # ── Memory (optional) ─────────────────────────────────────────────
+    if memory_block:
+        parts.append(f"<MEMORY>\n{memory_block}\n</MEMORY>")
 
     # ── Personality (optional, from soul_path file) ───────────────────
     soul_path: str | None = config.get("soul_path")
