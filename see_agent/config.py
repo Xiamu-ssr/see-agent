@@ -28,17 +28,28 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "soul_path": "~/.see-agent/SOUL.md",
     "profile": None,
     "skills_dirs": ["~/.see-agent/skills", "~/.openclaw/skills"],
-    "memory": {"enabled": False, "provider": "mem0", "mem0": {}},
+    "memory": {
+        "enabled": False,
+        "provider": "mem0",
+        "mem0": {
+            "llm_base_url": "",
+            "llm_api_key": "",
+            "llm_model": "",
+            "embedding_model": "",
+            "storage_path": "~/.see-agent/memory/qdrant",
+        },
+    },
     "env": {},
     "mcp_servers": {},
 }
 
 WORKSPACE_DIR = Path.home() / ".see-agent"
 CONFIG_PATH = WORKSPACE_DIR / "config.json"
-SCREENSHOTS_DIR = WORKSPACE_DIR / "screenshots"
 SESSIONS_DIR = WORKSPACE_DIR / "sessions"
 LOGS_DIR = WORKSPACE_DIR / "logs"
 PROFILES_DIR = WORKSPACE_DIR / "profiles"
+SKILLS_DIR = WORKSPACE_DIR / "skills"
+MEMORY_DIR = WORKSPACE_DIR / "memory"
 
 # Path to bundled workspace templates
 _TEMPLATE_DIR = Path(__file__).parent.parent / "workspace"
@@ -47,10 +58,11 @@ _TEMPLATE_DIR = Path(__file__).parent.parent / "workspace"
 def ensure_workspace() -> None:
     """Ensure ~/.see-agent/ exists with default files."""
     WORKSPACE_DIR.mkdir(parents=True, exist_ok=True)
-    SCREENSHOTS_DIR.mkdir(exist_ok=True)
     SESSIONS_DIR.mkdir(exist_ok=True)
     LOGS_DIR.mkdir(exist_ok=True)
     PROFILES_DIR.mkdir(exist_ok=True)
+    SKILLS_DIR.mkdir(exist_ok=True)
+    MEMORY_DIR.mkdir(exist_ok=True)
 
     if not CONFIG_PATH.exists():
         CONFIG_PATH.write_text(json.dumps(DEFAULT_CONFIG, indent=4, ensure_ascii=False))

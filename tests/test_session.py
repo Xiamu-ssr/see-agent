@@ -346,3 +346,48 @@ class TestRestoreContext:
                 b"fake"
             )
         assert session.next_step_number() == 3
+
+
+class TestSessionEdgeCases:
+    """Additional edge cases for session management."""
+
+    def test_corrupted_meta_json_skipped_in_list(self, sessions_dir: Path) -> None:
+        """Sessions with invalid meta.json should be skipped in list()."""
+        bad_dir = sessions_dir / "bad_session"
+        bad_dir.mkdir()
+        (bad_dir / "meta.json").write_text("{invalid json")
+
+        with patch("see_agent.session.store.SESSIONS_DIR", sessions_dir):
+            # Also create a valid session.
+            good = SessionStore.create("valid task", {"llm": {"model": "m"}})
+            sessions = SessionStore.list()
+
+        # Should not crash. The good session should be listed.
+        ids = [s.id for s in sessions]
+        assert good.id in ids
+
+    def test_create_session_id_uniqueness(self, sessions_dir: Path) -> None:
+        """Two sessions created sequentially should have different IDs."""
+        with patch("see_agent.session.store.SESSIONS_DIR", sessions_dir):
+            s1 = SessionStore.create("task1", {"llm": {"model": "m"}})
+            s2 = SessionStore.create("task2", {"llm": {"model": "m"}})
+        assert s1.id != s2.id
+
+    def test_append_message_unicode_roundtrip(
+        self, sessions_dir: Path,
+    ) -> None:
+        """CJK + emoji content should survive write/read JSONL roundtrip."""
+        with patch("see_agent.session.store.SESSIONS_DIR", sessions_dir):
+            session = SessionStore.create("测试", {"llm": {"model": "m"}})
+        session.append_message({"type": "user_task", "text": "打开Safari搜索🍓"})
+        messages = session.read_messages()
+        assert messages[0]["text"] == "打开Safari搜索🍓"
+
+    def test_restore_context_empty_session(self, sessions_dir: Path) -> None:
+        """Empty JSONL session restore_context returns context with system only."""
+        with patch("see_agent.session.store.SESSIONS_DIR", sessions_dir):
+            session = SessionStore.create("empty", {"llm": {"model": "m"}})
+        ctx = session.restore_context("System prompt.", max_images=5)
+        msgs = ctx.get_messages()
+        assert len(msgs) == 1
+        assert msgs[0]["role"] == "system"

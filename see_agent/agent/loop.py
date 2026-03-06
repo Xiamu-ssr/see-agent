@@ -100,6 +100,7 @@ class AgentLoop:
         on_user_input: Optional async callback for ``call_user`` interactions.
         overlay: Optional screen overlay renderer for visual feedback.
         memory: Optional memory backend for cross-session knowledge.
+        mcp_manager: Optional MCP manager for external tool servers.
     """
 
     def __init__(
@@ -112,6 +113,7 @@ class AgentLoop:
         on_user_input: UserInputCallback | None = None,
         overlay: OverlayRenderer | None = None,
         memory: Any | None = None,
+        mcp_manager: Any | None = None,
     ) -> None:
         self._brain = brain
         self._eye = eye
@@ -121,6 +123,8 @@ class AgentLoop:
         self._on_user_input = on_user_input
         self._overlay = overlay
         self._memory = memory
+        self._mcp_manager = mcp_manager
+        self._mcp_connected = False
 
         # Configurable knobs with sensible defaults.
         self._max_steps: int = int(config.get("max_steps", 50))
@@ -194,6 +198,15 @@ class AgentLoop:
         """
         t0 = time.monotonic()
         final_step = 0
+
+        # ── 0. Connect MCP servers (lazy, first run only) ────────────
+        if self._mcp_manager is not None and not self._mcp_connected:
+            try:
+                await self._mcp_manager.connect_all()
+                await self._mcp_manager.register_tools(self._registry)
+                self._mcp_connected = True
+            except Exception:
+                logger.warning("MCP connection failed", exc_info=True)
 
         # ── 1. Create or load session ─────────────────────────────────
         if session_id:

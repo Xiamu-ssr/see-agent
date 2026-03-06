@@ -61,9 +61,10 @@ class TestLoadConfigWithProfile:
             patch("see_agent.config.CONFIG_PATH", config_path),
             patch("see_agent.config.PROFILES_DIR", profiles_dir),
             patch("see_agent.config.WORKSPACE_DIR", tmp_path),
-            patch("see_agent.config.SCREENSHOTS_DIR", tmp_path / "screenshots"),
             patch("see_agent.config.SESSIONS_DIR", tmp_path / "sessions"),
             patch("see_agent.config.LOGS_DIR", tmp_path / "logs"),
+            patch("see_agent.config.SKILLS_DIR", tmp_path / "skills"),
+            patch("see_agent.config.MEMORY_DIR", tmp_path / "memory"),
         ):
             config = load_config(profile="opus")
 
@@ -83,9 +84,10 @@ class TestLoadConfigWithProfile:
             patch("see_agent.config.CONFIG_PATH", config_path),
             patch("see_agent.config.PROFILES_DIR", profiles_dir),
             patch("see_agent.config.WORKSPACE_DIR", tmp_path),
-            patch("see_agent.config.SCREENSHOTS_DIR", tmp_path / "screenshots"),
             patch("see_agent.config.SESSIONS_DIR", tmp_path / "sessions"),
             patch("see_agent.config.LOGS_DIR", tmp_path / "logs"),
+            patch("see_agent.config.SKILLS_DIR", tmp_path / "skills"),
+            patch("see_agent.config.MEMORY_DIR", tmp_path / "memory"),
         ):
             with pytest.raises(FileNotFoundError, match="Profile not found"):
                 load_config(profile="nonexistent")
@@ -108,9 +110,10 @@ class TestLoadConfigWithProfile:
             patch("see_agent.config.CONFIG_PATH", config_path),
             patch("see_agent.config.PROFILES_DIR", profiles_dir),
             patch("see_agent.config.WORKSPACE_DIR", tmp_path),
-            patch("see_agent.config.SCREENSHOTS_DIR", tmp_path / "screenshots"),
             patch("see_agent.config.SESSIONS_DIR", tmp_path / "sessions"),
             patch("see_agent.config.LOGS_DIR", tmp_path / "logs"),
+            patch("see_agent.config.SKILLS_DIR", tmp_path / "skills"),
+            patch("see_agent.config.MEMORY_DIR", tmp_path / "memory"),
         ):
             config = load_config()
 
@@ -131,9 +134,10 @@ class TestLoadConfigWithProfile:
             patch("see_agent.config.CONFIG_PATH", config_path),
             patch("see_agent.config.PROFILES_DIR", profiles_dir),
             patch("see_agent.config.WORKSPACE_DIR", tmp_path),
-            patch("see_agent.config.SCREENSHOTS_DIR", tmp_path / "screenshots"),
             patch("see_agent.config.SESSIONS_DIR", tmp_path / "sessions"),
             patch("see_agent.config.LOGS_DIR", tmp_path / "logs"),
+            patch("see_agent.config.SKILLS_DIR", tmp_path / "skills"),
+            patch("see_agent.config.MEMORY_DIR", tmp_path / "memory"),
             patch.dict("os.environ", {"SEE_AGENT_MODEL": "env-model"}),
         ):
             config = load_config(profile="p")

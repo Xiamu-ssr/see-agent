@@ -535,3 +535,421 @@ class TestAgentLoop:
         assert result.summary == "bye"
         # The click after finished should NOT have been executed.
         registry.execute.assert_not_called()
+
+
+# -------------------------------------------------------------------- #
+# v2 behavior tests
+# -------------------------------------------------------------------- #
+
+
+def _make_screenshot_response(step_id: int = 1, b64: str = FAKE_B64) -> BrainResponse:
+    """Create a BrainResponse that calls the 'screenshot' tool."""
+    raw = MagicMock()
+    raw.model_dump.return_value = {
+        "role": "assistant",
+        "content": f"Taking screenshot {step_id}.",
+        "tool_calls": [
+            {
+                "id": f"tc_ss_{step_id}",
+                "type": "function",
+                "function": {"name": "screenshot", "arguments": "{}"},
+            }
+        ],
+    }
+    return BrainResponse(
+        content=f"Taking screenshot {step_id}.",
+        tool_calls=[
+            ToolCallInfo(id=f"tc_ss_{step_id}", name="screenshot", arguments={})
+        ],
+        raw=raw,
+    )
+
+
+class TestAgentLoopV2Behavior:
+    """Tests for v2 ReAct loop — screenshot tool, memory, no-screenshot warning."""
+
+    @pytest.mark.asyncio
+    async def test_no_screenshot_warning_injected(self, tmp_path):
+        """After MAX_STEPS_WITHOUT_SCREENSHOT steps with no screenshot,
+        a system hint should be injected."""
+        from see_agent.agent.loop import MAX_STEPS_WITHOUT_SCREENSHOT
+
+        # Need enough click responses to trigger the warning, then a finish.
+        # Use different coordinates to avoid repeated-action abort.
+        num_clicks = MAX_STEPS_WITHOUT_SCREENSHOT + 1
+
+        def _make_varied_click(i):
+            raw = MagicMock()
+            raw.model_dump.return_value = {
+                "role": "assistant",
+                "content": f"Click {i}.",
+                "tool_calls": [{
+                    "id": f"tc_{i}",
+                    "type": "function",
+                    "function": {
+                        "name": "click",
+                        "arguments": f'{{"x": {100 + i * 50}, "y": {200 + i * 50}}}',
+                    },
+                }],
+            }
+            return BrainResponse(
+                content=f"Click {i}.",
+                tool_calls=[ToolCallInfo(
+                    id=f"tc_{i}", name="click",
+                    arguments={"x": 100 + i * 50, "y": 200 + i * 50},
+                )],
+                raw=raw,
+            )
+
+        responses = [
+            _make_varied_click(i) for i in range(1, num_clicks + 1)
+        ] + [_make_finished_response("done")]
+
+        brain = AsyncMock()
+        brain.chat = AsyncMock(side_effect=responses)
+
+        eye = AsyncMock()
+        call_count = 0
+
+        async def varying_capture():
+            nonlocal call_count
+            call_count += 1
+            raw = f"PNG {call_count}".encode()
+            return _make_screenshot(b64=base64.b64encode(raw).decode("ascii"))
+
+        eye.capture = AsyncMock(side_effect=varying_capture)
+
+        registry = AsyncMock()
+        registry.get_openai_schemas.return_value = []
+        registry.execute = AsyncMock(return_value=ToolResult(text="Clicked"))
+
+        loop = _build_loop(brain, eye, registry, max_steps=num_clicks + 2)
+
+        with _patch_sessions(tmp_path):
+            result = await loop.run("click a lot")
+
+        assert result.success is True
+
+        # Verify the LLM received a hint about not taking screenshots.
+        # The hint should appear in messages sent to brain.chat after step 5.
+        found_hint = False
+        for call_args in brain.chat.call_args_list:
+            messages = call_args[0][0]
+            for msg in messages:
+                content = msg.get("content", "")
+                if isinstance(content, str) and "screenshot" in content.lower():
+                    if "have not taken" in content:
+                        found_hint = True
+                        break
+        assert found_hint, "Expected no-screenshot warning hint in messages"
+
+    @pytest.mark.asyncio
+    async def test_screenshot_tool_images_saved_to_disk(self, tmp_path):
+        """Screenshot tool returning ToolResult with images saves to disk."""
+        brain = AsyncMock()
+        brain.chat = AsyncMock(side_effect=[
+            _make_screenshot_response(1),
+            _make_finished_response("done"),
+        ])
+
+        eye = AsyncMock()
+        eye.capture = AsyncMock(return_value=_make_screenshot())
+
+        # Return a ToolResult with an image
+        img_b64 = base64.b64encode(b"FAKE_WEBP_DATA_12345").decode()
+        from see_agent.hand.tool import ToolResultImage
+
+        registry = AsyncMock()
+        registry.get_openai_schemas.return_value = []
+        registry.execute = AsyncMock(return_value=ToolResult(
+            text="Screenshot taken",
+            images=[ToolResultImage(base64=img_b64)],
+        ))
+
+        loop = _build_loop(brain, eye, registry, max_steps=10)
+
+        with _patch_sessions(tmp_path):
+            result = await loop.run("take screenshot")
+
+        assert result.success is True
+        # Verify a webp file was written in the session's screenshots dir.
+        screenshots_dir = Path(result.task_dir) / "screenshots"
+        screenshots = list(screenshots_dir.glob("*.webp")) if screenshots_dir.exists() else []
+        # At least the initial screenshot + the tool-returned one
+        assert len(screenshots) >= 2
+
+    @pytest.mark.asyncio
+    async def test_screenshot_hash_no_progress_detection(self, tmp_path):
+        """Repeated identical screenshots trigger no-progress warning."""
+        from see_agent.agent.loop import NO_PROGRESS_LIMIT
+
+        same_b64 = base64.b64encode(b"IDENTICAL_IMAGE_DATA").decode()
+        from see_agent.hand.tool import ToolResultImage
+
+        # Need NO_PROGRESS_LIMIT + 1 screenshot tool calls with same image
+        num_ss = NO_PROGRESS_LIMIT + 1
+        responses = [
+            _make_screenshot_response(i) for i in range(1, num_ss + 1)
+        ] + [_make_finished_response("done")]
+
+        brain = AsyncMock()
+        brain.chat = AsyncMock(side_effect=responses)
+
+        eye = AsyncMock()
+        eye.capture = AsyncMock(return_value=_make_screenshot())
+
+        registry = AsyncMock()
+        registry.get_openai_schemas.return_value = []
+        registry.execute = AsyncMock(return_value=ToolResult(
+            text="Screenshot taken",
+            images=[ToolResultImage(base64=same_b64)],
+        ))
+
+        loop = _build_loop(brain, eye, registry, max_steps=num_ss + 2)
+
+        with _patch_sessions(tmp_path):
+            result = await loop.run("screenshot loop")
+
+        assert result.success is True
+
+        # Verify "screen has not changed" hint was injected
+        found_warning = False
+        for call_args in brain.chat.call_args_list:
+            messages = call_args[0][0]
+            for msg in messages:
+                content = msg.get("content", "")
+                if isinstance(content, str) and "has not changed" in content:
+                    found_warning = True
+                    break
+        assert found_warning, "Expected no-progress warning in messages"
+
+    @pytest.mark.asyncio
+    async def test_tool_delay_ms_respected(self, tmp_path):
+        """tool_delay_ms should cause delay between tool executions."""
+        import time
+
+        brain = AsyncMock()
+        brain.chat = AsyncMock(side_effect=[
+            _make_click_response(1),
+            _make_click_response(2),
+            _make_finished_response("done"),
+        ])
+
+        eye = AsyncMock()
+        ctr = 0
+
+        async def vc():
+            nonlocal ctr
+            ctr += 1
+            raw = f"PNG {ctr}".encode()
+            return _make_screenshot(b64=base64.b64encode(raw).decode("ascii"))
+
+        eye.capture = AsyncMock(side_effect=vc)
+
+        exec_times: list[float] = []
+
+        async def timed_execute(name, args):
+            exec_times.append(time.monotonic())
+            return ToolResult(text=f"{name} ok")
+
+        registry = AsyncMock()
+        registry.get_openai_schemas.return_value = []
+        registry.execute = AsyncMock(side_effect=timed_execute)
+
+        config: dict[str, Any] = {
+            "language": "en",
+            "max_steps": 10,
+            "max_images": 5,
+            "screenshot_interval_ms": 0,
+            "tool_delay_ms": 100,
+            "scaling_enabled": False,
+        }
+        loop = AgentLoop(brain=brain, eye=eye, registry=registry, config=config)
+
+        with _patch_sessions(tmp_path):
+            result = await loop.run("click twice")
+
+        assert result.success is True
+        assert len(exec_times) >= 2
+        # At least ~80ms gap (allowing some tolerance)
+        gap_ms = (exec_times[1] - exec_times[0]) * 1000
+        assert gap_ms >= 80, f"Expected >=80ms gap, got {gap_ms:.0f}ms"
+
+    @pytest.mark.asyncio
+    async def test_save_memory_called_on_finished(self, tmp_path):
+        """Memory.add() should be called when task finishes."""
+        brain = AsyncMock()
+        brain.chat = AsyncMock(return_value=_make_finished_response("done"))
+
+        eye = AsyncMock()
+        eye.capture = AsyncMock(return_value=_make_screenshot())
+
+        registry = MagicMock()
+        registry.get_openai_schemas.return_value = []
+
+        memory = MagicMock()
+        memory.search = MagicMock(return_value=[])
+        memory.add = MagicMock()
+
+        config: dict[str, Any] = {
+            "language": "en",
+            "max_steps": 10,
+            "max_images": 5,
+            "screenshot_interval_ms": 0,
+            "tool_delay_ms": 0,
+            "scaling_enabled": False,
+            "skills_dirs": [],
+        }
+        loop = AgentLoop(
+            brain=brain, eye=eye, registry=registry,
+            config=config, memory=memory,
+        )
+
+        with _patch_sessions(tmp_path):
+            result = await loop.run("test memory")
+
+        assert result.success is True
+        memory.add.assert_called_once()
+        # Messages should not contain base64 data
+        saved_msgs = memory.add.call_args[0][0]
+        for msg in saved_msgs:
+            content = msg.get("content", "")
+            if isinstance(content, str):
+                assert "base64," not in content
+
+    @pytest.mark.asyncio
+    async def test_save_memory_failure_non_fatal(self, tmp_path):
+        """Memory.add() failure should not crash the loop."""
+        brain = AsyncMock()
+        brain.chat = AsyncMock(return_value=_make_finished_response("done"))
+
+        eye = AsyncMock()
+        eye.capture = AsyncMock(return_value=_make_screenshot())
+
+        registry = MagicMock()
+        registry.get_openai_schemas.return_value = []
+
+        memory = MagicMock()
+        memory.search = MagicMock(return_value=[])
+        memory.add = MagicMock(side_effect=RuntimeError("mem0 crash"))
+
+        config: dict[str, Any] = {
+            "language": "en",
+            "max_steps": 10,
+            "max_images": 5,
+            "screenshot_interval_ms": 0,
+            "tool_delay_ms": 0,
+            "scaling_enabled": False,
+            "skills_dirs": [],
+        }
+        loop = AgentLoop(
+            brain=brain, eye=eye, registry=registry,
+            config=config, memory=memory,
+        )
+
+        with _patch_sessions(tmp_path):
+            result = await loop.run("test memory fail")
+
+        assert result.success is True
+        assert result.summary == "done"
+
+    @pytest.mark.asyncio
+    async def test_memory_search_failure_non_fatal(self, tmp_path):
+        """Memory.search() failure should not crash the loop."""
+        brain = AsyncMock()
+        brain.chat = AsyncMock(return_value=_make_finished_response("done"))
+
+        eye = AsyncMock()
+        eye.capture = AsyncMock(return_value=_make_screenshot())
+
+        registry = MagicMock()
+        registry.get_openai_schemas.return_value = []
+
+        memory = MagicMock()
+        memory.search = MagicMock(side_effect=Exception("search broken"))
+        memory.add = MagicMock()
+
+        config: dict[str, Any] = {
+            "language": "en",
+            "max_steps": 10,
+            "max_images": 5,
+            "screenshot_interval_ms": 0,
+            "tool_delay_ms": 0,
+            "scaling_enabled": False,
+            "skills_dirs": [],
+        }
+        loop = AgentLoop(
+            brain=brain, eye=eye, registry=registry,
+            config=config, memory=memory,
+        )
+
+        with _patch_sessions(tmp_path):
+            result = await loop.run("test search fail")
+
+        assert result.success is True
+
+    @pytest.mark.asyncio
+    async def test_skills_injected_into_prompt(self, tmp_path):
+        """Skills from skills_dirs should appear in the system prompt."""
+        # Create a SKILL.md
+        skill_dir = tmp_path / "skills" / "open-url"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text(
+            "---\nname: open-url\ndescription: Open a URL in browser.\n---\nStep 1: open Safari."
+        )
+
+        brain = AsyncMock()
+        brain.chat = AsyncMock(return_value=_make_finished_response("done"))
+
+        eye = AsyncMock()
+        eye.capture = AsyncMock(return_value=_make_screenshot())
+
+        registry = MagicMock()
+        registry.get_openai_schemas.return_value = []
+
+        config: dict[str, Any] = {
+            "language": "en",
+            "max_steps": 10,
+            "max_images": 5,
+            "screenshot_interval_ms": 0,
+            "tool_delay_ms": 0,
+            "scaling_enabled": False,
+            "skills_dirs": [str(tmp_path / "skills")],
+        }
+        loop = _build_loop(brain, eye, registry, max_steps=10)
+        loop._config = config
+
+        with _patch_sessions(tmp_path):
+            result = await loop.run("test skills")
+
+        assert result.success is True
+        # Verify system prompt contains the skill
+        call_args = brain.chat.call_args
+        messages = call_args[0][0]
+        system_msg = messages[0]["content"]
+        assert "open-url" in system_msg
+
+    @pytest.mark.asyncio
+    async def test_mcp_connect_called_on_first_run(self, tmp_path):
+        """MCP manager connect_all and register_tools called on first run."""
+        brain = AsyncMock()
+        brain.chat = AsyncMock(return_value=_make_finished_response("done"))
+
+        eye = AsyncMock()
+        eye.capture = AsyncMock(return_value=_make_screenshot())
+
+        registry = MagicMock()
+        registry.get_openai_schemas.return_value = []
+
+        mcp_manager = AsyncMock()
+        mcp_manager.connect_all = AsyncMock()
+        mcp_manager.register_tools = AsyncMock()
+
+        loop = _build_loop(brain, eye, registry, max_steps=10)
+        loop._mcp_manager = mcp_manager
+
+        with _patch_sessions(tmp_path):
+            await loop.run("test mcp")
+
+        mcp_manager.connect_all.assert_called_once()
+        mcp_manager.register_tools.assert_called_once()

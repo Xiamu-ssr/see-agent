@@ -86,3 +86,49 @@ class TestSkillPromptInjection:
         config = {"language": "en", "max_steps": 10}
         prompt = build_system_prompt(config, skills=None)
         assert "<SKILLS>" not in prompt
+
+
+class TestSkillLoaderEdgeCases:
+    """Additional edge cases for skill loading."""
+
+    def test_nested_directory_skill(self, tmp_path):
+        """SKILL.md in nested subdirectories should be found by glob."""
+        nested = tmp_path / "category" / "sub" / "my-skill"
+        nested.mkdir(parents=True)
+        (nested / "SKILL.md").write_text(
+            "---\nname: nested-skill\ndescription: Deep\n---\nBody"
+        )
+        skills = load_skills([str(tmp_path)])
+        assert len(skills) == 1
+        assert skills[0].name == "nested-skill"
+
+    def test_tilde_expansion(self, tmp_path):
+        """Paths with ~ should be expanded."""
+        # load_skills should handle ~ without crashing.
+        # We pass a real ~ path but it may not have skills — just no crash.
+        skills = load_skills(["~/nonexistent_skill_dir_xyz"])
+        assert isinstance(skills, list)
+
+    def test_empty_body_skill(self, tmp_path):
+        """SKILL.md with valid frontmatter but empty body should load."""
+        skill_dir = tmp_path / "empty-body"
+        skill_dir.mkdir()
+        (skill_dir / "SKILL.md").write_text(
+            "---\nname: empty-body\ndescription: No body.\n---\n"
+        )
+        skills = load_skills([str(tmp_path)])
+        assert len(skills) == 1
+        assert skills[0].body == ""
+
+    def test_unicode_skill_content(self, tmp_path):
+        """SKILL.md with CJK and emoji should parse correctly."""
+        skill_dir = tmp_path / "unicode"
+        skill_dir.mkdir()
+        (skill_dir / "SKILL.md").write_text(
+            "---\nname: 中文技能\ndescription: 打开浏览器🌐\n---\n步骤一：打开Safari",
+            encoding="utf-8",
+        )
+        skills = load_skills([str(tmp_path)])
+        assert len(skills) == 1
+        assert skills[0].name == "中文技能"
+        assert "🌐" in skills[0].description

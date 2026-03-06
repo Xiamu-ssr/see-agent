@@ -98,3 +98,56 @@ class TestMemoryPromptInjection:
         config = {"language": "en", "max_steps": 10}
         prompt = build_system_prompt(config, memory_block="")
         assert "<MEMORY>" not in prompt
+
+
+class TestBuildMem0Config:
+    """Tests for _build_mem0_config helper."""
+
+    def test_empty_config_returns_none(self):
+        from see_agent.memory.mem0_backend import _build_mem0_config
+
+        result = _build_mem0_config({})
+        assert result is None
+
+    def test_all_empty_strings_returns_none(self):
+        from see_agent.memory.mem0_backend import _build_mem0_config
+
+        result = _build_mem0_config({
+            "llm_base_url": "",
+            "llm_api_key": "",
+            "llm_model": "",
+            "embedding_model": "",
+            "storage_path": "",
+        })
+        assert result is None
+
+    def test_llm_model_sets_llm_section(self):
+        from see_agent.memory.mem0_backend import _build_mem0_config
+
+        result = _build_mem0_config({
+            "llm_model": "gpt-4o",
+            "llm_base_url": "https://api.example.com/v1",
+            "llm_api_key": "sk-test",
+        })
+        assert result is not None
+        assert result["llm"]["config"]["model"] == "gpt-4o"
+        assert result["llm"]["config"]["api_key"] == "sk-test"
+
+    def test_storage_path_expanded(self):
+        from see_agent.memory.mem0_backend import _build_mem0_config
+
+        result = _build_mem0_config({
+            "storage_path": "~/test/qdrant",
+        })
+        assert result is not None
+        assert "~" not in result["vector_store"]["config"]["path"]
+
+    def test_embedding_model_set(self):
+        from see_agent.memory.mem0_backend import _build_mem0_config
+
+        result = _build_mem0_config({
+            "embedding_model": "text-embedding-3-small",
+            "llm_base_url": "https://api.example.com/v1",
+        })
+        assert result is not None
+        assert result["embedder"]["config"]["model"] == "text-embedding-3-small"

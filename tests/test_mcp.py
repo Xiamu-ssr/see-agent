@@ -95,3 +95,54 @@ class TestMCPManager:
         manager = MCPManager(config, global_env={"API_KEY": "test"})
         assert "server1" in manager._clients
         assert "server2" in manager._clients
+
+
+class TestMCPIntegration:
+    """Integration-level MCP edge cases."""
+
+    @pytest.mark.asyncio
+    async def test_connect_failure_non_fatal(self):
+        """A single server connect failure should not prevent others."""
+        manager = MCPManager({
+            "bad": {"command": "nonexistent_command_xyz"},
+            "good": {"command": "echo"},
+        })
+        # connect_all should not raise — failures are logged.
+        await manager.connect_all()
+        # We can't verify "good" connected (it also fails without real server),
+        # but the point is no exception propagated.
+
+    @pytest.mark.asyncio
+    async def test_disconnect_all_tolerates_errors(self):
+        """disconnect_all should not raise even if a client errors."""
+        manager = MCPManager({"test": {"command": "echo"}})
+        # Mock a client whose disconnect raises.
+        mock_client = MagicMock()
+        mock_client.disconnect = AsyncMock(side_effect=RuntimeError("boom"))
+        manager._clients["test"] = mock_client
+
+        # Should not raise.
+        await manager.disconnect_all()
+
+    @pytest.mark.asyncio
+    async def test_tool_execution_failure_returns_error_text(self):
+        """MCP tool execution error should be caught in wrapper."""
+        client = MagicMock()
+        client.call_tool = AsyncMock(side_effect=RuntimeError("MCP call failed"))
+
+        wrapper = MCPToolWrapper(
+            server_name="srv", tool_name="broken",
+            description="", input_schema={}, client=client,
+        )
+        # The wrapper itself raises — the registry.execute catches it.
+        with pytest.raises(RuntimeError, match="MCP call failed"):
+            await wrapper.execute()
+
+    def test_tool_name_special_chars(self):
+        """MCP tool name with hyphens should be preserved."""
+        client = MagicMock()
+        wrapper = MCPToolWrapper(
+            server_name="my-server", tool_name="search-web",
+            description="", input_schema={}, client=client,
+        )
+        assert wrapper.name == "mcp__my-server__search-web"

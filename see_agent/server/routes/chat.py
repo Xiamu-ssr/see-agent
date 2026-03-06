@@ -88,6 +88,17 @@ async def _run_agent(
 
     registry = create_registry(eye, scale_fn=scale_fn)
 
+    # MCP servers (optional)
+    mcp_manager = None
+    mcp_servers = config.get("mcp_servers", {})
+    if mcp_servers:
+        try:
+            from see_agent.hand.mcp import MCPManager
+
+            mcp_manager = MCPManager(mcp_servers, global_env=config.get("env", {}))
+        except Exception:
+            logger.warning("Failed to initialize MCP manager", exc_info=True)
+
     step_count = 0
 
     async def on_step(event: StepEvent) -> None:
@@ -132,6 +143,7 @@ async def _run_agent(
             registry=registry,
             config=config,
             on_step=on_step,
+            mcp_manager=mcp_manager,
         )
         run_result = await agent.run(task, session_id=session_id)
 

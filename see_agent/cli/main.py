@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import json
 import sys
+from typing import Any
 
 import typer
 
@@ -130,6 +131,20 @@ def _build_components(config: dict, *, no_overlay: bool = False, no_scaling: boo
                 "Failed to initialize overlay, continuing without it"
             )
 
+    # MCP servers (optional) — connected lazily inside AgentLoop.run()
+    mcp_manager = None
+    mcp_servers = config.get("mcp_servers", {})
+    if mcp_servers:
+        try:
+            from see_agent.hand.mcp import MCPManager
+
+            mcp_manager = MCPManager(mcp_servers, global_env=config.get("env", {}))
+        except Exception:
+            logging.getLogger(__name__).warning(
+                "Failed to initialize MCP manager, continuing without it"
+            )
+            mcp_manager = None
+
     # Memory backend (optional)
     memory = None
     mem_cfg = config.get("memory", {})
@@ -152,6 +167,7 @@ def _build_components(config: dict, *, no_overlay: bool = False, no_scaling: boo
         on_user_input=_on_user_input_async,
         overlay=overlay,
         memory=memory,
+        mcp_manager=mcp_manager,
     )
     return loop
 
@@ -550,6 +566,7 @@ def _format_elapsed(seconds: float) -> str:
 @mcp_app.command("list")
 def mcp_list(
     profile: str | None = typer.Option(None, "--profile", "-P", help="Configuration profile."),
+    check: bool = typer.Option(False, "--check", help="Try connecting and report health."),
 ) -> None:
     """List configured MCP servers."""
     config = load_config(profile=profile)
@@ -558,24 +575,70 @@ def mcp_list(
         typer.echo("No MCP servers configured.")
         return
     for name, cfg in servers.items():
-        cmd = cfg.get("command", cfg.get("url", "?"))
-        typer.echo(f"  {name}: {cmd}")
+        transport = cfg.get("type", "stdio")
+        target = cfg.get("command", cfg.get("url", "?"))
+        typer.echo(f"  {name} ({transport}): {target}")
+
+    if check:
+        import asyncio as _aio
+
+        async def _check() -> None:
+            from see_agent.hand.mcp import MCPManager
+
+            manager = MCPManager(servers, global_env=config.get("env", {}))
+            for sname, client in manager._clients.items():
+                try:
+                    await client.connect()
+                    tools = await client.list_tools()
+                    typer.echo(f"  {sname}: OK ({len(tools)} tools)")
+                    await client.disconnect()
+                except Exception as exc:
+                    typer.echo(f"  {sname}: FAILED ({exc})")
+
+        _aio.run(_check())
 
 
 @mcp_app.command("add")
 def mcp_add(
     name: str = typer.Argument(..., help="Server name."),
-    command: str = typer.Argument(..., help="Command to start the server."),
+    command: str = typer.Argument(None, help="Command to start the server (for stdio)."),
     args: list[str] | None = typer.Option(None, "--arg", help="Arguments for the command."),
+    transport_type: str = typer.Option(
+        "stdio", "--type", "-t", help="Transport type: stdio or http.",
+    ),
+    url: str | None = typer.Option(None, "--url", help="URL for HTTP transport."),
+    env: list[str] | None = typer.Option(None, "--env", "-e", help="Env vars in KEY=VALUE format."),
 ) -> None:
     """Add an MCP server to the configuration."""
+    if transport_type == "http" and not url:
+        typer.echo("Error: --url is required for HTTP transport.", err=True)
+        raise typer.Exit(code=1)
+    if transport_type == "stdio" and not command:
+        typer.echo("Error: command argument is required for stdio transport.", err=True)
+        raise typer.Exit(code=1)
+
     config = load_config()
     if "mcp_servers" not in config:
         config["mcp_servers"] = {}
-    config["mcp_servers"][name] = {
-        "command": command,
-        "args": args or [],
-    }
+
+    server_cfg: dict[str, Any] = {"type": transport_type}
+    if transport_type == "stdio":
+        server_cfg["command"] = command
+        server_cfg["args"] = args or []
+    else:
+        server_cfg["url"] = url
+
+    # Parse env vars
+    if env:
+        env_dict: dict[str, str] = {}
+        for item in env:
+            if "=" in item:
+                k, v = item.split("=", 1)
+                env_dict[k] = v
+        if env_dict:
+            server_cfg["env"] = env_dict
+
+    config["mcp_servers"][name] = server_cfg
     save_config(config)
     typer.echo(f"Added MCP server: {name}")
 

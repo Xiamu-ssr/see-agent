@@ -93,6 +93,12 @@ _PATCHES_EYE = "see_agent.eye.mac.MacEye"
 _PATCHES_BRAIN = "see_agent.brain.openai_client.OpenAIBrain"
 _PATCHES_REGISTRY = "see_agent.hand.tools.create_registry"
 
+# Server patches — target the names where they are used in the chat module,
+# because top-level imports bind the name at import time.
+_SRV_EYE = "see_agent.server.routes.chat.MacEye"
+_SRV_BRAIN = "see_agent.server.routes.chat.OpenAIBrain"
+_SRV_REGISTRY = "see_agent.server.routes.chat.create_registry"
+
 
 # -------------------------------------------------------------------- #
 # CLI: _build_components
@@ -147,9 +153,9 @@ class TestCliBuildComponents:
 class TestServerRunAgent:
     """Tests for ``src.server.routes.chat._run_agent``."""
 
-    @patch(_PATCHES_REGISTRY, return_value=MagicMock())
-    @patch(_PATCHES_BRAIN, return_value=_make_mock_brain())
-    @patch(_PATCHES_EYE, return_value=_make_mock_eye())
+    @patch(_SRV_REGISTRY, return_value=MagicMock())
+    @patch(_SRV_BRAIN, return_value=_make_mock_brain())
+    @patch(_SRV_EYE, return_value=_make_mock_eye())
     @pytest.mark.asyncio
     async def test_run_agent_no_type_error(self, _eye, _brain, _reg):
         """_run_agent should construct AgentLoop and call run() without TypeError."""
@@ -162,9 +168,9 @@ class TestServerRunAgent:
         assert "test123" in tasks
         assert tasks["test123"].status == "completed"
 
-    @patch(_PATCHES_REGISTRY, return_value=MagicMock())
-    @patch(_PATCHES_BRAIN, return_value=_make_mock_brain())
-    @patch(_PATCHES_EYE, return_value=_make_mock_eye())
+    @patch(_SRV_REGISTRY, return_value=MagicMock())
+    @patch(_SRV_BRAIN, return_value=_make_mock_brain())
+    @patch(_SRV_EYE, return_value=_make_mock_eye())
     @pytest.mark.asyncio
     async def test_run_agent_summary_propagates(self, _eye, _brain, _reg):
         """The finished-tool summary should appear in the final TaskStatus."""
@@ -176,9 +182,9 @@ class TestServerRunAgent:
 
         assert tasks["t1"].summary == "ok"
 
-    @patch(_PATCHES_REGISTRY, return_value=MagicMock())
-    @patch(_PATCHES_BRAIN, return_value=_make_mock_brain())
-    @patch(_PATCHES_EYE, return_value=_make_mock_eye())
+    @patch(_SRV_REGISTRY, return_value=MagicMock())
+    @patch(_SRV_BRAIN, return_value=_make_mock_brain())
+    @patch(_SRV_EYE, return_value=_make_mock_eye())
     @pytest.mark.asyncio
     async def test_run_agent_broadcasts_sentinel(self, _eye, _brain, _reg):
         """After completion, _run_agent must broadcast None sentinel to subscribers."""
