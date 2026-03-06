@@ -194,7 +194,14 @@ class AgentLoop:
         # ── 2. Initial screenshot ─────────────────────────────────────
         screenshot = await self._eye.capture()
         scaled = self._maybe_scale(screenshot)
-        initial_path = task_dir / "step_000.webp"
+
+        # Determine step numbering: continue from last step on resume.
+        if session_id:
+            next_step = session.next_step_number()
+        else:
+            next_step = 0
+
+        initial_path = task_dir / f"step_{next_step:03d}.webp"
         scaled.save(initial_path)
 
         # ── 2b. Collect desktop environment info ──────────────────────
@@ -212,19 +219,37 @@ class AgentLoop:
         from see_agent.brain.prompts import build_system_prompt
 
         system_prompt = build_system_prompt(self._config)
-        ctx = ConversationContext(
-            system_prompt,
-            max_images=self._max_images,
-            on_append=session.append_message,
-        )
 
-        # Prepend environment block to the user task text.
-        task_text = f"{env_block}\n\n{task}" if env_block else task
-        ctx.add_user_task(
-            task_text, scaled.base64, scaled.detail,
-            mime_type=scaled.mime_type,
-            screenshot_ref="step_000.webp",
-        )
+        if session_id:
+            # Resume: restore full conversation history from JSONL + screenshots.
+            ctx = session.restore_context(
+                system_prompt,
+                max_images=self._max_images,
+                on_append=session.append_message,
+            )
+            # Append only the new user task (no duplicate system prompt).
+            task_text = f"{env_block}\n\n{task}" if env_block else task
+            ctx.add_user_task(
+                task_text, scaled.base64, scaled.detail,
+                mime_type=scaled.mime_type,
+                screenshot_ref=f"step_{next_step:03d}.webp",
+            )
+        else:
+            # New session: fresh context.
+            ctx = ConversationContext(
+                system_prompt,
+                max_images=self._max_images,
+                on_append=session.append_message,
+            )
+            task_text = f"{env_block}\n\n{task}" if env_block else task
+            ctx.add_user_task(
+                task_text, scaled.base64, scaled.detail,
+                mime_type=scaled.mime_type,
+                screenshot_ref=f"step_{next_step:03d}.webp",
+            )
+
+        # Step offset for screenshot naming in the main loop.
+        step_offset = next_step
 
         # ── 4. Main loop ──────────────────────────────────────────────
         consecutive_errors = 0
@@ -320,12 +345,13 @@ class AgentLoop:
                 # (Overlay uses setSharingType_(0) so it won't appear in screenshots.)
                 screenshot = await self._eye.capture()
                 scaled = self._maybe_scale(screenshot)
-                shot_path = task_dir / f"step_{step:03d}.webp"
+                shot_num = step_offset + step
+                shot_path = task_dir / f"step_{shot_num:03d}.webp"
                 scaled.save(shot_path)
                 ctx.add_screenshot(
                     scaled.base64, scaled.detail,
                     mime_type=scaled.mime_type,
-                    screenshot_ref=f"step_{step:03d}.webp",
+                    screenshot_ref=f"step_{shot_num:03d}.webp",
                 )
                 continue
 
@@ -394,14 +420,15 @@ class AgentLoop:
                 self._overlay.show_screenshot()
             screenshot = await self._eye.capture()
             scaled = self._maybe_scale(screenshot)
-            shot_path = task_dir / f"step_{step:03d}.webp"
+            shot_num = step_offset + step
+            shot_path = task_dir / f"step_{shot_num:03d}.webp"
             scaled.save(shot_path)
 
             # ── 4h. Add to context ────────────────────────────────────
             ctx.add_tool_result(
                 tc.id, result, scaled.base64, scaled.detail,
                 mime_type=scaled.mime_type,
-                screenshot_ref=f"step_{step:03d}.webp",
+                screenshot_ref=f"step_{shot_num:03d}.webp",
             )
 
             # ── 4i. No-progress detection (screenshot hash) ──────────

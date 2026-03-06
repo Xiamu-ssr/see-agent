@@ -306,3 +306,93 @@ class TestAgentLoop:
         assert len(step_events) == 1
         assert step_events[0].screen_tool_args is not None
         assert step_events[0].screen_tool_args["x"] == exec_args["x"]
+
+    @pytest.mark.asyncio
+    async def test_resume_restores_conversation_history(self, tmp_path):
+        """When resuming a session, LLM receives the full message history."""
+        (tmp_path / "sessions").mkdir(exist_ok=True)
+
+        # Phase 1: run a task that finishes, creating a real session.
+        brain = AsyncMock()
+        brain.chat = AsyncMock(return_value=_make_finished_response("Weather is 25°C"))
+
+        eye = AsyncMock()
+        eye.capture = AsyncMock(return_value=_make_screenshot())
+
+        registry = MagicMock()
+        registry.get_openai_schemas.return_value = []
+
+        loop = _build_loop(brain, eye, registry, max_steps=10)
+
+        with _patch_sessions(tmp_path):
+            result1 = await loop.run("Search weather")
+
+        assert result1.success is True
+        session_id = result1.session_id
+        assert session_id
+
+        # Phase 2: resume the same session with a new question.
+        brain2 = AsyncMock()
+        brain2.chat = AsyncMock(
+            return_value=_make_finished_response("It was 25°C."),
+        )
+
+        eye2 = AsyncMock()
+        eye2.capture = AsyncMock(return_value=_make_screenshot())
+
+        loop2 = _build_loop(brain2, eye2, registry, max_steps=10)
+
+        with _patch_sessions(tmp_path):
+            result2 = await loop2.run(
+                "What was the temperature?", session_id=session_id,
+            )
+
+        assert result2.success is True
+        assert result2.session_id == session_id
+
+        # Verify: the LLM received messages from the first run.
+        call_args = brain2.chat.call_args
+        messages_sent = call_args[0][0]  # first positional arg
+
+        # Must have more than just system + user_task (i.e. history present).
+        assert len(messages_sent) > 3
+
+        # The first run's user task text should be in there.
+        all_text = str(messages_sent)
+        assert "Search weather" in all_text
+
+    @pytest.mark.asyncio
+    async def test_resume_no_duplicate_system_in_jsonl(self, tmp_path):
+        """Resuming must not write a duplicate system message to JSONL."""
+        from see_agent.session.store import SessionStore
+
+        (tmp_path / "sessions").mkdir(exist_ok=True)
+
+        brain = AsyncMock()
+        brain.chat = AsyncMock(return_value=_make_finished_response("done"))
+        eye = AsyncMock()
+        eye.capture = AsyncMock(return_value=_make_screenshot())
+        registry = MagicMock()
+        registry.get_openai_schemas.return_value = []
+
+        loop = _build_loop(brain, eye, registry, max_steps=10)
+
+        with _patch_sessions(tmp_path):
+            result1 = await loop.run("Task 1")
+            session_id = result1.session_id
+
+            # Resume
+            brain2 = AsyncMock()
+            brain2.chat = AsyncMock(
+                return_value=_make_finished_response("done2"),
+            )
+            eye2 = AsyncMock()
+            eye2.capture = AsyncMock(return_value=_make_screenshot())
+            loop2 = _build_loop(brain2, eye2, registry, max_steps=10)
+            await loop2.run("Task 2", session_id=session_id)
+
+            session = SessionStore.load(session_id)
+
+        messages = session.read_messages()
+        system_msgs = [m for m in messages if m.get("type") == "system"]
+        assert len(system_msgs) == 1

@@ -8,6 +8,7 @@ Each session is a directory containing:
 
 from __future__ import annotations
 
+import base64
 import json
 import logging
 import shutil
@@ -15,9 +16,12 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any, Callable
 
 from see_agent.config import SESSIONS_DIR
+
+if TYPE_CHECKING:
+    from see_agent.agent.context import ConversationContext
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +97,142 @@ class Session:
         return self._screenshots_dir / f"step_{step:03d}.webp"
 
     # ---- meta persistence ----
+
+    def next_step_number(self) -> int:
+        """Return the next available step number based on existing screenshots."""
+        if not self._screenshots_dir.exists():
+            return 0
+        existing = list(self._screenshots_dir.glob("step_*.webp"))
+        if not existing:
+            return 0
+        max_num = max(int(f.stem.split("_")[1]) for f in existing)
+        return max_num + 1
+
+    def restore_context(
+        self,
+        system_prompt: str,
+        max_images: int = 5,
+        on_append: Callable[[dict[str, Any]], None] | None = None,
+    ) -> "ConversationContext":
+        """Rebuild a :class:`ConversationContext` from JSONL + screenshot files.
+
+        Reads ``messages.jsonl``, converts each line back into the OpenAI
+        message format, loading screenshot base64 from disk where referenced.
+        The ``on_append`` callback is only activated *after* replay so that
+        old messages are not written back to the JSONL.
+
+        Parameters:
+            system_prompt: Current system prompt (used for the initial message).
+            max_images: Sliding-window limit forwarded to the context.
+            on_append: Callback activated after replay completes.
+
+        Returns:
+            A fully populated :class:`ConversationContext`.
+        """
+        from see_agent.agent.context import ConversationContext
+
+        # Build context WITHOUT on_append during replay.
+        ctx = ConversationContext(system_prompt, max_images=max_images)
+
+        messages = self.read_messages()
+        for msg in messages:
+            msg_type = msg.get("type")
+            if msg_type == "system":
+                # Already added by ConversationContext.__init__; skip.
+                continue
+            elif msg_type == "user_task":
+                b64 = self._load_screenshot_b64(msg.get("screenshot"))
+                detail = msg.get("detail", "high")
+                ctx.add_user_task(
+                    msg.get("text", ""), b64, detail,
+                )
+            elif msg_type == "assistant":
+                ctx._messages.append(
+                    self._rebuild_assistant_message(msg)
+                )
+            elif msg_type == "tool_result":
+                ctx._messages.append({
+                    "role": "tool",
+                    "tool_call_id": msg.get("tool_call_id", ""),
+                    "content": msg.get("result", ""),
+                })
+                # The screenshot for tool_result is stored as a
+                # separate "screenshot" JSONL entry — handled below.
+            elif msg_type == "screenshot":
+                b64 = self._load_screenshot_b64(msg.get("screenshot"))
+                detail = msg.get("detail", "high")
+                if b64:
+                    ctx._messages.append({
+                        "role": "user",
+                        "content": [{
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/webp;base64,{b64}",
+                                "detail": detail,
+                            },
+                        }],
+                    })
+                else:
+                    ctx._messages.append({
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": "[Screenshot omitted]"},
+                        ],
+                    })
+            elif msg_type == "user_reply":
+                ctx._messages.append({
+                    "role": "user",
+                    "content": msg.get("text", ""),
+                })
+            elif msg_type == "system_hint":
+                ctx._messages.append({
+                    "role": "user",
+                    "content": msg.get("text", ""),
+                })
+
+        # NOW activate the on_append callback for future messages.
+        ctx._on_append = on_append
+
+        logger.info(
+            "Restored context: %d messages from session %s",
+            len(ctx._messages), self.id,
+        )
+        return ctx
+
+    def _load_screenshot_b64(self, ref: str | None) -> str:
+        """Load a screenshot file and return its base64 encoding.
+
+        Returns an empty string if *ref* is ``None`` or the file is missing.
+        """
+        if not ref:
+            return ""
+        path = self._screenshots_dir / ref
+        if not path.exists():
+            logger.warning("Screenshot file missing: %s", path)
+            return ""
+        return base64.b64encode(path.read_bytes()).decode("ascii")
+
+    @staticmethod
+    def _rebuild_assistant_message(msg: dict[str, Any]) -> dict[str, Any]:
+        """Convert a JSONL assistant entry back to OpenAI format."""
+        result: dict[str, Any] = {"role": "assistant"}
+        if msg.get("content"):
+            result["content"] = msg["content"]
+        else:
+            result["content"] = None
+        if msg.get("tool_calls"):
+            result["tool_calls"] = [
+                {
+                    "id": tc["id"],
+                    "type": "function",
+                    "function": {
+                        "name": tc["name"],
+                        "arguments": tc.get("args", ""),
+                    },
+                }
+                for tc in msg["tool_calls"]
+            ]
+        return result
 
     def update_meta(self, **kwargs: Any) -> None:
         """Merge *kwargs* into meta.json and flush to disk."""
