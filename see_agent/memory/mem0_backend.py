@@ -90,7 +90,7 @@ class Mem0Memory(BaseMemory):
             if isinstance(results, dict) and "results" in results:
                 results = results["results"]
             return [
-                r.get("memory", r.get("text", str(r)))
+                r.get("memory", r.get("text", str(r)))  # type: ignore[union-attr]
                 for r in results
             ]
         except Exception:

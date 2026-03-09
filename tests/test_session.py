@@ -407,6 +407,68 @@ class TestSessionLogging:
         assert session._log_handler is None
 
 
+class TestSessionMsgId:
+    """Tests for msg_id on JSONL entries."""
+
+    def test_append_message_includes_msg_id(self, sessions_dir: Path) -> None:
+        with patch("see_agent.session.store.SESSIONS_DIR", sessions_dir):
+            session = SessionStore.create("Test", {"llm": {"model": "m"}})
+        session.append_message({"type": "user_task", "text": "a"})
+        session.append_message({"type": "assistant", "content": "b"})
+        session.append_message({"type": "user_reply", "text": "c"})
+        messages = session.read_messages()
+        assert messages[0]["msg_id"] == 1
+        assert messages[1]["msg_id"] == 2
+        assert messages[2]["msg_id"] == 3
+
+    def test_msg_counter_restored_on_read(self, sessions_dir: Path) -> None:
+        with patch("see_agent.session.store.SESSIONS_DIR", sessions_dir):
+            session = SessionStore.create("Test", {"llm": {"model": "m"}})
+        session.append_message({"type": "user_task", "text": "a"})
+        session.append_message({"type": "assistant", "content": "b"})
+        # Simulate reload: read restores counter
+        session.read_messages()
+        session.append_message({"type": "user_reply", "text": "c"})
+        messages = session.read_messages()
+        assert messages[2]["msg_id"] == 3
+
+
+class TestSessionLoggingBug1:
+    """Tests for Bug 1 fix — session.log captures DEBUG after global WARNING."""
+
+    def test_setup_logging_captures_debug_after_global_warning(
+        self, sessions_dir: Path,
+    ) -> None:
+        import logging as _logging
+
+        with patch("see_agent.session.store.SESSIONS_DIR", sessions_dir):
+            session = SessionStore.create("Test", {"llm": {"model": "m"}})
+
+        lgr = _logging.getLogger("see_agent.agent")
+        lgr.setLevel(_logging.WARNING)  # simulate config.py global setting
+        try:
+            session.setup_logging()
+            lgr.debug("debug-level-test-entry")
+            log_file = session.dir / "session.log"
+            assert log_file.exists()
+            assert "debug-level-test-entry" in log_file.read_text()
+        finally:
+            session.teardown_logging()
+
+    def test_teardown_restores_logger_levels(self, sessions_dir: Path) -> None:
+        import logging as _logging
+
+        with patch("see_agent.session.store.SESSIONS_DIR", sessions_dir):
+            session = SessionStore.create("Test", {"llm": {"model": "m"}})
+
+        lgr = _logging.getLogger("see_agent.brain")
+        lgr.setLevel(_logging.WARNING)
+        session.setup_logging()
+        assert lgr.level == _logging.DEBUG
+        session.teardown_logging()
+        assert lgr.level == _logging.WARNING
+
+
 class TestSessionEdgeCases:
     """Additional edge cases for session management."""
 

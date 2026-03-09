@@ -930,6 +930,97 @@ class TestAgentLoopV2Behavior:
         assert "open-url" in system_msg
 
     @pytest.mark.asyncio
+    async def test_save_memory_on_max_steps(self, tmp_path):
+        """Memory.add() should be called even when max_steps is reached."""
+        brain = AsyncMock()
+        brain.chat = AsyncMock(side_effect=lambda msgs, tools: _make_click_response())
+
+        eye = AsyncMock()
+        ctr = 0
+
+        async def vc():
+            nonlocal ctr
+            ctr += 1
+            raw = f"PNG {ctr}".encode()
+            return _make_screenshot(b64=base64.b64encode(raw).decode("ascii"))
+
+        eye.capture = AsyncMock(side_effect=vc)
+
+        registry = AsyncMock()
+        registry.get_openai_schemas.return_value = []
+        registry.execute = AsyncMock(return_value=ToolResult(text="Clicked"))
+
+        memory = MagicMock()
+        memory.search = MagicMock(return_value=[])
+        memory.add = MagicMock()
+
+        config: dict[str, Any] = {
+            "language": "en",
+            "max_steps": 1,
+            "max_images": 5,
+            "screenshot_interval_ms": 0,
+            "tool_delay_ms": 0,
+            "scaling_enabled": False,
+            "skills_dirs": [],
+        }
+        loop = AgentLoop(
+            brain=brain, eye=eye, registry=registry,
+            config=config, memory=memory,
+        )
+
+        with _patch_sessions(tmp_path):
+            result = await loop.run("test max steps memory")
+
+        assert result.success is False
+        memory.add.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_save_memory_on_no_tool_calls(self, tmp_path):
+        """Memory.add() should be called when brain returns text-only (no tool calls)."""
+        raw = MagicMock()
+        raw.model_dump.return_value = {
+            "role": "assistant",
+            "content": "Just thinking, no actions.",
+        }
+        text_response = BrainResponse(
+            content="Just thinking, no actions.",
+            tool_calls=[],
+            raw=raw,
+        )
+
+        brain = AsyncMock()
+        brain.chat = AsyncMock(return_value=text_response)
+
+        eye = AsyncMock()
+        eye.capture = AsyncMock(return_value=_make_screenshot())
+
+        registry = MagicMock()
+        registry.get_openai_schemas.return_value = []
+
+        memory = MagicMock()
+        memory.search = MagicMock(return_value=[])
+        memory.add = MagicMock()
+
+        config: dict[str, Any] = {
+            "language": "en",
+            "max_steps": 10,
+            "max_images": 5,
+            "screenshot_interval_ms": 0,
+            "tool_delay_ms": 0,
+            "scaling_enabled": False,
+            "skills_dirs": [],
+        }
+        loop = AgentLoop(
+            brain=brain, eye=eye, registry=registry,
+            config=config, memory=memory,
+        )
+
+        with _patch_sessions(tmp_path):
+            await loop.run("test no tool calls memory")
+
+        memory.add.assert_called_once()
+
+    @pytest.mark.asyncio
     async def test_mcp_connect_called_on_first_run(self, tmp_path):
         """MCP manager connect_all and register_tools called on first run."""
         brain = AsyncMock()

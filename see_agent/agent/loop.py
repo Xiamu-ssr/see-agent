@@ -142,6 +142,7 @@ class AgentLoop:
 
     def _fail_result(
         self, session: Session, steps: int, t0: float, summary: str,
+        ctx: ConversationContext | None = None,
     ) -> RunResult:
         """Build a failed :class:`RunResult` and update session meta."""
         elapsed = time.monotonic() - t0
@@ -149,6 +150,8 @@ class AgentLoop:
             status="failed", total_steps=steps,
             elapsed_seconds=round(elapsed, 1), summary=summary,
         )
+        if ctx is not None:
+            self._save_memory(ctx, session.id)
         return RunResult(
             summary=summary,
             task_dir=str(session.dir),
@@ -348,6 +351,7 @@ class AgentLoop:
                     return self._fail_result(
                         session, final_step, t0,
                         f"Error: max consecutive LLM errors reached. (last: {exc})",
+                        ctx=ctx,
                     )
                 continue
 
@@ -431,6 +435,7 @@ class AgentLoop:
                             return self._fail_result(
                                 session, final_step, t0,
                                 f"Error: max consecutive errors reached. (last: {exc})",
+                                ctx=ctx,
                             )
                         continue
                     if exec_args != tc.arguments:
@@ -459,6 +464,7 @@ class AgentLoop:
                         return self._fail_result(
                             session, final_step, t0,
                             f"Error: max consecutive tool errors reached. (last: {exc})",
+                            ctx=ctx,
                         )
 
                 # Save tool-returned images to disk
@@ -515,6 +521,7 @@ class AgentLoop:
                         return self._fail_result(
                             session, step, t0,
                             "Aborted: agent stuck in repeated action loop.",
+                            ctx=ctx,
                         )
                     if repeat_count >= REPEAT_WARN_LIMIT:
                         ctx.add_system_hint(
@@ -564,6 +571,7 @@ class AgentLoop:
         return self._fail_result(
             session, final_step, t0,
             f"Max steps ({self._max_steps}) reached. Task may be incomplete.",
+            ctx=ctx,
         )
 
 

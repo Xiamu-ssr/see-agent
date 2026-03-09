@@ -65,6 +65,8 @@ class Session:
     _screenshots_dir: Path = field(init=False, repr=False)
     _last_prompt_hash: str | None = field(init=False, repr=False, default=None)
     _log_handler: logging.FileHandler | None = field(init=False, repr=False, default=None)
+    _saved_log_levels: dict[str, int] = field(init=False, repr=False, default_factory=dict)
+    _msg_counter: int = field(init=False, repr=False, default=0)
 
     def __post_init__(self) -> None:
         self._jsonl_path = self.dir / "messages.jsonl"
@@ -104,7 +106,10 @@ class Session:
         ))
         self._log_handler = handler
         for name in self._SESSION_LOGGERS:
-            logging.getLogger(name).addHandler(handler)
+            lgr = logging.getLogger(name)
+            self._saved_log_levels[name] = lgr.level
+            lgr.setLevel(logging.DEBUG)
+            lgr.addHandler(handler)
 
     def teardown_logging(self) -> None:
         """Remove and close the session file handler."""
@@ -112,7 +117,11 @@ class Session:
         if handler is None:
             return
         for name in self._SESSION_LOGGERS:
-            logging.getLogger(name).removeHandler(handler)
+            lgr = logging.getLogger(name)
+            lgr.removeHandler(handler)
+            if name in self._saved_log_levels:
+                lgr.setLevel(self._saved_log_levels[name])
+        self._saved_log_levels.clear()
         handler.close()
         self._log_handler = None
 
@@ -120,7 +129,8 @@ class Session:
 
     def append_message(self, msg: dict[str, Any]) -> None:
         """Append *msg* as one JSON line to ``messages.jsonl``."""
-        msg_with_ts = {"ts": _now_iso(), **msg}
+        self._msg_counter += 1
+        msg_with_ts = {"msg_id": self._msg_counter, "ts": _now_iso(), **msg}
         with open(self._jsonl_path, "a", encoding="utf-8") as fh:
             fh.write(json.dumps(msg_with_ts, ensure_ascii=False) + "\n")
 
@@ -133,6 +143,8 @@ class Session:
             raw = raw.strip()
             if raw:
                 lines.append(json.loads(raw))
+        if lines:
+            self._msg_counter = max(m.get("msg_id", 0) for m in lines)
         return lines
 
     # ---- screenshot helpers ----
