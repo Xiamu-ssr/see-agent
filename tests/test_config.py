@@ -1,4 +1,4 @@
-"""Unit tests for configuration loading and profile system."""
+"""Unit tests for configuration loading."""
 
 import json
 from unittest.mock import patch
@@ -6,6 +6,31 @@ from unittest.mock import patch
 import pytest
 
 from see_agent.config import _deep_merge, load_agent_config, load_config
+
+
+def _config_patches(tmp_path):
+    """Return a list of patches redirecting workspace dirs to *tmp_path*."""
+    return [
+        patch("see_agent.config.CONFIG_PATH", tmp_path / "config.json"),
+        patch("see_agent.config.WORKSPACE_DIR", tmp_path),
+        patch("see_agent.config.SESSIONS_DIR", tmp_path / "sessions"),
+        patch("see_agent.config.LOGS_DIR", tmp_path / "logs"),
+        patch("see_agent.config.SKILLS_DIR", tmp_path / "skills"),
+        patch("see_agent.config.AGENTS_DIR", tmp_path / "agents"),
+        patch("see_agent.config.TEAMS_DIR", tmp_path / "teams"),
+    ]
+
+
+def _apply_patches(patches):
+    """Start all patches and return a cleanup function."""
+    for p in patches:
+        p.start()
+
+    def cleanup():
+        for p in patches:
+            p.stop()
+
+    return cleanup
 
 
 class TestDeepMerge:
@@ -38,111 +63,39 @@ class TestDeepMerge:
         assert base["a"] == 1
 
 
-class TestLoadConfigWithProfile:
-    """Tests for profile-based configuration loading."""
+class TestLoadConfig:
+    """Tests for load_config."""
 
-    def test_load_config_with_profile(self, tmp_path):
-        """Profile overlay merges on top of base config."""
-        config_path = tmp_path / "config.json"
-        config_path.write_text(json.dumps({
-            "llm": {"base_url": "https://base.example.com/v1", "api_key": "k", "model": "base"},
-            "language": "en",
-        }))
-
-        profiles_dir = tmp_path / "profiles"
-        profiles_dir.mkdir()
-        profile_path = profiles_dir / "opus.json"
-        profile_path.write_text(json.dumps({
-            "llm": {"model": "claude-opus"},
-            "language": "zh",
-        }))
-
-        with (
-            patch("see_agent.config.CONFIG_PATH", config_path),
-            patch("see_agent.config.PROFILES_DIR", profiles_dir),
-            patch("see_agent.config.WORKSPACE_DIR", tmp_path),
-            patch("see_agent.config.SESSIONS_DIR", tmp_path / "sessions"),
-            patch("see_agent.config.LOGS_DIR", tmp_path / "logs"),
-            patch("see_agent.config.SKILLS_DIR", tmp_path / "skills"),
-            patch("see_agent.config.MEMORY_DIR", tmp_path / "memory"),
-        ):
-            config = load_config(profile="opus")
-
-        assert config["llm"]["model"] == "claude-opus"
-        assert config["llm"]["base_url"] == "https://base.example.com/v1"
-        assert config["language"] == "zh"
-
-    def test_profile_not_found(self, tmp_path):
-        """Missing profile raises FileNotFoundError."""
-        profiles_dir = tmp_path / "profiles"
-        profiles_dir.mkdir()
-
-        config_path = tmp_path / "config.json"
-        config_path.write_text(json.dumps({"llm": {"api_key": "k"}}))
-
-        with (
-            patch("see_agent.config.CONFIG_PATH", config_path),
-            patch("see_agent.config.PROFILES_DIR", profiles_dir),
-            patch("see_agent.config.WORKSPACE_DIR", tmp_path),
-            patch("see_agent.config.SESSIONS_DIR", tmp_path / "sessions"),
-            patch("see_agent.config.LOGS_DIR", tmp_path / "logs"),
-            patch("see_agent.config.SKILLS_DIR", tmp_path / "skills"),
-            patch("see_agent.config.MEMORY_DIR", tmp_path / "memory"),
-        ):
-            with pytest.raises(FileNotFoundError, match="Profile not found"):
-                load_config(profile="nonexistent")
-
-    def test_profile_from_config_default(self, tmp_path):
-        """When profile=None but config has 'profile' key, that is used."""
+    def test_env_overrides_config(self, tmp_path):
+        """Environment variables take precedence over config.json."""
         config_path = tmp_path / "config.json"
         config_path.write_text(json.dumps({
             "llm": {"api_key": "k", "model": "base"},
-            "profile": "fast",
         }))
 
-        profiles_dir = tmp_path / "profiles"
-        profiles_dir.mkdir()
-        (profiles_dir / "fast.json").write_text(json.dumps({
-            "llm": {"model": "fast-model"},
-        }))
-
-        with (
-            patch("see_agent.config.CONFIG_PATH", config_path),
-            patch("see_agent.config.PROFILES_DIR", profiles_dir),
-            patch("see_agent.config.WORKSPACE_DIR", tmp_path),
-            patch("see_agent.config.SESSIONS_DIR", tmp_path / "sessions"),
-            patch("see_agent.config.LOGS_DIR", tmp_path / "logs"),
-            patch("see_agent.config.SKILLS_DIR", tmp_path / "skills"),
-            patch("see_agent.config.MEMORY_DIR", tmp_path / "memory"),
-        ):
+        patches = _config_patches(tmp_path)
+        patches.append(patch.dict("os.environ", {"SEE_AGENT_MODEL": "env-model"}))
+        cleanup = _apply_patches(patches)
+        try:
             config = load_config()
-
-        assert config["llm"]["model"] == "fast-model"
-
-    def test_env_overrides_profile(self, tmp_path):
-        """Environment variables take precedence over profile values."""
-        config_path = tmp_path / "config.json"
-        config_path.write_text(json.dumps({"llm": {"api_key": "k", "model": "base"}}))
-
-        profiles_dir = tmp_path / "profiles"
-        profiles_dir.mkdir()
-        (profiles_dir / "p.json").write_text(json.dumps({
-            "llm": {"model": "profile-model"},
-        }))
-
-        with (
-            patch("see_agent.config.CONFIG_PATH", config_path),
-            patch("see_agent.config.PROFILES_DIR", profiles_dir),
-            patch("see_agent.config.WORKSPACE_DIR", tmp_path),
-            patch("see_agent.config.SESSIONS_DIR", tmp_path / "sessions"),
-            patch("see_agent.config.LOGS_DIR", tmp_path / "logs"),
-            patch("see_agent.config.SKILLS_DIR", tmp_path / "skills"),
-            patch("see_agent.config.MEMORY_DIR", tmp_path / "memory"),
-            patch.dict("os.environ", {"SEE_AGENT_MODEL": "env-model"}),
-        ):
-            config = load_config(profile="p")
+        finally:
+            cleanup()
 
         assert config["llm"]["model"] == "env-model"
+
+    def test_defaults_applied(self, tmp_path):
+        """Missing keys are filled from DEFAULT_CONFIG."""
+        config_path = tmp_path / "config.json"
+        config_path.write_text(json.dumps({"llm": {"api_key": "k"}}))
+
+        cleanup = _apply_patches(_config_patches(tmp_path))
+        try:
+            config = load_config()
+        finally:
+            cleanup()
+
+        assert "max_steps" in config
+        assert "memory" in config
 
 
 class TestWorkspaceDirs:
@@ -152,18 +105,11 @@ class TestWorkspaceDirs:
         """ensure_workspace creates agents/ and teams/ directories."""
         from see_agent.config import ensure_workspace
 
-        with (
-            patch("see_agent.config.WORKSPACE_DIR", tmp_path),
-            patch("see_agent.config.CONFIG_PATH", tmp_path / "config.json"),
-            patch("see_agent.config.SESSIONS_DIR", tmp_path / "sessions"),
-            patch("see_agent.config.LOGS_DIR", tmp_path / "logs"),
-            patch("see_agent.config.PROFILES_DIR", tmp_path / "profiles"),
-            patch("see_agent.config.SKILLS_DIR", tmp_path / "skills"),
-            patch("see_agent.config.MEMORY_DIR", tmp_path / "memory"),
-            patch("see_agent.config.AGENTS_DIR", tmp_path / "agents"),
-            patch("see_agent.config.TEAMS_DIR", tmp_path / "teams"),
-        ):
+        cleanup = _apply_patches(_config_patches(tmp_path))
+        try:
             ensure_workspace()
+        finally:
+            cleanup()
 
         assert (tmp_path / "agents").is_dir()
         assert (tmp_path / "teams").is_dir()
@@ -189,18 +135,13 @@ class TestLoadAgentConfig:
             "max_steps": 50,
         }))
 
-        with (
-            patch("see_agent.config.AGENTS_DIR", agents_dir),
-            patch("see_agent.config.CONFIG_PATH", config_path),
-            patch("see_agent.config.WORKSPACE_DIR", tmp_path),
-            patch("see_agent.config.SESSIONS_DIR", tmp_path / "sessions"),
-            patch("see_agent.config.LOGS_DIR", tmp_path / "logs"),
-            patch("see_agent.config.PROFILES_DIR", tmp_path / "profiles"),
-            patch("see_agent.config.SKILLS_DIR", tmp_path / "skills"),
-            patch("see_agent.config.MEMORY_DIR", tmp_path / "memory"),
-            patch("see_agent.config.TEAMS_DIR", tmp_path / "teams"),
-        ):
+        patches = _config_patches(tmp_path)
+        patches.append(patch("see_agent.config.AGENTS_DIR", agents_dir))
+        cleanup = _apply_patches(patches)
+        try:
             config = load_agent_config("test-agent")
+        finally:
+            cleanup()
 
         assert config["max_steps"] == 99
         assert config["llm"]["model"] == "base"

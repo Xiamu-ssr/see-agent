@@ -46,6 +46,9 @@ class TeamManager:
         self._team_dir = TEAMS_DIR / team_def.id
         self._team_dir.mkdir(parents=True, exist_ok=True)
 
+        # Create team-level subdirectories.
+        (self._team_dir / "shared").mkdir(exist_ok=True)
+
         self._bus = TeamBus(self._team_dir)
         self._board = TaskBoard(self._team_dir)
         self._screen_lock = asyncio.Lock()
@@ -194,11 +197,16 @@ class TeamManager:
         team_context = self._build_team_context(agent_id)
         config = {**config, "_team_context": team_context}
 
-        # Agent-scoped sessions directory.
-        session_root = (
-            self._team_dir / "agents" / agent_id / "sessions"
-        )
-        session_root.mkdir(parents=True, exist_ok=True)
+        # Agent-scoped directories.
+        agent_base = self._team_dir / "agents" / agent_id
+        session_root = agent_base / "sessions"
+        for subdir in ("sessions", "workspace", "memory", "logs"):
+            (agent_base / subdir).mkdir(parents=True, exist_ok=True)
+
+        # Agent-scoped FileMemory.
+        from see_agent.memory.file_backend import FileMemory
+
+        memory = FileMemory(memory_dir=agent_base / "memory")
 
         loop = AgentLoop(
             brain=brain,
@@ -209,6 +217,7 @@ class TeamManager:
             session_root=session_root,
             team_bus=self._bus,
             screen_lock=self._screen_lock,
+            memory=memory,
         )
         return loop
 

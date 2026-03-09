@@ -5,7 +5,6 @@ import logging
 import logging.handlers
 import os
 import shutil
-import warnings
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -26,8 +25,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "show_overlay": True,
     "scaling_enabled": True,
     "scaling_match": "aspect_ratio",
-    "soul_path": "~/.see-agent/SOUL.md",
-    "profile": None,
+    "soul_path": None,
     "skills_dirs": ["~/.see-agent/skills", "~/.openclaw/skills"],
     "context_engine": "legacy",
     "memory": {
@@ -56,9 +54,7 @@ WORKSPACE_DIR = Path.home() / ".see-agent"
 CONFIG_PATH = WORKSPACE_DIR / "config.json"
 SESSIONS_DIR = WORKSPACE_DIR / "sessions"
 LOGS_DIR = WORKSPACE_DIR / "logs"
-PROFILES_DIR = WORKSPACE_DIR / "profiles"
 SKILLS_DIR = WORKSPACE_DIR / "skills"
-MEMORY_DIR = WORKSPACE_DIR / "memory"
 AGENTS_DIR = WORKSPACE_DIR / "agents"
 TEAMS_DIR = WORKSPACE_DIR / "teams"
 
@@ -71,9 +67,7 @@ def ensure_workspace() -> None:
     WORKSPACE_DIR.mkdir(parents=True, exist_ok=True)
     SESSIONS_DIR.mkdir(exist_ok=True)
     LOGS_DIR.mkdir(exist_ok=True)
-    PROFILES_DIR.mkdir(exist_ok=True)
     SKILLS_DIR.mkdir(exist_ok=True)
-    MEMORY_DIR.mkdir(exist_ok=True)
     AGENTS_DIR.mkdir(exist_ok=True)
     TEAMS_DIR.mkdir(exist_ok=True)
 
@@ -106,14 +100,8 @@ def _deep_merge(base: dict[str, Any], overlay: dict[str, Any]) -> dict[str, Any]
     return result
 
 
-def load_config(profile: str | None = None) -> dict[str, Any]:
-    """Load configuration with priority: DEFAULT → config.json → profile → env vars.
-
-    Parameters:
-        profile: Optional profile name.  Looks for
-            ``~/.see-agent/profiles/{profile}.json`` and merges it on top of
-            the base config.  ``None`` means no profile overlay.
-    """
+def load_config() -> dict[str, Any]:
+    """Load configuration with priority: DEFAULT → config.json → env vars."""
     ensure_workspace()
 
     if CONFIG_PATH.exists():
@@ -124,29 +112,6 @@ def load_config(profile: str | None = None) -> dict[str, Any]:
 
     # Apply defaults for missing keys (deep merge with DEFAULT_CONFIG as base).
     config = _deep_merge(DEFAULT_CONFIG, config)
-
-    # If no explicit profile, check config-level default.
-    if profile is None:
-        profile = config.get("profile")
-
-    if profile is not None:
-        warnings.warn(
-            "Profiles are deprecated and will be removed in v3.0. "
-            "Use agent definitions instead: see-agent agent create <id>",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-
-    # Profile overlay
-    if profile is not None:
-        profile_path = PROFILES_DIR / f"{profile}.json"
-        if not profile_path.exists():
-            raise FileNotFoundError(
-                f"Profile not found: {profile_path}"
-            )
-        with open(profile_path) as f:
-            profile_data = json.load(f)
-        config = _deep_merge(config, profile_data)
 
     # Environment variable overrides (highest priority)
     env_base_url = os.environ.get("SEE_AGENT_BASE_URL")

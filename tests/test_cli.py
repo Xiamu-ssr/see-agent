@@ -23,9 +23,7 @@ def _workspace_patches(tmp_path):
         patch("see_agent.config.CONFIG_PATH", tmp_path / "config.json"),
         patch("see_agent.config.SESSIONS_DIR", tmp_path / "sessions"),
         patch("see_agent.config.LOGS_DIR", tmp_path / "logs"),
-        patch("see_agent.config.PROFILES_DIR", tmp_path / "profiles"),
         patch("see_agent.config.SKILLS_DIR", tmp_path / "skills"),
-        patch("see_agent.config.MEMORY_DIR", tmp_path / "memory"),
         patch("see_agent.config.AGENTS_DIR", tmp_path / "agents"),
         patch("see_agent.config.TEAMS_DIR", tmp_path / "teams"),
     ]
@@ -45,7 +43,7 @@ def _apply_patches(patches):
 
 def _setup_workspace(tmp_path, config_data=None):
     """Create a minimal workspace with config.json."""
-    for d in ["sessions", "logs", "profiles", "skills", "memory", "agents", "teams"]:
+    for d in ["sessions", "logs", "skills", "agents", "teams"]:
         (tmp_path / d).mkdir(parents=True, exist_ok=True)
     if config_data is None:
         config_data = {
@@ -227,28 +225,15 @@ class TestSessionsCommands:
 class TestConfigCommands:
     """Tests for config show command."""
 
-    def test_config_show_with_profile(self, tmp_path):
-        """config show --profile loads profile overlay."""
-        _setup_workspace(tmp_path)
-        (tmp_path / "profiles" / "opus.json").write_text(
-            json.dumps({"llm": {"model": "claude-opus"}})
-        )
-        patches = _workspace_patches(tmp_path)
-        cleanup = _apply_patches(patches)
-        try:
-            result = runner.invoke(app, ["config", "show", "--profile", "opus"])
-            assert "claude-opus" in result.output
-        finally:
-            cleanup()
-
-    def test_config_show_nonexistent_profile(self, tmp_path):
-        """config show --profile ghost exits with error."""
+    def test_config_show(self, tmp_path):
+        """config show displays configuration."""
         _setup_workspace(tmp_path)
         patches = _workspace_patches(tmp_path)
         cleanup = _apply_patches(patches)
         try:
-            result = runner.invoke(app, ["config", "show", "--profile", "ghost"])
-            assert result.exit_code != 0
+            result = runner.invoke(app, ["config", "show"])
+            assert result.exit_code == 0
+            assert "llm" in result.output
         finally:
             cleanup()
 

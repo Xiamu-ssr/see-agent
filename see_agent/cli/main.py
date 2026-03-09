@@ -389,12 +389,11 @@ async def _on_user_input_async(question: str) -> str:
 @app.command()
 def serve(
     port: int = typer.Option(8000, "--port", "-p", help="Port to listen on."),
-    profile: str | None = typer.Option(None, "--profile", "-P", help="Configuration profile."),
 ) -> None:
     """Start the see-agent API server (FastAPI + WebSocket)."""
     ensure_workspace()
     setup_logging()
-    config = load_config(profile=profile)
+    config = load_config()
     _validate_api_key(config)
 
     typer.echo(f"Starting see-agent server on 0.0.0.0:{port} ...")
@@ -404,51 +403,14 @@ def serve(
     uvicorn.run("see_agent.server.app:app", host="0.0.0.0", port=port, reload=False)
 
 
-@app.command(hidden=True)
-def chat(
-    no_overlay: bool = typer.Option(False, "--no-overlay", help="Disable visual overlay."),
-    no_scaling: bool = typer.Option(False, "--no-scaling", help="Disable coordinate scaling."),
-    profile: str | None = typer.Option(None, "--profile", "-P", help="Configuration profile."),
-) -> None:
-    """[Deprecated] Use ``see-agent quick chat`` instead."""
-    import warnings
-
-    warnings.warn(
-        "'see-agent chat' is deprecated, use 'see-agent quick chat'",
-        DeprecationWarning,
-        stacklevel=1,
-    )
-    quick_chat(no_overlay=no_overlay, no_scaling=no_scaling, profile=profile)
-
-
-@app.command(hidden=True)
-def run(
-    task: str = typer.Argument(..., help="Task description to execute."),
-    no_overlay: bool = typer.Option(False, "--no-overlay", help="Disable visual overlay."),
-    no_scaling: bool = typer.Option(False, "--no-scaling", help="Disable coordinate scaling."),
-    profile: str | None = typer.Option(None, "--profile", "-P", help="Configuration profile."),
-) -> None:
-    """[Deprecated] Use ``see-agent quick run`` instead."""
-    import warnings
-
-    warnings.warn(
-        "'see-agent run' is deprecated, use 'see-agent quick run'",
-        DeprecationWarning,
-        stacklevel=1,
-    )
-    quick_run(task=task, no_overlay=no_overlay, no_scaling=no_scaling, profile=profile)
-
-
 # ---------------------------------------------------------------------------
 # Config sub-commands
 # ---------------------------------------------------------------------------
 
 @config_app.command("show")
-def config_show(
-    profile: str | None = typer.Option(None, "--profile", "-P", help="Configuration profile."),
-) -> None:
+def config_show() -> None:
     """Pretty-print the current configuration (API key masked)."""
-    config = load_config(profile=profile)
+    config = load_config()
 
     # Mask the API key for display
     display = json.loads(json.dumps(config))  # deep copy
@@ -586,12 +548,11 @@ def resume(
     last: bool = typer.Option(False, "--last", help="Resume the most recent session."),
     no_overlay: bool = typer.Option(False, "--no-overlay", help="Disable visual overlay."),
     no_scaling: bool = typer.Option(False, "--no-scaling", help="Disable coordinate scaling."),
-    profile: str | None = typer.Option(None, "--profile", "-P", help="Configuration profile."),
 ) -> None:
     """Resume a previous session."""
     ensure_workspace()
     setup_logging()
-    config = load_config(profile=profile)
+    config = load_config()
     _validate_api_key(config)
 
     from see_agent.session import SessionStore
@@ -645,11 +606,10 @@ def _format_elapsed(seconds: float) -> str:
 
 @mcp_app.command("list")
 def mcp_list(
-    profile: str | None = typer.Option(None, "--profile", "-P", help="Configuration profile."),
     check: bool = typer.Option(False, "--check", help="Try connecting and report health."),
 ) -> None:
     """List configured MCP servers."""
-    config = load_config(profile=profile)
+    config = load_config()
     servers = config.get("mcp_servers", {})
     if not servers:
         typer.echo("No MCP servers configured.")
@@ -818,13 +778,32 @@ def agent_create(
     role: str = typer.Option(
         "general assistant", "--role", "-r", help="Agent role description.",
     ),
+    model: str | None = typer.Option(None, "--model", help="Override LLM model."),
+    max_steps: int | None = typer.Option(None, "--max-steps", help="Override max steps."),
+    deny_tools: str | None = typer.Option(
+        None, "--deny-tools", help="Comma-separated tool names to deny.",
+    ),
 ) -> None:
     """Create a new agent definition."""
     ensure_workspace()
     from see_agent.agent.definition import AgentDefinition
 
     display_name = name or agent_id
-    AgentDefinition.create(agent_id, name=display_name, role=role)
+    config_overrides: dict[str, Any] = {}
+    if model:
+        config_overrides["llm"] = {"model": model}
+    if max_steps is not None:
+        config_overrides["max_steps"] = max_steps
+
+    tools_config: dict[str, Any] = {}
+    if deny_tools:
+        tools_config["denied"] = [t.strip() for t in deny_tools.split(",") if t.strip()]
+
+    AgentDefinition.create(
+        agent_id, name=display_name, role=role,
+        config_overrides=config_overrides,
+        tools_config=tools_config,
+    )
     typer.echo(f"Created agent: {agent_id}")
 
 
@@ -943,14 +922,11 @@ def team_status(
 def team_run(
     team_id: str = typer.Argument(..., help="Team ID."),
     task: str = typer.Argument(..., help="Task description."),
-    profile: str | None = typer.Option(
-        None, "--profile", "-P", help="Configuration profile.",
-    ),
 ) -> None:
     """Run a task with a team."""
     ensure_workspace()
     setup_logging()
-    config = load_config(profile=profile)
+    config = load_config()
     _validate_api_key(config)
 
     from see_agent.team.definition import TeamDefinition
@@ -1003,14 +979,11 @@ def quick_run(
     no_scaling: bool = typer.Option(
         False, "--no-scaling", help="Disable coordinate scaling.",
     ),
-    profile: str | None = typer.Option(
-        None, "--profile", "-P", help="Configuration profile.",
-    ),
 ) -> None:
     """Quick single-task execution."""
     ensure_workspace()
     setup_logging()
-    config = load_config(profile=profile)
+    config = load_config()
     _validate_api_key(config)
 
     loop = _build_components(
@@ -1037,14 +1010,11 @@ def quick_chat(
     no_scaling: bool = typer.Option(
         False, "--no-scaling", help="Disable coordinate scaling.",
     ),
-    profile: str | None = typer.Option(
-        None, "--profile", "-P", help="Configuration profile.",
-    ),
 ) -> None:
     """Quick interactive chat mode."""
     ensure_workspace()
     setup_logging()
-    config = load_config(profile=profile)
+    config = load_config()
     _validate_api_key(config)
 
     from see_agent.session import SessionStore

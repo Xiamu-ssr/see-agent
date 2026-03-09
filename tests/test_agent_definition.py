@@ -95,9 +95,7 @@ class TestAgentDefinition:
             patch("see_agent.config.WORKSPACE_DIR", tmp_path),
             patch("see_agent.config.SESSIONS_DIR", tmp_path / "sessions"),
             patch("see_agent.config.LOGS_DIR", tmp_path / "logs"),
-            patch("see_agent.config.PROFILES_DIR", tmp_path / "profiles"),
             patch("see_agent.config.SKILLS_DIR", tmp_path / "skills"),
-            patch("see_agent.config.MEMORY_DIR", tmp_path / "memory"),
             patch("see_agent.config.AGENTS_DIR", agents_dir),
             patch("see_agent.config.TEAMS_DIR", tmp_path / "teams"),
         ):

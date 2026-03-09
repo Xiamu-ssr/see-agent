@@ -25,9 +25,9 @@ class FileMemory(BaseMemory):
 
     def __init__(self, memory_dir: Path | None = None) -> None:
         if memory_dir is None:
-            from see_agent.config import MEMORY_DIR
+            from see_agent.config import WORKSPACE_DIR
 
-            memory_dir = MEMORY_DIR
+            memory_dir = WORKSPACE_DIR / "memory"
         self._dir = memory_dir
         self._dir.mkdir(parents=True, exist_ok=True)
 

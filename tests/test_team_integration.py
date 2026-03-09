@@ -152,6 +152,13 @@ class TestTeamIntegration:
         # Can't call _build_agent_loop without real MacEye, but verify field.
         assert hasattr(mgr, "_shared_eye")
 
+    def test_shared_dir_created(self, workspace):
+        """TeamManager.__init__ creates a shared/ dir under team dir."""
+        team_def = TeamDefinition.create("T", ["alice"])
+        TeamManager(team_def, FAKE_CONFIG)
+        teams_dir = workspace / "teams"
+        assert (teams_dir / team_def.id / "shared").is_dir()
+
     def test_screen_lock_created(self, workspace):
         """TeamManager creates an asyncio.Lock for screen coordination."""
         import asyncio
