@@ -14,7 +14,6 @@ from __future__ import annotations
 import asyncio
 import importlib
 import json
-import shutil
 import subprocess
 import sys
 from typing import Any
@@ -374,7 +373,6 @@ def chat(
 
     from see_agent.session import SessionStore
 
-    loop = _build_components(config, no_overlay=no_overlay, no_scaling=no_scaling)
     session = SessionStore.create("interactive-chat", config)
 
     typer.echo("\U0001f916 see-agent v0.1 已启动")
@@ -392,6 +390,13 @@ def chat(
 
             if not task:
                 continue
+
+            # Create a fresh queue per task (asyncio.run creates new loop).
+            user_queue: asyncio.Queue[str] = asyncio.Queue()
+            loop = _build_components(
+                config, no_overlay=no_overlay, no_scaling=no_scaling,
+                user_queue=user_queue,
+            )
 
             result: RunResult = asyncio.run(loop.run(task, session_id=session.id))
             _print_task_result(result)
@@ -752,11 +757,7 @@ def setup_install(
         extras.append("dev")
 
     spec = ",".join(extras)
-    installer = "uv" if shutil.which("uv") else "pip"
-    if installer == "uv":
-        cmd = ["uv", "pip", "install", "-e", f".[{spec}]"]
-    else:
-        cmd = [sys.executable, "-m", "pip", "install", "-e", f".[{spec}]"]
+    cmd = [sys.executable, "-m", "pip", "install", "-e", f".[{spec}]"]
 
     typer.echo(f"Running: {' '.join(cmd)}")
     result = subprocess.run(cmd, check=False)

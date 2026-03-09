@@ -231,8 +231,7 @@ class AgentLoop:
             "Context compaction triggered: ~%d tokens (threshold %d)",
             estimated, threshold,
         )
-        # Keep system + last 4 messages; summarize the rest.
-        keep_recent = 4
+        keep_recent = compact_cfg.get("keep_recent", 8)
         if len(messages) <= keep_recent + 2:
             return  # Not enough to compact.
 
@@ -246,12 +245,11 @@ class AgentLoop:
             logger.warning("Summarization failed, skipping compaction", exc_info=True)
             return
 
-        # Determine first_kept_msg_id from the recent messages in JSONL.
-        first_kept_msg_id = 0
-        if hasattr(session, '_msg_counter'):
-            first_kept_msg_id = max(session._msg_counter - keep_recent, 0)
-
         ctx.apply_compaction(summary, keep_recent=keep_recent)
+
+        # Determine first_kept_msg_id: the msg_counter at the time of
+        # compaction minus the number of kept messages gives the cutoff.
+        first_kept_msg_id = max(session._msg_counter - keep_recent, 0)
 
         # Persist compact marker to JSONL.
         session.append_message({
@@ -397,6 +395,10 @@ class AgentLoop:
             return await self._run_loop(
                 session, ctx, scaled, step_offset, t0,
             )
+        except Exception:
+            # Save memory on unexpected crashes so partial work is preserved.
+            self._save_memory(ctx, session.id)
+            raise
         finally:
             session.teardown_logging()
 
@@ -459,7 +461,21 @@ class AgentLoop:
             if not response.tool_calls:
                 logger.info("No tool calls returned -- ending loop")
                 ctx.add_assistant(response.raw)
-                break
+                summary = thought or "Task completed (no tool calls)."
+                final_step = step
+                elapsed = time.monotonic() - t0
+                session.update_meta(
+                    status="completed", total_steps=final_step,
+                    elapsed_seconds=round(elapsed, 1), summary=summary,
+                )
+                self._save_memory(ctx, session.id)
+                return RunResult(
+                    summary=summary,
+                    task_dir=str(session.dir),
+                    total_steps=final_step,
+                    elapsed_seconds=elapsed,
+                    session_id=session.id,
+                )
 
             # Append the full assistant message (may include text + tool_calls).
             ctx.add_assistant(response.raw)

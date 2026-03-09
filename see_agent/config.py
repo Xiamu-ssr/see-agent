@@ -43,6 +43,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "enabled": False,
         "context_window": 128000,
         "target_ratio": 0.75,
+        "keep_recent": 8,
         "summary_model": "",
     },
     "env": {},

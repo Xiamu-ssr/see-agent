@@ -252,7 +252,7 @@ class ConversationContext:
         else:
             recent = self._messages[1:]
         summary_msg: dict[str, Any] = {
-            "role": "user",
+            "role": "system",
             "content": f"[Conversation Summary]\n{summary}",
         }
         self._messages = [system, summary_msg] + recent
@@ -263,7 +263,7 @@ class ConversationContext:
     def inject_summary(self, summary: str) -> None:
         """Insert a summary message at index 1 (for session resume)."""
         summary_msg: dict[str, Any] = {
-            "role": "user",
+            "role": "system",
             "content": f"[Conversation Summary]\n{summary}",
         }
         self._messages.insert(1, summary_msg)
