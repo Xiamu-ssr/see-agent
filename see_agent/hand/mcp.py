@@ -225,7 +225,7 @@ class MCPManager:
                         client=client,
                     )
                     try:
-                        registry.register(wrapper)
+                        registry.register(wrapper, source="mcp")
                         logger.info("Registered MCP tool: %s", wrapper.name)
                     except ValueError:
                         logger.warning("Duplicate MCP tool name: %s", wrapper.name)

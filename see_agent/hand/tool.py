@@ -111,13 +111,15 @@ class ToolRegistry:
 
     def __init__(self) -> None:
         self._tools: dict[str, Tool] = {}
+        self._sources: dict[str, str] = {}
 
-    def register(self, tool: Tool) -> None:
+    def register(self, tool: Tool, *, source: str = "builtin") -> None:
         """Register a tool instance.  Raises ``ValueError`` on duplicate names."""
         if tool.name in self._tools:
             raise ValueError(f"Tool '{tool.name}' is already registered")
         self._tools[tool.name] = tool
-        logger.debug("Registered tool: %s", tool.name)
+        self._sources[tool.name] = source
+        logger.debug("Registered tool: %s (source=%s)", tool.name, source)
 
     def get(self, name: str) -> Tool:
         """Return the tool with the given *name*.
@@ -129,9 +131,38 @@ class ToolRegistry:
         except KeyError:
             raise KeyError(f"Unknown tool: '{name}'") from None
 
+    def get_filtered(
+        self,
+        *,
+        allowed: list[str] | None = None,
+        denied: list[str] | None = None,
+    ) -> list[Tool]:
+        """Return tools matching *allowed*/*denied* filter.
+
+        ``None`` means no filter for that parameter.  *allowed* is checked
+        first (whitelist), then *denied* (blacklist).
+        """
+        tools = list(self._tools.values())
+        if allowed is not None:
+            allow_set = set(allowed)
+            tools = [t for t in tools if t.name in allow_set]
+        if denied is not None:
+            deny_set = set(denied)
+            tools = [t for t in tools if t.name not in deny_set]
+        return tools
+
     def get_openai_schemas(self) -> list[dict[str, Any]]:
         """Return OpenAI function-calling definitions for all registered tools."""
         return [tool.to_openai_schema() for tool in self._tools.values()]
+
+    def get_openai_schemas_filtered(
+        self,
+        *,
+        allowed: list[str] | None = None,
+        denied: list[str] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Return OpenAI schemas for tools matching *allowed*/*denied* filter."""
+        return [t.to_openai_schema() for t in self.get_filtered(allowed=allowed, denied=denied)]
 
     async def execute(self, name: str, args: dict[str, Any]) -> ToolResult:
         """Look up the tool by *name* and execute it with *args*.

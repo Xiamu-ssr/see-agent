@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 import pytest
 
-from see_agent.config import _deep_merge, load_config
+from see_agent.config import _deep_merge, load_agent_config, load_config
 
 
 class TestDeepMerge:
@@ -143,3 +143,72 @@ class TestLoadConfigWithProfile:
             config = load_config(profile="p")
 
         assert config["llm"]["model"] == "env-model"
+
+
+class TestWorkspaceDirs:
+    """Tests for AGENTS_DIR and TEAMS_DIR."""
+
+    def test_agents_teams_dirs_created(self, tmp_path):
+        """ensure_workspace creates agents/ and teams/ directories."""
+        from see_agent.config import ensure_workspace
+
+        with (
+            patch("see_agent.config.WORKSPACE_DIR", tmp_path),
+            patch("see_agent.config.CONFIG_PATH", tmp_path / "config.json"),
+            patch("see_agent.config.SESSIONS_DIR", tmp_path / "sessions"),
+            patch("see_agent.config.LOGS_DIR", tmp_path / "logs"),
+            patch("see_agent.config.PROFILES_DIR", tmp_path / "profiles"),
+            patch("see_agent.config.SKILLS_DIR", tmp_path / "skills"),
+            patch("see_agent.config.MEMORY_DIR", tmp_path / "memory"),
+            patch("see_agent.config.AGENTS_DIR", tmp_path / "agents"),
+            patch("see_agent.config.TEAMS_DIR", tmp_path / "teams"),
+        ):
+            ensure_workspace()
+
+        assert (tmp_path / "agents").is_dir()
+        assert (tmp_path / "teams").is_dir()
+
+
+class TestLoadAgentConfig:
+    """Tests for load_agent_config."""
+
+    def test_agent_config_inheritance(self, tmp_path):
+        """Agent config_overrides merge on top of global config."""
+        agents_dir = tmp_path / "agents"
+        agent_dir = agents_dir / "test-agent"
+        agent_dir.mkdir(parents=True)
+        (agent_dir / "agent.json").write_text(json.dumps({
+            "id": "test-agent",
+            "name": "Test Agent",
+            "config_overrides": {"max_steps": 99},
+        }))
+
+        config_path = tmp_path / "config.json"
+        config_path.write_text(json.dumps({
+            "llm": {"api_key": "k", "model": "base"},
+            "max_steps": 50,
+        }))
+
+        with (
+            patch("see_agent.config.AGENTS_DIR", agents_dir),
+            patch("see_agent.config.CONFIG_PATH", config_path),
+            patch("see_agent.config.WORKSPACE_DIR", tmp_path),
+            patch("see_agent.config.SESSIONS_DIR", tmp_path / "sessions"),
+            patch("see_agent.config.LOGS_DIR", tmp_path / "logs"),
+            patch("see_agent.config.PROFILES_DIR", tmp_path / "profiles"),
+            patch("see_agent.config.SKILLS_DIR", tmp_path / "skills"),
+            patch("see_agent.config.MEMORY_DIR", tmp_path / "memory"),
+            patch("see_agent.config.TEAMS_DIR", tmp_path / "teams"),
+        ):
+            config = load_agent_config("test-agent")
+
+        assert config["max_steps"] == 99
+        assert config["llm"]["model"] == "base"
+
+    def test_agent_not_found(self, tmp_path):
+        agents_dir = tmp_path / "agents"
+        agents_dir.mkdir()
+
+        with patch("see_agent.config.AGENTS_DIR", agents_dir):
+            with pytest.raises(FileNotFoundError):
+                load_agent_config("nonexistent")

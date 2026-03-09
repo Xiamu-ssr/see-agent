@@ -83,10 +83,13 @@ class Mem0Memory(BaseMemory):
         self._mem = Memory.from_config(mem0_config) if mem0_config else Memory()
         self._user_id = user_id
 
-    def search(self, query: str, limit: int = 5) -> list[str]:
+    def search(self, query: str, limit: int = 5, agent_id: str | None = None) -> list[str]:
         """Search mem0 for relevant memories."""
         try:
-            results = self._mem.search(query, user_id=self._user_id, limit=limit)
+            kwargs: dict[str, Any] = {"user_id": self._user_id, "limit": limit}
+            if agent_id:
+                kwargs["metadata"] = {"agent_id": agent_id}
+            results = self._mem.search(query, **kwargs)
             if isinstance(results, dict) and "results" in results:
                 results = results["results"]
             return [
@@ -97,13 +100,16 @@ class Mem0Memory(BaseMemory):
             logger.exception("mem0 search failed")
             return []
 
-    def add(self, messages: list[dict], session_id: str) -> None:
+    def add(self, messages: list[dict], session_id: str, agent_id: str | None = None) -> None:
         """Add conversation messages to mem0."""
         try:
+            metadata: dict[str, str] = {"session_id": session_id}
+            if agent_id:
+                metadata["agent_id"] = agent_id
             self._mem.add(
                 messages,
                 user_id=self._user_id,
-                metadata={"session_id": session_id},
+                metadata=metadata,
             )
         except Exception:
             logger.exception("mem0 add failed")

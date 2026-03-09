@@ -18,6 +18,7 @@ def build_system_prompt(
     *,
     skills: list[SkillInfo] | None = None,
     memory_block: str = "",
+    team_context: str = "",
 ) -> str:
     """Build the full system prompt from *config*.
 
@@ -29,6 +30,7 @@ def build_system_prompt(
             - ``soul_path`` (str | None, optional path to personality file)
         skills: Optional list of loaded skill definitions to inject.
         memory_block: Optional pre-formatted memory text to inject.
+        team_context: Optional team context block for multi-agent collaboration.
 
     Returns:
         The assembled system prompt string.
@@ -157,6 +159,10 @@ def build_system_prompt(
     # ── Memory (optional) ─────────────────────────────────────────────
     if memory_block:
         parts.append(f"<MEMORY>\n{memory_block}\n</MEMORY>")
+
+    # ── Team context (optional, for multi-agent collaboration) ────────
+    if team_context:
+        parts.append(f"<TEAM_CONTEXT>\n{team_context}\n</TEAM_CONTEXT>")
 
     # ── Personality (optional, from soul_path file) ───────────────────
     soul_path: str | None = config.get("soul_path")

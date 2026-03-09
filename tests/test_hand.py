@@ -103,6 +103,45 @@ class TestToolRegistry:
         assert retrieved is tool
         assert retrieved.name == "dummy"
 
+    def test_register_with_source(self):
+        """register() records the source tag."""
+        registry = ToolRegistry()
+        registry.register(DummyTool(), source="mcp")
+        assert registry._sources["dummy"] == "mcp"
+
+    def test_register_default_source(self):
+        """Default source is 'builtin'."""
+        registry = ToolRegistry()
+        registry.register(DummyTool())
+        assert registry._sources["dummy"] == "builtin"
+
+    def test_get_filtered_allowed(self):
+        """get_filtered with allowed returns only whitelisted tools."""
+        registry = ToolRegistry()
+        registry.register(DummyTool())
+        registry.register(AnotherTool())
+        filtered = registry.get_filtered(allowed=["dummy"])
+        assert len(filtered) == 1
+        assert filtered[0].name == "dummy"
+
+    def test_get_filtered_denied(self):
+        """get_filtered with denied excludes blacklisted tools."""
+        registry = ToolRegistry()
+        registry.register(DummyTool())
+        registry.register(AnotherTool())
+        filtered = registry.get_filtered(denied=["dummy"])
+        assert len(filtered) == 1
+        assert filtered[0].name == "another"
+
+    def test_get_openai_schemas_filtered(self):
+        """get_openai_schemas_filtered respects allowed/denied."""
+        registry = ToolRegistry()
+        registry.register(DummyTool())
+        registry.register(AnotherTool())
+        schemas = registry.get_openai_schemas_filtered(allowed=["another"])
+        assert len(schemas) == 1
+        assert schemas[0]["function"]["name"] == "another"
+
     def test_registry_duplicate(self):
         """Registering a tool with the same name twice raises ValueError."""
         registry = ToolRegistry()

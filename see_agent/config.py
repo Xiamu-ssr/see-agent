@@ -28,9 +28,10 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "soul_path": "~/.see-agent/SOUL.md",
     "profile": None,
     "skills_dirs": ["~/.see-agent/skills", "~/.openclaw/skills"],
+    "context_engine": "legacy",
     "memory": {
         "enabled": False,
-        "provider": "mem0",
+        "provider": "file",
         "mem0": {
             "llm_base_url": "",
             "llm_api_key": "",
@@ -57,6 +58,8 @@ LOGS_DIR = WORKSPACE_DIR / "logs"
 PROFILES_DIR = WORKSPACE_DIR / "profiles"
 SKILLS_DIR = WORKSPACE_DIR / "skills"
 MEMORY_DIR = WORKSPACE_DIR / "memory"
+AGENTS_DIR = WORKSPACE_DIR / "agents"
+TEAMS_DIR = WORKSPACE_DIR / "teams"
 
 # Path to bundled workspace templates
 _TEMPLATE_DIR = Path(__file__).parent.parent / "workspace"
@@ -70,6 +73,8 @@ def ensure_workspace() -> None:
     PROFILES_DIR.mkdir(exist_ok=True)
     SKILLS_DIR.mkdir(exist_ok=True)
     MEMORY_DIR.mkdir(exist_ok=True)
+    AGENTS_DIR.mkdir(exist_ok=True)
+    TEAMS_DIR.mkdir(exist_ok=True)
 
     if not CONFIG_PATH.exists():
         CONFIG_PATH.write_text(json.dumps(DEFAULT_CONFIG, indent=4, ensure_ascii=False))
@@ -157,6 +162,25 @@ def save_config(config: dict[str, Any]) -> None:
     ensure_workspace()
     with open(CONFIG_PATH, "w") as f:
         json.dump(config, f, indent=4, ensure_ascii=False)
+
+
+def load_agent_config(agent_id: str) -> dict[str, Any]:
+    """Load merged config for *agent_id*: global → agent.json → env vars.
+
+    Returns the final merged dict.  Raises ``FileNotFoundError`` when the
+    agent directory or ``agent.json`` does not exist.
+    """
+    global_config = load_config()
+    agent_dir = AGENTS_DIR / agent_id
+    agent_json = agent_dir / "agent.json"
+    if not agent_json.exists():
+        raise FileNotFoundError(f"Agent config not found: {agent_json}")
+
+    with open(agent_json) as f:
+        agent_data = json.load(f)
+
+    overrides = agent_data.get("config_overrides", {})
+    return _deep_merge(global_config, overrides)
 
 
 _logging_configured = False

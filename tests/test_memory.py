@@ -9,14 +9,14 @@ class FakeMemory(BaseMemory):
     """In-memory implementation for testing."""
 
     def __init__(self) -> None:
-        self.stored: list[tuple[list[dict], str]] = []
+        self.stored: list[tuple[list[dict], str, str | None]] = []
         self.memories: list[str] = []
 
-    def search(self, query: str, limit: int = 5) -> list[str]:
+    def search(self, query: str, limit: int = 5, agent_id: str | None = None) -> list[str]:
         return self.memories[:limit]
 
-    def add(self, messages: list[dict], session_id: str) -> None:
-        self.stored.append((messages, session_id))
+    def add(self, messages: list[dict], session_id: str, agent_id: str | None = None) -> None:
+        self.stored.append((messages, session_id, agent_id))
 
 
 class TestBaseMemory:
@@ -34,6 +34,19 @@ class TestBaseMemory:
         mem.add(messages, "session-1")
         assert len(mem.stored) == 1
         assert mem.stored[0][1] == "session-1"
+
+    def test_agent_id_param(self):
+        """search/add accept agent_id without error."""
+        mem = FakeMemory()
+        mem.add([{"role": "user", "content": "hi"}], "s1", agent_id="agent-a")
+        assert mem.stored[0][2] == "agent-a"
+        mem.search("hi", agent_id="agent-a")
+
+    def test_clear_default_noop(self):
+        """BaseMemory.clear() is a no-op by default."""
+        mem = FakeMemory()
+        mem.clear()  # should not raise
+        mem.clear(agent_id="x")
 
 
 class TestStripBase64:
