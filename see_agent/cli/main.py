@@ -404,93 +404,39 @@ def serve(
     uvicorn.run("see_agent.server.app:app", host="0.0.0.0", port=port, reload=False)
 
 
-@app.command()
+@app.command(hidden=True)
 def chat(
     no_overlay: bool = typer.Option(False, "--no-overlay", help="Disable visual overlay."),
     no_scaling: bool = typer.Option(False, "--no-scaling", help="Disable coordinate scaling."),
     profile: str | None = typer.Option(None, "--profile", "-P", help="Configuration profile."),
 ) -> None:
-    """Interactive conversation mode — keep asking, keep executing."""
-    ensure_workspace()
-    setup_logging()
-    config = load_config(profile=profile)
-    _validate_api_key(config)
+    """[Deprecated] Use ``see-agent quick chat`` instead."""
+    import warnings
 
-    from see_agent.session import SessionStore
-
-    session = SessionStore.create("interactive-chat", config)
-
-    typer.echo("\U0001f916 see-agent v0.1 已启动")
-    _print_startup_status(config)
-    typer.echo(f"\U0001f4cb 会话 ID: {session.id}")
-    typer.echo("Enter a task description (Ctrl+C to exit).\n")
-
-    try:
-        while True:
-            _flush_stdin()
-            try:
-                task = _safe_input("> ")
-            except EOFError:
-                break
-
-            if not task:
-                continue
-
-            # Create a fresh queue per task (asyncio.run creates new loop).
-            user_queue: asyncio.Queue[str] = asyncio.Queue()
-            loop = _build_components(
-                config, no_overlay=no_overlay, no_scaling=no_scaling,
-                user_queue=user_queue,
-            )
-
-            # Background stdin reader: lets user send messages while agent runs.
-            stop_reader = threading.Event()
-            reader_thread = threading.Thread(
-                target=_stdin_reader_thread,
-                args=(user_queue, stop_reader),
-                daemon=True,
-            )
-            reader_thread.start()
-
-            try:
-                result: RunResult = asyncio.run(loop.run(task, session_id=session.id))
-            finally:
-                stop_reader.set()
-                reader_thread.join(timeout=1.0)
-
-            _print_task_result(result)
-
-    except KeyboardInterrupt:
-        typer.echo("\n\nBye!")
-        raise typer.Exit()
+    warnings.warn(
+        "'see-agent chat' is deprecated, use 'see-agent quick chat'",
+        DeprecationWarning,
+        stacklevel=1,
+    )
+    quick_chat(no_overlay=no_overlay, no_scaling=no_scaling, profile=profile)
 
 
-@app.command()
+@app.command(hidden=True)
 def run(
     task: str = typer.Argument(..., help="Task description to execute."),
     no_overlay: bool = typer.Option(False, "--no-overlay", help="Disable visual overlay."),
     no_scaling: bool = typer.Option(False, "--no-scaling", help="Disable coordinate scaling."),
     profile: str | None = typer.Option(None, "--profile", "-P", help="Configuration profile."),
 ) -> None:
-    """Execute a single task and exit."""
-    ensure_workspace()
-    setup_logging()
-    config = load_config(profile=profile)
-    _validate_api_key(config)
+    """[Deprecated] Use ``see-agent quick run`` instead."""
+    import warnings
 
-    loop = _build_components(config, no_overlay=no_overlay, no_scaling=no_scaling)
-
-    typer.echo(f"\U0001f680 Running task: {task}")
-    _print_startup_status(config)
-    typer.echo()
-
-    try:
-        result: RunResult = asyncio.run(loop.run(task))
-    except KeyboardInterrupt:
-        typer.echo("\n\nTask interrupted.")
-        raise typer.Exit(code=130)
-
-    _print_task_result(result)
+    warnings.warn(
+        "'see-agent run' is deprecated, use 'see-agent quick run'",
+        DeprecationWarning,
+        stacklevel=1,
+    )
+    quick_run(task=task, no_overlay=no_overlay, no_scaling=no_scaling, profile=profile)
 
 
 # ---------------------------------------------------------------------------

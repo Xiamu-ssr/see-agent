@@ -119,6 +119,8 @@ class AgentLoop:
         user_queue: asyncio.Queue[str] | None = None,
         agent_id: str | None = None,
         session_root: "Path | None" = None,
+        team_bus: Any | None = None,
+        screen_lock: asyncio.Lock | None = None,
     ) -> None:
         self._brain = brain
         self._eye = eye
@@ -133,6 +135,8 @@ class AgentLoop:
         self._user_queue = user_queue
         self._agent_id = agent_id
         self._session_root = session_root
+        self._team_bus = team_bus
+        self._screen_lock = screen_lock
 
         # Configurable knobs with sensible defaults.
         self._max_steps: int = int(config.get("max_steps", 50))
@@ -195,6 +199,32 @@ class AgentLoop:
             except asyncio.QueueEmpty:
                 break
         return count
+
+    def _drain_team_bus(self, ctx: ConversationContext) -> int:
+        """Drain team bus messages into context. Returns count."""
+        if self._team_bus is None or self._agent_id is None:
+            return 0
+        count = 0
+        messages = self._team_bus.drain(self._agent_id)
+        for msg in messages:
+            ctx.add_user_reply(f"[teammate {msg.sender}]: {msg.content}")
+            count += 1
+            logger.info("Injected team bus message from %s", msg.sender)
+        return count
+
+    # Tools that interact with the screen and need exclusive access.
+    _SCREEN_TOOLS = frozenset({
+        "screenshot", "click", "type_text", "scroll", "drag", "hotkey",
+    })
+
+    async def _execute_with_lock(
+        self, name: str, args: dict[str, Any],
+    ) -> ToolResult:
+        """Execute a tool, acquiring screen_lock for screen-related tools."""
+        if self._screen_lock is not None and name in self._SCREEN_TOOLS:
+            async with self._screen_lock:
+                return await self._registry.execute(name, args)
+        return await self._registry.execute(name, args)
 
     @staticmethod
     def _estimate_tokens(messages: list[dict[str, Any]]) -> int:
@@ -369,6 +399,7 @@ class AgentLoop:
             self._config,
             skills=skills or None,
             memory_block=memory_block,
+            team_context=self._config.get("_team_context", ""),
         )
         session.log_system_prompt(system_prompt)
         session.setup_logging()
@@ -440,7 +471,10 @@ class AgentLoop:
             # ── 4a. Maybe compact context ────────────────────────────
             await self._maybe_compact(ctx, session)
 
-            # ── 4a2. Drain user queue ─────────────────────────────────
+            # ── 4a2. Drain team bus ──────────────────────────────────
+            self._drain_team_bus(ctx)
+
+            # ── 4a3. Drain user queue ─────────────────────────────────
             self._drain_user_queue(ctx)
 
             # ── 4b. Ask the LLM ──────────────────────────────────────
@@ -573,7 +607,9 @@ class AgentLoop:
                     _show_overlay(self._overlay, tc.name, exec_args)
 
                 try:
-                    result: ToolResult = await self._registry.execute(tc.name, exec_args)
+                    result: ToolResult = await self._execute_with_lock(
+                        tc.name, exec_args,
+                    )
                     consecutive_errors = 0
                 except Exception as exc:
                     consecutive_errors += 1

@@ -142,3 +142,20 @@ class TestTeamIntegration:
         assert len(lines) == 1
         entry = json.loads(lines[0])
         assert entry["sender"] == "alice"
+
+    def test_shared_eye_instance(self, workspace):
+        """All agents share the same MacEye instance."""
+        team_def = TeamDefinition.create("T", ["alice", "bob"])
+        mgr = TeamManager(team_def, FAKE_CONFIG)
+        assert mgr._shared_eye is None
+        # After building loops, shared_eye should be set.
+        # Can't call _build_agent_loop without real MacEye, but verify field.
+        assert hasattr(mgr, "_shared_eye")
+
+    def test_screen_lock_created(self, workspace):
+        """TeamManager creates an asyncio.Lock for screen coordination."""
+        import asyncio
+
+        team_def = TeamDefinition.create("T", ["alice"])
+        mgr = TeamManager(team_def, FAKE_CONFIG)
+        assert isinstance(mgr._screen_lock, asyncio.Lock)

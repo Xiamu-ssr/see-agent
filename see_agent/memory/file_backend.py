@@ -40,7 +40,14 @@ class FileMemory(BaseMemory):
     # ------------------------------------------------------------------ #
 
     def search(self, query: str, limit: int = 5, agent_id: str | None = None) -> list[str]:
-        """Keyword-overlap search across stored memories."""
+        """Keyword-overlap search across stored memories.
+
+        Note: uses whitespace-based tokenization (``str.split()``), which
+        works for English but is ineffective for CJK languages (Chinese,
+        Japanese, Korean) where words are not space-separated.  A future
+        version should integrate a proper tokenizer (e.g. jieba) for
+        Chinese support.
+        """
         entries = self._read_entries()
         if agent_id is not None:
             entries = [e for e in entries if e.get("agent_id") == agent_id]

@@ -89,8 +89,7 @@ class TestTeamManager:
         team_def = TeamDefinition.create("T", ["a"], leader="a")
         mgr = TeamManager(team_def, FAKE_CONFIG)
         task_str = mgr._build_agent_task("a", "Fix the bug")
-        assert "Fix the bug" in task_str
-        assert "Team Context" in task_str
+        assert task_str == "Fix the bug"
 
     @pytest.mark.asyncio
     async def test_stop(self, teams_dir):

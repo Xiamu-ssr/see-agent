@@ -50,6 +50,8 @@ class TeamManager:
         self._board = TaskBoard(self._team_dir)
         self._screen_lock = asyncio.Lock()
         self._stopped = False
+        # Shared MacEye — only one screen, no need for multiple instances.
+        self._shared_eye: Any | None = None
 
     # ------------------------------------------------------------------ #
     # Public API
@@ -58,9 +60,9 @@ class TeamManager:
     async def run(self, task: str) -> TeamRunResult:
         """Execute *task* with the team.
 
-        Creates the initial task on the board, then runs all agent loops
-        concurrently.  Each agent's session is scoped under the team
-        directory.
+        If the team has a leader, the leader runs first to decompose and
+        assign sub-tasks.  Workers then run concurrently.  Each agent's
+        session is scoped under the team directory.
         """
         self._team_def.status = "running"
         self._team_def.save()
@@ -70,7 +72,7 @@ class TeamManager:
             title=task, description=task, created_by="system",
         )
 
-        # Build and run agent loops.
+        # Build agent loops.
         loops: dict[str, AgentLoop] = {}
         for agent_id in self._team_def.members:
             self._bus.register(agent_id)
@@ -80,7 +82,6 @@ class TeamManager:
 
         async def _run_agent(aid: str, loop: AgentLoop) -> None:
             try:
-                # Leader gets the full task; workers get a scoped prompt.
                 agent_task = self._build_agent_task(aid, task)
                 results[aid] = await loop.run(agent_task)
             except Exception:
@@ -93,12 +94,20 @@ class TeamManager:
                     success=False,
                 )
 
-        # Run agents concurrently.
-        tasks = [
+        leader_id = self._team_def.leader
+
+        # Phase 1: Run leader first (if any) so it can decompose tasks.
+        if leader_id and leader_id in loops:
+            await _run_agent(leader_id, loops[leader_id])
+
+        # Phase 2: Run workers concurrently.
+        worker_coros = [
             asyncio.create_task(_run_agent(aid, loop))
             for aid, loop in loops.items()
+            if aid != leader_id
         ]
-        await asyncio.gather(*tasks, return_exceptions=True)
+        if worker_coros:
+            await asyncio.gather(*worker_coros, return_exceptions=True)
 
         # Determine overall success.
         success = all(r.success for r in results.values())
@@ -132,6 +141,7 @@ class TeamManager:
         from see_agent.hand.tools import create_registry
 
         # Load agent-specific config or fall back to global.
+        agent_def: AgentDefinition | None = None
         try:
             agent_def = AgentDefinition.load(agent_id)
             config = agent_def.get_merged_config()
@@ -139,7 +149,12 @@ class TeamManager:
             config = self._global_config.copy()
 
         llm_cfg = config["llm"]
-        eye = MacEye()
+
+        # Share a single MacEye across all agents (one screen).
+        if self._shared_eye is None:
+            self._shared_eye = MacEye()
+        eye = self._shared_eye
+
         brain = OpenAIBrain(
             base_url=llm_cfg["base_url"],
             api_key=llm_cfg["api_key"],
@@ -148,14 +163,42 @@ class TeamManager:
         registry = create_registry(eye)
         self._register_team_tools(registry, agent_id)
 
+        # Apply agent-level tool filtering (Bug 5).
+        if agent_def and agent_def.tools_config:
+            tools_cfg = agent_def.tools_config
+            denied = tools_cfg.get("denied")
+            if denied:
+                for name in denied:
+                    registry._tools.pop(name, None)
+                    registry._sources.pop(name, None)
+
+        # Apply agent-level MCP filtering (Bug 7).
+        if agent_def and agent_def.mcp_config:
+            mcp_cfg = agent_def.mcp_config
+            mcp_servers = config.get("mcp_servers", {})
+            if mcp_cfg.get("enabled"):
+                enabled = set(mcp_cfg["enabled"])
+                mcp_servers = {
+                    k: v for k, v in mcp_servers.items()
+                    if k in enabled
+                }
+            elif mcp_cfg.get("disabled"):
+                disabled = set(mcp_cfg["disabled"])
+                mcp_servers = {
+                    k: v for k, v in mcp_servers.items()
+                    if k not in disabled
+                }
+            config = {**config, "mcp_servers": mcp_servers}
+
+        # Inject team_context into config for system prompt (Bug 4).
+        team_context = self._build_team_context(agent_id)
+        config = {**config, "_team_context": team_context}
+
         # Agent-scoped sessions directory.
         session_root = (
             self._team_dir / "agents" / agent_id / "sessions"
         )
         session_root.mkdir(parents=True, exist_ok=True)
-
-        # User queue for bus message injection.
-        user_queue: asyncio.Queue[str] = asyncio.Queue()
 
         loop = AgentLoop(
             brain=brain,
@@ -164,7 +207,8 @@ class TeamManager:
             config=config,
             agent_id=agent_id,
             session_root=session_root,
-            user_queue=user_queue,
+            team_bus=self._bus,
+            screen_lock=self._screen_lock,
         )
         return loop
 
@@ -247,6 +291,9 @@ class TeamManager:
         )
 
     def _build_agent_task(self, agent_id: str, task: str) -> str:
-        """Build the task string for a single agent, with team context."""
-        team_context = self._build_team_context(agent_id)
-        return f"{team_context}\n\n## 任务\n{task}"
+        """Build the task string for a single agent.
+
+        Team context is now injected via the system prompt (config key
+        ``_team_context``), so the task string only contains the task.
+        """
+        return task

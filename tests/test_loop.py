@@ -1244,3 +1244,99 @@ class TestAgentLoopTeamParams:
             config={"max_steps": 1}, session_root=root,
         )
         assert loop._session_root == root
+
+    def test_team_bus_stored(self):
+        """team_bus param is stored on the loop."""
+        brain = AsyncMock()
+        eye = AsyncMock()
+        registry = MagicMock()
+        bus = MagicMock()
+        loop = AgentLoop(
+            brain=brain, eye=eye, registry=registry,
+            config={"max_steps": 1}, team_bus=bus, agent_id="alice",
+        )
+        assert loop._team_bus is bus
+
+    def test_screen_lock_stored(self):
+        """screen_lock param is stored on the loop."""
+        import asyncio
+
+        brain = AsyncMock()
+        eye = AsyncMock()
+        registry = MagicMock()
+        lock = asyncio.Lock()
+        loop = AgentLoop(
+            brain=brain, eye=eye, registry=registry,
+            config={"max_steps": 1}, screen_lock=lock,
+        )
+        assert loop._screen_lock is lock
+
+    def test_drain_team_bus(self):
+        """_drain_team_bus drains messages from team bus into context."""
+        from see_agent.agent.context import ConversationContext
+        from see_agent.team.bus import BusMessage, TeamBus
+
+        brain = AsyncMock()
+        eye = AsyncMock()
+        registry = MagicMock()
+        bus = TeamBus(Path("/tmp/test_bus_drain"))
+        bus.register("alice")
+        bus.register("bob")
+        bus.send(BusMessage(sender="bob", recipient="alice", content="hello"))
+
+        loop = AgentLoop(
+            brain=brain, eye=eye, registry=registry,
+            config={"max_steps": 1}, team_bus=bus, agent_id="alice",
+        )
+        ctx = ConversationContext("system prompt")
+        count = loop._drain_team_bus(ctx)
+        assert count == 1
+        msgs = ctx.get_messages()
+        # Should have system + user reply with teammate message.
+        user_msgs = [m for m in msgs if m.get("role") == "user"]
+        assert any("[teammate bob]" in str(m.get("content", "")) for m in user_msgs)
+
+    def test_drain_team_bus_no_bus(self):
+        """_drain_team_bus with no bus returns 0."""
+        from see_agent.agent.context import ConversationContext
+
+        brain = AsyncMock()
+        eye = AsyncMock()
+        registry = MagicMock()
+        loop = AgentLoop(
+            brain=brain, eye=eye, registry=registry,
+            config={"max_steps": 1},
+        )
+        ctx = ConversationContext("system prompt")
+        assert loop._drain_team_bus(ctx) == 0
+
+    @pytest.mark.asyncio
+    async def test_execute_with_lock_screen_tool(self):
+        """Screen tools acquire the lock."""
+        import asyncio
+
+        brain = AsyncMock()
+        eye = AsyncMock()
+        registry = MagicMock()
+        registry.execute = AsyncMock(return_value=MagicMock(text="ok", images=[]))
+        lock = asyncio.Lock()
+        loop = AgentLoop(
+            brain=brain, eye=eye, registry=registry,
+            config={"max_steps": 1}, screen_lock=lock,
+        )
+        await loop._execute_with_lock("click", {"x": 100, "y": 200})
+        registry.execute.assert_called_once_with("click", {"x": 100, "y": 200})
+
+    @pytest.mark.asyncio
+    async def test_execute_with_lock_non_screen_tool(self):
+        """Non-screen tools skip the lock."""
+        brain = AsyncMock()
+        eye = AsyncMock()
+        registry = MagicMock()
+        registry.execute = AsyncMock(return_value=MagicMock(text="ok", images=[]))
+        loop = AgentLoop(
+            brain=brain, eye=eye, registry=registry,
+            config={"max_steps": 1}, screen_lock=None,
+        )
+        await loop._execute_with_lock("send_message", {"to": "bob"})
+        registry.execute.assert_called_once()
