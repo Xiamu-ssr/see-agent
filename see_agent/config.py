@@ -26,7 +26,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "scaling_enabled": True,
     "scaling_match": "aspect_ratio",
     "soul_path": None,
-    "skills_dirs": ["~/.see-agent/skills", "~/.openclaw/skills"],
+    "skills_dirs": ["~/.see-agent/skills"],
     "context_engine": "legacy",
     "memory": {
         "enabled": False,

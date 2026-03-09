@@ -153,3 +153,14 @@ class TestLoadAgentConfig:
         with patch("see_agent.config.AGENTS_DIR", agents_dir):
             with pytest.raises(FileNotFoundError):
                 load_agent_config("nonexistent")
+
+
+class TestSkillsDirs:
+    """Verify skills_dirs default."""
+
+    def test_no_openclaw_in_skills_dirs(self):
+        from see_agent.config import DEFAULT_CONFIG
+
+        dirs = DEFAULT_CONFIG["skills_dirs"]
+        for d in dirs:
+            assert "openclaw" not in d

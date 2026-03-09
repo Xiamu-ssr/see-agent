@@ -144,6 +144,7 @@ class TeamManager:
     def _build_agent_loop(self, agent_id: str) -> AgentLoop:
         """Build an :class:`AgentLoop` for a single team member."""
         from see_agent.brain.openai_client import OpenAIBrain
+        from see_agent.config import _deep_merge
         from see_agent.eye.mac import MacEye
         from see_agent.hand.tools import create_registry
 
@@ -154,6 +155,15 @@ class TeamManager:
             config = agent_def.get_merged_config()
         except FileNotFoundError:
             config = self._global_config.copy()
+
+        # Apply team-level overrides from team.json.
+        if self._team_def.overrides:
+            env_overrides = self._team_def.overrides.get("env", {})
+            if env_overrides:
+                config = _deep_merge(config, env_overrides)
+            agent_overrides = self._team_def.overrides.get(agent_id, {})
+            if agent_overrides:
+                config = _deep_merge(config, agent_overrides)
 
         llm_cfg = config["llm"]
 

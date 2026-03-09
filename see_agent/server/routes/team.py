@@ -277,3 +277,60 @@ async def owner_mark_read(team_id: str) -> dict[str, str]:
         encoding="utf-8",
     )
     return {"last_read_ts": now}
+
+
+# -------------------------------------------------------------------- #
+# Logs & agent status
+# -------------------------------------------------------------------- #
+
+
+@router.get("/{team_id}/logs")
+async def get_team_logs(
+    team_id: str,
+    limit: int = Query(default=100, ge=1, le=1000),
+) -> list[dict[str, Any]]:
+    """Return messages.jsonl content for a team."""
+    from see_agent.team.definition import TeamDefinition
+
+    try:
+        TeamDefinition.load(team_id)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Team not found")
+
+    log_path = _team_dir(team_id) / "messages.jsonl"
+    if not log_path.exists():
+        return []
+
+    results: list[dict[str, Any]] = []
+    for line in log_path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        results.append(json.loads(line))
+
+    return results[-limit:]
+
+
+@router.get("/{team_id}/agents/{agent_id}/status")
+async def get_agent_status(
+    team_id: str, agent_id: str, request: Request,
+) -> dict[str, Any]:
+    """Get an agent's session status within a team."""
+    from see_agent.team.definition import TeamDefinition
+
+    try:
+        team = TeamDefinition.load(team_id)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Team not found")
+
+    if agent_id not in team.members:
+        raise HTTPException(
+            status_code=404, detail="Agent not in team",
+        )
+
+    manager = request.app.state.team_managers.get(team_id)
+    running = manager is not None
+    return {
+        "agent_id": agent_id,
+        "team_id": team_id,
+        "team_running": running,
+    }

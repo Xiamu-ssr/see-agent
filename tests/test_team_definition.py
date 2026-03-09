@@ -57,3 +57,13 @@ class TestTeamDefinition:
         loaded = TeamDefinition.load(team.id)
         assert loaded.owner == owner
         assert loaded.owner["display"] == "John Doe"
+
+    def test_overrides_round_trip(self, teams_dir):
+        overrides = {
+            "env": {"max_steps": 10},
+            "alice": {"tools": {"denied": ["shell"]}},
+        }
+        team = TeamDefinition.create("T", ["alice"], overrides=overrides)
+        loaded = TeamDefinition.load(team.id)
+        assert loaded.overrides == overrides
+        assert loaded.overrides["alice"]["tools"]["denied"] == ["shell"]
