@@ -3,7 +3,7 @@
 from pathlib import Path
 
 from see_agent.brain.prompts import build_system_prompt
-from see_agent.skill.loader import SkillInfo, load_skills
+from see_agent.skill.loader import SkillInfo, gate_skills, load_skills
 
 
 def _write_skill(path: Path, name: str, description: str, body: str) -> Path:
@@ -120,6 +120,32 @@ class TestSkillLoaderEdgeCases:
         assert len(skills) == 1
         assert skills[0].body == ""
 
+    def test_parse_metadata_requires_bins(self, tmp_path):
+        """SKILL.md with metadata JSON should populate requires_bins."""
+        skill_dir = tmp_path / "docker-skill"
+        skill_dir.mkdir()
+        (skill_dir / "SKILL.md").write_text(
+            '---\nname: docker-skill\ndescription: Run docker.\n'
+            'metadata: {"requires_bins": ["docker"]}\n---\nStep 1: run it',
+            encoding="utf-8",
+        )
+        skills = load_skills([str(tmp_path)])
+        assert len(skills) == 1
+        assert skills[0].requires_bins == ["docker"]
+
+    def test_invalid_metadata_ignored(self, tmp_path):
+        """Invalid JSON in metadata should not prevent skill loading."""
+        skill_dir = tmp_path / "bad-meta"
+        skill_dir.mkdir()
+        (skill_dir / "SKILL.md").write_text(
+            "---\nname: bad-meta\ndescription: Bad metadata.\n"
+            "metadata: {not valid json}\n---\nBody",
+            encoding="utf-8",
+        )
+        skills = load_skills([str(tmp_path)])
+        assert len(skills) == 1
+        assert skills[0].requires_bins == []
+
     def test_unicode_skill_content(self, tmp_path):
         """SKILL.md with CJK and emoji should parse correctly."""
         skill_dir = tmp_path / "unicode"
@@ -132,3 +158,62 @@ class TestSkillLoaderEdgeCases:
         assert len(skills) == 1
         assert skills[0].name == "中文技能"
         assert "🌐" in skills[0].description
+
+
+class TestSkillGating:
+    """Tests for gate_skills() requirement checking."""
+
+    def test_gate_blocks_missing_bin(self):
+        skill = SkillInfo(
+            name="needs-docker", description="", body="", path=Path("."),
+            requires_bins=["nonexistent_xyz_bin_12345"],
+        )
+        gate_skills([skill])
+        assert skill.blocked is True
+        assert "nonexistent_xyz_bin_12345" in skill.block_reason
+
+    def test_gate_passes_available_bin(self):
+        skill = SkillInfo(
+            name="needs-python", description="", body="", path=Path("."),
+            requires_bins=["python3"],
+        )
+        gate_skills([skill])
+        assert skill.blocked is False
+
+    def test_gate_blocks_missing_env(self):
+        skill = SkillInfo(
+            name="needs-env", description="", body="", path=Path("."),
+            requires_env=["XYZZY_UNSET_12345"],
+        )
+        gate_skills([skill])
+        assert skill.blocked is True
+        assert "XYZZY_UNSET_12345" in skill.block_reason
+
+    def test_gate_any_bins_one_available(self):
+        skill = SkillInfo(
+            name="needs-any", description="", body="", path=Path("."),
+            requires_any_bins=["python3", "nonexistent_xyz"],
+        )
+        gate_skills([skill])
+        assert skill.blocked is False
+
+    def test_gate_any_bins_none_available(self):
+        skill = SkillInfo(
+            name="needs-any", description="", body="", path=Path("."),
+            requires_any_bins=["nonexistent_a", "nonexistent_b"],
+        )
+        gate_skills([skill])
+        assert skill.blocked is True
+
+    def test_blocked_skill_excluded_from_prompt(self):
+        config = {"language": "en", "max_steps": 10}
+        skills = [
+            SkillInfo(name="active", description="Works", body="", path=Path(".")),
+            SkillInfo(
+                name="blocked-one", description="Nope", body="", path=Path("."),
+                blocked=True, block_reason="missing bin",
+            ),
+        ]
+        prompt = build_system_prompt(config, skills=skills)
+        assert "active" in prompt
+        assert "blocked-one" not in prompt

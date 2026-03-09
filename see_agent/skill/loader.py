@@ -12,9 +12,12 @@ Each SKILL.md uses a simple YAML-like frontmatter (parsed without PyYAML)::
 
 from __future__ import annotations
 
+import json as _json
 import logging
+import os
 import re
-from dataclasses import dataclass
+import shutil
+from dataclasses import dataclass, field
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -31,6 +34,11 @@ class SkillInfo:
     description: str
     body: str
     path: Path
+    requires_bins: list[str] = field(default_factory=list)
+    requires_env: list[str] = field(default_factory=list)
+    requires_any_bins: list[str] = field(default_factory=list)
+    blocked: bool = False
+    block_reason: str = ""
 
 
 def _parse_skill(path: Path) -> SkillInfo | None:
@@ -60,7 +68,35 @@ def _parse_skill(path: Path) -> SkillInfo | None:
         logger.warning("Skill file missing 'name': %s", path)
         return None
 
-    return SkillInfo(name=name, description=description, body=body, path=path)
+    # Parse optional metadata JSON for requirements.
+    requires_bins: list[str] = []
+    requires_env: list[str] = []
+    requires_any_bins: list[str] = []
+    raw_meta = meta.get("metadata", "")
+    if raw_meta:
+        try:
+            md = _json.loads(raw_meta)
+            if isinstance(md, dict):
+                # Direct format: {"requires_bins": [...], ...}
+                requires_bins = md.get("requires_bins", [])
+                requires_env = md.get("requires_env", [])
+                requires_any_bins = md.get("requires_any_bins", [])
+                # OpenClaw nested format
+                oc = md.get("openclaw", {})
+                if isinstance(oc, dict):
+                    req = oc.get("requires", {})
+                    if isinstance(req, dict):
+                        requires_bins = requires_bins or req.get("bins", [])
+                        requires_env = requires_env or req.get("env", [])
+                        requires_any_bins = requires_any_bins or req.get("anyBins", [])
+        except (_json.JSONDecodeError, TypeError):
+            logger.debug("Invalid metadata JSON in skill %s, ignoring", path)
+
+    return SkillInfo(
+        name=name, description=description, body=body, path=path,
+        requires_bins=requires_bins, requires_env=requires_env,
+        requires_any_bins=requires_any_bins,
+    )
 
 
 def load_skills(dirs: list[str]) -> list[SkillInfo]:
@@ -91,4 +127,35 @@ def load_skills(dirs: list[str]) -> list[SkillInfo]:
             skills.append(info)
 
     logger.info("Loaded %d skills from %d dirs", len(skills), len(dirs))
+    return skills
+
+
+def gate_skills(skills: list[SkillInfo]) -> list[SkillInfo]:
+    """Check requirements for each skill and mark unavailable ones as blocked.
+
+    Mutates the *skills* list in-place and returns it.
+    """
+    for skill in skills:
+        reasons: list[str] = []
+
+        # Check required binaries (all must be present).
+        for b in skill.requires_bins:
+            if not shutil.which(b):
+                reasons.append(f"missing binary: {b}")
+
+        # Check required env vars (all must be set).
+        for e in skill.requires_env:
+            if not os.environ.get(e):
+                reasons.append(f"missing env: {e}")
+
+        # Check any-of binaries (at least one must be present).
+        if skill.requires_any_bins:
+            if not any(shutil.which(b) for b in skill.requires_any_bins):
+                reasons.append(f"none of binaries available: {skill.requires_any_bins}")
+
+        if reasons:
+            skill.blocked = True
+            skill.block_reason = "; ".join(reasons)
+            logger.info("Skill '%s' blocked: %s", skill.name, skill.block_reason)
+
     return skills

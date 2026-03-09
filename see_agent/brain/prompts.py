@@ -135,14 +135,16 @@ def build_system_prompt(
 
     # ── Skills (optional) ─────────────────────────────────────────────
     if skills:
-        skill_lines = []
-        for s in skills:
-            skill_lines.append(f"- **{s.name}**: {s.description}")
-        parts.append(
-            "<SKILLS>\n"
-            + "\n".join(skill_lines)
-            + "\n</SKILLS>"
-        )
+        active = [s for s in skills if not s.blocked]
+        if active:
+            skill_lines = []
+            for s in active:
+                skill_lines.append(f"- **{s.name}**: {s.description}")
+            parts.append(
+                "<SKILLS>\n"
+                + "\n".join(skill_lines)
+                + "\n</SKILLS>"
+            )
 
     # ── Memory (optional) ─────────────────────────────────────────────
     if memory_block:

@@ -228,6 +228,45 @@ def _safe_input(prompt: str) -> str:
             typer.echo("(stdin contained garbled bytes — please re-enter)")
 
 
+def _print_startup_status(config: dict) -> None:
+    """Print component status at startup."""
+    # Memory status
+    mem_cfg = config.get("memory", {})
+    if mem_cfg.get("enabled", False):
+        try:
+            importlib.import_module("mem0")
+            typer.echo("  Memory: active")
+        except ImportError:
+            typer.echo("  Memory: failed (mem0ai not installed)")
+    else:
+        typer.echo("  Memory: not configured")
+
+    # MCP status
+    mcp_servers = config.get("mcp_servers", {})
+    if mcp_servers:
+        typer.echo(f"  MCP: active ({len(mcp_servers)} servers)")
+    else:
+        typer.echo("  MCP: not configured")
+
+    # Skills status
+    from see_agent.skill.loader import gate_skills, load_skills
+
+    skills_dirs = config.get("skills_dirs", [])
+    skills = load_skills(skills_dirs) if skills_dirs else []
+    if skills:
+        skills = gate_skills(skills)
+        blocked = [s for s in skills if s.blocked]
+        active_count = len(skills) - len(blocked)
+        msg = f"  Skills: {active_count} loaded"
+        if blocked:
+            msg += f", {len(blocked)} blocked"
+            for s in blocked:
+                msg += f"\n    - {s.name}: {s.block_reason}"
+        typer.echo(msg)
+    else:
+        typer.echo("  Skills: none loaded")
+
+
 def _print_task_result(result: RunResult) -> None:
     """Print the post-task summary block matching PRD format."""
     icon = "\u2705" if result.success else "\u274c"
@@ -332,6 +371,7 @@ def chat(
     session = SessionStore.create("interactive-chat", config)
 
     typer.echo("\U0001f916 see-agent v0.1 已启动")
+    _print_startup_status(config)
     typer.echo(f"\U0001f4cb 会话 ID: {session.id}")
     typer.echo("Enter a task description (Ctrl+C to exit).\n")
 
@@ -369,7 +409,9 @@ def run(
 
     loop = _build_components(config, no_overlay=no_overlay, no_scaling=no_scaling)
 
-    typer.echo(f"\U0001f680 Running task: {task}\n")
+    typer.echo(f"\U0001f680 Running task: {task}")
+    _print_startup_status(config)
+    typer.echo()
 
     try:
         result: RunResult = asyncio.run(loop.run(task))
@@ -553,6 +595,7 @@ def resume(
     loop = _build_components(config, no_overlay=no_overlay, no_scaling=no_scaling)
 
     typer.echo(f"\U0001f504 Resuming session: {session.id}")
+    _print_startup_status(config)
     typer.echo(f"\U0001f4cb Task: {session.task}")
     typer.echo("Enter a follow-up task (Ctrl+C to exit).\n")
 

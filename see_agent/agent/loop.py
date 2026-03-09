@@ -247,11 +247,13 @@ class AgentLoop:
 
         # ── 3. Build conversation context ─────────────────────────────
         from see_agent.brain.prompts import build_system_prompt
-        from see_agent.skill.loader import load_skills
+        from see_agent.skill.loader import gate_skills, load_skills
 
         # Load skills
         skills_dirs = self._config.get("skills_dirs", [])
         skills = load_skills(skills_dirs) if skills_dirs else []
+        if skills:
+            skills = gate_skills(skills)
 
         # Load memory (if available)
         memory_block = ""
