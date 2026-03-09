@@ -87,7 +87,13 @@ def _validate_api_key(config: dict) -> None:
         raise typer.Exit(code=1)
 
 
-def _build_components(config: dict, *, no_overlay: bool = False, no_scaling: bool = False):  # noqa: ANN202
+def _build_components(  # noqa: ANN202
+    config: dict,
+    *,
+    no_overlay: bool = False,
+    no_scaling: bool = False,
+    user_queue: "asyncio.Queue[str] | None" = None,
+):
     """Instantiate the Eye, Brain, ToolRegistry, and AgentLoop from *config*.
 
     Returns:
@@ -188,6 +194,7 @@ def _build_components(config: dict, *, no_overlay: bool = False, no_scaling: boo
         overlay=overlay,
         memory=memory,
         mcp_manager=mcp_manager,
+        user_queue=user_queue,
     )
     return loop
 

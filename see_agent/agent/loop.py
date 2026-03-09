@@ -114,6 +114,7 @@ class AgentLoop:
         overlay: OverlayRenderer | None = None,
         memory: Any | None = None,
         mcp_manager: Any | None = None,
+        user_queue: asyncio.Queue[str] | None = None,
     ) -> None:
         self._brain = brain
         self._eye = eye
@@ -125,6 +126,7 @@ class AgentLoop:
         self._memory = memory
         self._mcp_manager = mcp_manager
         self._mcp_connected = False
+        self._user_queue = user_queue
 
         # Configurable knobs with sensible defaults.
         self._max_steps: int = int(config.get("max_steps", 50))
@@ -172,6 +174,21 @@ class AgentLoop:
         if target is None:
             return screenshot
         return scale_screenshot(screenshot, target)
+
+    def _drain_user_queue(self, ctx: ConversationContext) -> int:
+        """Non-blocking drain of user_queue into context. Returns count."""
+        if self._user_queue is None:
+            return 0
+        count = 0
+        while True:
+            try:
+                msg = self._user_queue.get_nowait()
+                ctx.add_user_reply(f"[用户插入消息] {msg}")
+                count += 1
+                logger.info("Injected user queue message: %s", msg[:80])
+            except asyncio.QueueEmpty:
+                break
+        return count
 
     @staticmethod
     def _estimate_tokens(messages: list[dict[str, Any]]) -> int:
@@ -406,6 +423,9 @@ class AgentLoop:
 
             # ── 4a. Maybe compact context ────────────────────────────
             await self._maybe_compact(ctx, session)
+
+            # ── 4a2. Drain user queue ─────────────────────────────────
+            self._drain_user_queue(ctx)
 
             # ── 4b. Ask the LLM ──────────────────────────────────────
             try:

@@ -29,6 +29,12 @@ class TaskStatus(BaseModel):
     error: str | None = None
 
 
+class UserMessageRequest(BaseModel):
+    """Request body for POST /api/chat/{task_id}/message."""
+
+    message: str
+
+
 class StepMessage(BaseModel):
     """A single agent step pushed over WebSocket."""
 

@@ -80,6 +80,8 @@ def build_system_prompt(
             "后续步骤要利用之前记录的信息避免重复操作。\n"
             "13. 如果看到 [Conversation Summary]，"
             "它包含了对话早期的压缩摘要，请将其视为可靠上下文。\n"
+            "14. 以 [用户插入消息] 为前缀的是用户在你操作期间发送的实时消息。"
+            "优先响应——如果要求改变方向则调整，如果是补充信息则纳入当前任务。\n"
             "</RULES>"
         )
     else:
@@ -116,6 +118,8 @@ def build_system_prompt(
             "Use previously recorded information to avoid repeating actions.\n"
             "13. If you see a [Conversation Summary], it contains compressed earlier history. "
             "Treat it as reliable context.\n"
+            "14. Messages prefixed [User injected message] are real-time user messages. "
+            "Prioritize them and adjust your plan accordingly.\n"
             "</RULES>"
         )
 

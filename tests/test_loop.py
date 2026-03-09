@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 from pathlib import Path
 from typing import Any
@@ -1153,3 +1154,61 @@ class TestAgentLoopV2Behavior:
 
         assert result.success is True
         assert brain.summarize.call_count >= 1
+
+    @pytest.mark.asyncio
+    async def test_user_queue_drained_before_chat(self, tmp_path):
+        """Pre-filled user_queue messages appear in LLM input."""
+        brain = AsyncMock()
+        brain.chat = AsyncMock(return_value=_make_finished_response("done"))
+
+        eye = AsyncMock()
+        eye.capture = AsyncMock(return_value=_make_screenshot())
+
+        registry = MagicMock()
+        registry.get_openai_schemas.return_value = []
+
+        user_queue: asyncio.Queue[str] = asyncio.Queue()
+        await user_queue.put("change direction please")
+
+        config: dict[str, Any] = {
+            "language": "en",
+            "max_steps": 10,
+            "max_images": 5,
+            "screenshot_interval_ms": 0,
+            "tool_delay_ms": 0,
+            "scaling_enabled": False,
+        }
+        loop = AgentLoop(
+            brain=brain, eye=eye, registry=registry,
+            config=config, user_queue=user_queue,
+        )
+
+        with _patch_sessions(tmp_path):
+            result = await loop.run("test queue")
+
+        assert result.success is True
+        # The injected message should appear in the messages sent to brain.
+        call_args = brain.chat.call_args
+        messages = call_args[0][0]
+        all_text = str(messages)
+        assert "[用户插入消息] change direction please" in all_text
+
+    @pytest.mark.asyncio
+    async def test_user_queue_none_no_crash(self, tmp_path):
+        """user_queue=None should not cause any crash."""
+        brain = AsyncMock()
+        brain.chat = AsyncMock(return_value=_make_finished_response("done"))
+
+        eye = AsyncMock()
+        eye.capture = AsyncMock(return_value=_make_screenshot())
+
+        registry = MagicMock()
+        registry.get_openai_schemas.return_value = []
+
+        loop = _build_loop(brain, eye, registry, max_steps=10)
+        assert loop._user_queue is None  # default
+
+        with _patch_sessions(tmp_path):
+            result = await loop.run("test no queue")
+
+        assert result.success is True

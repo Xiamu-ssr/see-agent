@@ -13,7 +13,13 @@ from see_agent.agent.loop import AgentLoop, StepEvent
 from see_agent.brain.openai_client import OpenAIBrain
 from see_agent.eye.mac import MacEye
 from see_agent.hand.tools import create_registry
-from see_agent.server.models import ChatRequest, ChatResponse, StepMessage, TaskStatus
+from see_agent.server.models import (
+    ChatRequest,
+    ChatResponse,
+    StepMessage,
+    TaskStatus,
+    UserMessageRequest,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +53,7 @@ async def _run_agent(
     tasks: dict[str, TaskStatus],
     subscribers: dict[str, list[asyncio.Queue[dict | None]]],
     session_id: str | None = None,
+    user_queues: dict[str, asyncio.Queue[str]] | None = None,
 ) -> None:
     """Create and run the :class:`AgentLoop`, updating shared state as it progresses.
 
@@ -134,6 +141,11 @@ async def _run_agent(
             event.tool_name,
         )
 
+    # Create a user message queue for runtime injection.
+    user_queue: asyncio.Queue[str] = asyncio.Queue()
+    if user_queues is not None:
+        user_queues[task_id] = user_queue
+
     try:
         logger.info("Starting agent loop for task %s: %s", task_id, task)
 
@@ -144,6 +156,7 @@ async def _run_agent(
             config=config,
             on_step=on_step,
             mcp_manager=mcp_manager,
+            user_queue=user_queue,
         )
         run_result = await agent.run(task, session_id=session_id)
 
@@ -166,6 +179,9 @@ async def _run_agent(
             error=str(exc),
         )
     finally:
+        # Clean up user queue.
+        if user_queues is not None:
+            user_queues.pop(task_id, None)
         # Notify all WebSocket subscribers that the task is done.
         await _broadcast(subscribers, task_id, None)
 
@@ -189,6 +205,13 @@ async def chat(body: ChatRequest, request: Request) -> ChatResponse:
         request.app.state.ws_subscribers
     )
 
+    # User message queues — lazily initialised on app.state.
+    if not hasattr(request.app.state, "user_queues"):
+        request.app.state.user_queues = {}
+    user_queues: dict[str, asyncio.Queue[str]] = (
+        request.app.state.user_queues
+    )
+
     # Initialise task state immediately so GET /api/task/{id} works right away.
     tasks[task_id] = TaskStatus(
         task_id=task_id,
@@ -198,9 +221,41 @@ async def chat(body: ChatRequest, request: Request) -> ChatResponse:
 
     # Spawn the agent loop as a background asyncio task.
     asyncio.create_task(
-        _run_agent(task_id, body.task, config, tasks, subscribers, session_id=body.session_id),
+        _run_agent(
+            task_id, body.task, config, tasks, subscribers,
+            session_id=body.session_id, user_queues=user_queues,
+        ),
         name=f"agent-{task_id}",
     )
 
     logger.info("Created task %s for: %s", task_id, body.task)
     return ChatResponse(task_id=task_id, status="running")
+
+
+@router.post("/api/chat/{task_id}/message")
+async def inject_message(
+    task_id: str, body: UserMessageRequest, request: Request,
+) -> dict[str, str]:
+    """Inject a user message into a running task's queue."""
+    from fastapi import HTTPException
+
+    tasks: dict[str, TaskStatus] = request.app.state.tasks
+    if task_id not in tasks:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    user_queues: dict[str, asyncio.Queue[str]] = getattr(
+        request.app.state, "user_queues", {},
+    )
+    queue = user_queues.get(task_id)
+    if queue is None:
+        raise HTTPException(
+            status_code=409,
+            detail="Task not running or queue unavailable",
+        )
+
+    await queue.put(body.message)
+    logger.info(
+        "Injected message into task %s: %s",
+        task_id, body.message[:80],
+    )
+    return {"status": "queued"}
