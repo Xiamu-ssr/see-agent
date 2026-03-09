@@ -14,8 +14,10 @@ from __future__ import annotations
 import asyncio
 import importlib
 import json
+import select
 import subprocess
 import sys
+import threading
 from typing import Any
 
 import typer
@@ -234,6 +236,28 @@ def _safe_input(prompt: str) -> str:
             typer.echo("(stdin contained garbled bytes — please re-enter)")
 
 
+def _stdin_reader_thread(
+    queue: "asyncio.Queue[str]",
+    stop: threading.Event,
+) -> None:
+    """Background thread: read stdin lines and push them into *queue*.
+
+    Runs while the agent is executing a task.  The thread checks stdin
+    every 300 ms and exits when *stop* is set.
+    """
+    while not stop.is_set():
+        # Use select to avoid blocking forever on stdin.
+        if select.select([sys.stdin], [], [], 0.3)[0]:
+            try:
+                line = sys.stdin.readline()
+            except (EOFError, OSError):
+                break
+            text = line.strip()
+            if text:
+                queue.put_nowait(text)
+                typer.echo(f"📨 Queued ({queue.qsize()} pending)")
+
+
 def _print_startup_status(config: dict) -> None:
     """Print component status at startup."""
     # Memory status
@@ -398,7 +422,21 @@ def chat(
                 user_queue=user_queue,
             )
 
-            result: RunResult = asyncio.run(loop.run(task, session_id=session.id))
+            # Background stdin reader: lets user send messages while agent runs.
+            stop_reader = threading.Event()
+            reader_thread = threading.Thread(
+                target=_stdin_reader_thread,
+                args=(user_queue, stop_reader),
+                daemon=True,
+            )
+            reader_thread.start()
+
+            try:
+                result: RunResult = asyncio.run(loop.run(task, session_id=session.id))
+            finally:
+                stop_reader.set()
+                reader_thread.join(timeout=1.0)
+
             _print_task_result(result)
 
     except KeyboardInterrupt:

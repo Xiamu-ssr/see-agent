@@ -57,10 +57,12 @@ class TestStripBase64:
         ]
         stripped = _strip_base64(messages)
         assert len(stripped) == 1
-        parts = stripped[0]["content"]
-        assert len(parts) == 2
-        assert parts[0]["text"] == "Look at this"
-        assert parts[1] == {"type": "text", "text": "[image]"}
+        # After stripping, all-text list is flattened to a plain string
+        # so mem0 doesn't mistake it for vision content.
+        content = stripped[0]["content"]
+        assert isinstance(content, str)
+        assert "Look at this" in content
+        assert "[image]" in content
 
     def test_preserves_plain_text(self):
         messages = [{"role": "user", "content": "hello world"}]

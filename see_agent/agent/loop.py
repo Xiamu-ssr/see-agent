@@ -722,7 +722,18 @@ def _strip_base64(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
                     new_parts.append({"type": "text", "text": "[image]"})
                 else:
                     new_parts.append(part)
-            msg["content"] = new_parts
+            # Flatten to plain string if all parts are text — mem0's
+            # parse_vision_messages treats any list content as potentially
+            # containing images and crashes when llm is None.
+            if all(
+                isinstance(p, dict) and p.get("type") == "text"
+                for p in new_parts
+            ):
+                msg["content"] = " ".join(
+                    p.get("text", "") for p in new_parts if isinstance(p, dict)
+                )
+            else:
+                msg["content"] = new_parts
         elif isinstance(content, str):
             msg["content"] = data_uri_re.sub("[image]", content)
         stripped.append(msg)
