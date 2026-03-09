@@ -330,3 +330,119 @@ class TestResumeCommand:
             assert result.exit_code == 1
         finally:
             cleanup()
+
+
+# -------------------------------------------------------------------- #
+# Agent commands
+# -------------------------------------------------------------------- #
+
+
+class TestAgentCommands:
+    """Tests for agent create/list/show CLI commands."""
+
+    def test_agent_create(self, tmp_path):
+        _setup_workspace(tmp_path)
+        patches = _workspace_patches(tmp_path)
+        cleanup = _apply_patches(patches)
+        try:
+            with patch("see_agent.agent.definition.AGENTS_DIR", tmp_path / "agents"):
+                result = runner.invoke(
+                    app, ["agent", "create", "alice", "--name", "Alice", "--role", "coder"],
+                )
+            assert result.exit_code == 0
+            assert "Created agent" in result.output
+        finally:
+            cleanup()
+
+    def test_agent_list_empty(self, tmp_path):
+        _setup_workspace(tmp_path)
+        patches = _workspace_patches(tmp_path)
+        cleanup = _apply_patches(patches)
+        try:
+            with patch("see_agent.agent.definition.AGENTS_DIR", tmp_path / "agents"):
+                result = runner.invoke(app, ["agent", "list"])
+            assert "No agents" in result.output
+        finally:
+            cleanup()
+
+    def test_agent_list_shows_agents(self, tmp_path):
+        _setup_workspace(tmp_path)
+        patches = _workspace_patches(tmp_path)
+        cleanup = _apply_patches(patches)
+        try:
+            with patch("see_agent.agent.definition.AGENTS_DIR", tmp_path / "agents"):
+                runner.invoke(app, ["agent", "create", "bob", "--name", "Bob"])
+                result = runner.invoke(app, ["agent", "list"])
+            assert "bob" in result.output
+        finally:
+            cleanup()
+
+    def test_agent_show_not_found(self, tmp_path):
+        _setup_workspace(tmp_path)
+        patches = _workspace_patches(tmp_path)
+        cleanup = _apply_patches(patches)
+        try:
+            with patch("see_agent.agent.definition.AGENTS_DIR", tmp_path / "agents"):
+                result = runner.invoke(app, ["agent", "show", "ghost"])
+            assert result.exit_code == 1
+        finally:
+            cleanup()
+
+
+# -------------------------------------------------------------------- #
+# Team commands
+# -------------------------------------------------------------------- #
+
+
+class TestTeamCommands:
+    """Tests for team create/list/status CLI commands."""
+
+    def test_team_create(self, tmp_path):
+        _setup_workspace(tmp_path)
+        patches = _workspace_patches(tmp_path)
+        cleanup = _apply_patches(patches)
+        try:
+            with patch("see_agent.team.definition.TEAMS_DIR", tmp_path / "teams"):
+                result = runner.invoke(
+                    app, ["team", "create", "--name", "Alpha", "--members", "a,b"],
+                )
+            assert result.exit_code == 0
+            assert "Created team" in result.output
+        finally:
+            cleanup()
+
+    def test_team_list_empty(self, tmp_path):
+        _setup_workspace(tmp_path)
+        patches = _workspace_patches(tmp_path)
+        cleanup = _apply_patches(patches)
+        try:
+            with patch("see_agent.team.definition.TEAMS_DIR", tmp_path / "teams"):
+                result = runner.invoke(app, ["team", "list"])
+            assert "No teams" in result.output
+        finally:
+            cleanup()
+
+    def test_team_list_shows_teams(self, tmp_path):
+        _setup_workspace(tmp_path)
+        patches = _workspace_patches(tmp_path)
+        cleanup = _apply_patches(patches)
+        try:
+            with patch("see_agent.team.definition.TEAMS_DIR", tmp_path / "teams"):
+                runner.invoke(
+                    app, ["team", "create", "--name", "Beta", "--members", "x,y"],
+                )
+                result = runner.invoke(app, ["team", "list"])
+            assert "Beta" in result.output
+        finally:
+            cleanup()
+
+    def test_team_status_not_found(self, tmp_path):
+        _setup_workspace(tmp_path)
+        patches = _workspace_patches(tmp_path)
+        cleanup = _apply_patches(patches)
+        try:
+            with patch("see_agent.team.definition.TEAMS_DIR", tmp_path / "teams"):
+                result = runner.invoke(app, ["team", "status", "ghost"])
+            assert result.exit_code == 1
+        finally:
+            cleanup()

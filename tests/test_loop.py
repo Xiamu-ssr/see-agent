@@ -1212,3 +1212,35 @@ class TestAgentLoopV2Behavior:
             result = await loop.run("test no queue")
 
         assert result.success is True
+
+
+# -------------------------------------------------------------------- #
+# Phase 3: agent_id and session_root propagation
+# -------------------------------------------------------------------- #
+
+
+class TestAgentLoopTeamParams:
+    """Tests for agent_id and session_root parameters."""
+
+    def test_agent_id_stored(self):
+        """agent_id param is stored on the loop."""
+        brain = AsyncMock()
+        eye = AsyncMock()
+        registry = MagicMock()
+        loop = AgentLoop(
+            brain=brain, eye=eye, registry=registry,
+            config={"max_steps": 1}, agent_id="alice",
+        )
+        assert loop._agent_id == "alice"
+
+    def test_session_root_stored(self, tmp_path):
+        """session_root param is stored on the loop."""
+        brain = AsyncMock()
+        eye = AsyncMock()
+        registry = MagicMock()
+        root = tmp_path / "custom_sessions"
+        loop = AgentLoop(
+            brain=brain, eye=eye, registry=registry,
+            config={"max_steps": 1}, session_root=root,
+        )
+        assert loop._session_root == root

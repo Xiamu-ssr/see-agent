@@ -9,7 +9,7 @@ from typing import AsyncIterator
 from fastapi import FastAPI
 
 from see_agent.config import load_config
-from see_agent.server.routes import chat, health, sessions, task, ws
+from see_agent.server.routes import chat, health, sessions, task, team, ws
 
 logger = logging.getLogger(__name__)
 
@@ -58,3 +58,4 @@ app.include_router(chat.router)
 app.include_router(task.router)
 app.include_router(ws.router)
 app.include_router(sessions.router)
+app.include_router(team.router)

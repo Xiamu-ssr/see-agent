@@ -63,6 +63,27 @@ setup_app = typer.Typer(
 )
 app.add_typer(setup_app, name="setup")
 
+agent_app = typer.Typer(
+    name="agent",
+    help="Manage agent definitions.",
+    add_completion=False,
+)
+app.add_typer(agent_app, name="agent")
+
+team_app = typer.Typer(
+    name="team",
+    help="Manage and run agent teams.",
+    add_completion=False,
+)
+app.add_typer(team_app, name="team")
+
+quick_app = typer.Typer(
+    name="quick",
+    help="Quick single-agent shortcuts.",
+    add_completion=False,
+)
+app.add_typer(quick_app, name="quick")
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -838,6 +859,290 @@ def setup_check() -> None:
         typer.echo(f"mcp      ... not installed{hint}")
         if mcp_configured:
             typer.echo("  Fix: see-agent setup install --mcp")
+
+
+# ---------------------------------------------------------------------------
+# Agent sub-commands
+# ---------------------------------------------------------------------------
+
+@agent_app.command("create")
+def agent_create(
+    agent_id: str = typer.Argument(..., help="Unique agent ID."),
+    name: str = typer.Option("", "--name", "-n", help="Human-readable name."),
+    role: str = typer.Option(
+        "general assistant", "--role", "-r", help="Agent role description.",
+    ),
+) -> None:
+    """Create a new agent definition."""
+    ensure_workspace()
+    from see_agent.agent.definition import AgentDefinition
+
+    display_name = name or agent_id
+    AgentDefinition.create(agent_id, name=display_name, role=role)
+    typer.echo(f"Created agent: {agent_id}")
+
+
+@agent_app.command("list")
+def agent_list() -> None:
+    """List all agent definitions."""
+    ensure_workspace()
+    from see_agent.agent.definition import AgentDefinition
+
+    agents = AgentDefinition.list_all()
+    if not agents:
+        typer.echo("No agents defined.")
+        return
+    for a in agents:
+        typer.echo(f"  {a.id}: {a.name} ({a.role})")
+
+
+@agent_app.command("show")
+def agent_show(
+    agent_id: str = typer.Argument(..., help="Agent ID."),
+) -> None:
+    """Show agent definition details."""
+    ensure_workspace()
+    from see_agent.agent.definition import AgentDefinition
+
+    try:
+        defn = AgentDefinition.load(agent_id)
+    except FileNotFoundError:
+        typer.echo(f"Agent not found: {agent_id}", err=True)
+        raise typer.Exit(code=1)
+    typer.echo(json.dumps({
+        "id": defn.id,
+        "name": defn.name,
+        "role": defn.role,
+        "config_overrides": defn.config_overrides,
+        "tools_config": defn.tools_config,
+        "skills_config": defn.skills_config,
+    }, indent=2, ensure_ascii=False))
+
+
+# ---------------------------------------------------------------------------
+# Team sub-commands
+# ---------------------------------------------------------------------------
+
+@team_app.command("create")
+def team_create(
+    name: str = typer.Option(..., "--name", "-n", help="Team name."),
+    members: str = typer.Option(
+        ..., "--members", "-m", help="Comma-separated agent IDs.",
+    ),
+    leader: str | None = typer.Option(
+        None, "--leader", "-l", help="Leader agent ID.",
+    ),
+) -> None:
+    """Create a new team."""
+    ensure_workspace()
+    from see_agent.team.definition import TeamDefinition
+
+    member_list = [m.strip() for m in members.split(",") if m.strip()]
+    team = TeamDefinition.create(name, member_list, leader=leader)
+    typer.echo(f"Created team: {team.id} ({team.name})")
+
+
+@team_app.command("list")
+def team_list() -> None:
+    """List all teams."""
+    ensure_workspace()
+    from see_agent.team.definition import TeamDefinition
+
+    teams = TeamDefinition.list_all()
+    if not teams:
+        typer.echo("No teams defined.")
+        return
+    for t in teams:
+        typer.echo(
+            f"  {t.id}: {t.name} "
+            f"(members={','.join(t.members)}, status={t.status})"
+        )
+
+
+@team_app.command("status")
+def team_status(
+    team_id: str = typer.Argument(..., help="Team ID."),
+) -> None:
+    """Show team status and task board."""
+    ensure_workspace()
+    from see_agent.team.definition import TeamDefinition
+    from see_agent.team.task_board import TaskBoard
+
+    try:
+        team = TeamDefinition.load(team_id)
+    except FileNotFoundError:
+        typer.echo(f"Team not found: {team_id}", err=True)
+        raise typer.Exit(code=1)
+
+    typer.echo(f"Team: {team.name} (status={team.status})")
+    typer.echo(f"Members: {', '.join(team.members)}")
+    typer.echo(f"Leader: {team.leader or 'none'}")
+
+    from see_agent.config import TEAMS_DIR
+
+    board = TaskBoard(TEAMS_DIR / team_id)
+    tasks = board.list_tasks()
+    if tasks:
+        typer.echo("\nTasks:")
+        for t in tasks:
+            assignee = t.assigned_to or "unassigned"
+            typer.echo(
+                f"  [{t.id}] {t.title} ({t.status}, {assignee})"
+            )
+    else:
+        typer.echo("\nNo tasks.")
+
+
+@team_app.command("run")
+def team_run(
+    team_id: str = typer.Argument(..., help="Team ID."),
+    task: str = typer.Argument(..., help="Task description."),
+    profile: str | None = typer.Option(
+        None, "--profile", "-P", help="Configuration profile.",
+    ),
+) -> None:
+    """Run a task with a team."""
+    ensure_workspace()
+    setup_logging()
+    config = load_config(profile=profile)
+    _validate_api_key(config)
+
+    from see_agent.team.definition import TeamDefinition
+    from see_agent.team.manager import TeamManager
+
+    try:
+        team_def = TeamDefinition.load(team_id)
+    except FileNotFoundError:
+        typer.echo(f"Team not found: {team_id}", err=True)
+        raise typer.Exit(code=1)
+
+    typer.echo(f"Running team '{team_def.name}' on: {task}")
+    manager = TeamManager(team_def, config)
+    result = asyncio.run(manager.run(task))
+
+    icon = "\u2705" if result.success else "\u274c"
+    typer.echo(f"\n{icon} Team run complete:")
+    typer.echo(result.summary)
+
+
+@team_app.command("stop")
+def team_stop(
+    team_id: str = typer.Argument(..., help="Team ID."),
+) -> None:
+    """Stop a running team."""
+    ensure_workspace()
+    from see_agent.team.definition import TeamDefinition
+
+    try:
+        team = TeamDefinition.load(team_id)
+    except FileNotFoundError:
+        typer.echo(f"Team not found: {team_id}", err=True)
+        raise typer.Exit(code=1)
+
+    team.status = "stopped"
+    team.save()
+    typer.echo(f"Stopped team: {team_id}")
+
+
+# ---------------------------------------------------------------------------
+# Quick sub-commands (single-agent sugar)
+# ---------------------------------------------------------------------------
+
+@quick_app.command("run")
+def quick_run(
+    task: str = typer.Argument(..., help="Task description."),
+    no_overlay: bool = typer.Option(
+        False, "--no-overlay", help="Disable visual overlay.",
+    ),
+    no_scaling: bool = typer.Option(
+        False, "--no-scaling", help="Disable coordinate scaling.",
+    ),
+    profile: str | None = typer.Option(
+        None, "--profile", "-P", help="Configuration profile.",
+    ),
+) -> None:
+    """Quick single-task execution."""
+    ensure_workspace()
+    setup_logging()
+    config = load_config(profile=profile)
+    _validate_api_key(config)
+
+    loop = _build_components(
+        config, no_overlay=no_overlay, no_scaling=no_scaling,
+    )
+    typer.echo(f"\U0001f680 Running task: {task}")
+    _print_startup_status(config)
+    typer.echo()
+
+    try:
+        result: RunResult = asyncio.run(loop.run(task))
+    except KeyboardInterrupt:
+        typer.echo("\n\nTask interrupted.")
+        raise typer.Exit(code=130)
+
+    _print_task_result(result)
+
+
+@quick_app.command("chat")
+def quick_chat(
+    no_overlay: bool = typer.Option(
+        False, "--no-overlay", help="Disable visual overlay.",
+    ),
+    no_scaling: bool = typer.Option(
+        False, "--no-scaling", help="Disable coordinate scaling.",
+    ),
+    profile: str | None = typer.Option(
+        None, "--profile", "-P", help="Configuration profile.",
+    ),
+) -> None:
+    """Quick interactive chat mode."""
+    ensure_workspace()
+    setup_logging()
+    config = load_config(profile=profile)
+    _validate_api_key(config)
+
+    from see_agent.session import SessionStore
+
+    session = SessionStore.create("interactive-chat", config)
+
+    typer.echo("\U0001f916 see-agent quick chat")
+    _print_startup_status(config)
+    typer.echo(f"\U0001f4cb Session: {session.id}")
+    typer.echo("Enter a task description (Ctrl+C to exit).\n")
+
+    try:
+        while True:
+            _flush_stdin()
+            try:
+                task = _safe_input("> ")
+            except EOFError:
+                break
+            if not task:
+                continue
+
+            user_queue: asyncio.Queue[str] = asyncio.Queue()
+            loop = _build_components(
+                config, no_overlay=no_overlay, no_scaling=no_scaling,
+                user_queue=user_queue,
+            )
+            stop_reader = threading.Event()
+            reader_thread = threading.Thread(
+                target=_stdin_reader_thread,
+                args=(user_queue, stop_reader),
+                daemon=True,
+            )
+            reader_thread.start()
+            try:
+                result = asyncio.run(
+                    loop.run(task, session_id=session.id),
+                )
+            finally:
+                stop_reader.set()
+                reader_thread.join(timeout=1.0)
+            _print_task_result(result)
+    except KeyboardInterrupt:
+        typer.echo("\n\nBye!")
+        raise typer.Exit()
 
 
 # ---------------------------------------------------------------------------

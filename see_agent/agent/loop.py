@@ -28,6 +28,8 @@ from see_agent.overlay.base import OverlayRenderer
 from see_agent.session.store import Session, SessionStore
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from see_agent.eye.base import Screenshot
 
 logger = logging.getLogger(__name__)
@@ -115,6 +117,8 @@ class AgentLoop:
         memory: Any | None = None,
         mcp_manager: Any | None = None,
         user_queue: asyncio.Queue[str] | None = None,
+        agent_id: str | None = None,
+        session_root: "Path | None" = None,
     ) -> None:
         self._brain = brain
         self._eye = eye
@@ -127,6 +131,8 @@ class AgentLoop:
         self._mcp_manager = mcp_manager
         self._mcp_connected = False
         self._user_queue = user_queue
+        self._agent_id = agent_id
+        self._session_root = session_root
 
         # Configurable knobs with sensible defaults.
         self._max_steps: int = int(config.get("max_steps", 50))
@@ -265,7 +271,9 @@ class AgentLoop:
             return
         try:
             messages = _strip_base64(ctx.get_messages())
-            self._memory.add(messages, session_id)
+            self._memory.add(
+                messages, session_id, agent_id=self._agent_id,
+            )
         except Exception:
             logger.warning("Memory save failed", exc_info=True)
 
@@ -298,10 +306,14 @@ class AgentLoop:
 
         # ── 1. Create or load session ─────────────────────────────────
         if session_id:
-            session = SessionStore.load(session_id)
+            session = SessionStore.load(
+                session_id, root_dir=self._session_root,
+            )
             session.update_meta(status="running")
         else:
-            session = SessionStore.create(task, self._config)
+            session = SessionStore.create(
+                task, self._config, root_dir=self._session_root,
+            )
 
         task_dir = session.screenshots_dir
         task_dir.mkdir(parents=True, exist_ok=True)
@@ -345,7 +357,9 @@ class AgentLoop:
         memory_block = ""
         if self._memory is not None:
             try:
-                memories = self._memory.search(task, limit=5)
+                memories = self._memory.search(
+                    task, limit=5, agent_id=self._agent_id,
+                )
                 if memories:
                     memory_block = "\n".join(f"- {m}" for m in memories)
             except Exception:
