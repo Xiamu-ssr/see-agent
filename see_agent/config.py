@@ -192,6 +192,15 @@ def setup_logging() -> None:
 
     # Suppress verbose DEBUG logs from HTTP clients that dump full request
     # bodies (including base64 screenshot payloads).
-    logging.getLogger("httpx").setLevel(logging.INFO)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("openai").setLevel(logging.INFO)
     logging.getLogger("httpcore").setLevel(logging.INFO)
+    logging.getLogger("PIL").setLevel(logging.WARNING)
+
+    # Session-related loggers: WARNING on global file, DEBUG detail goes to
+    # per-session log files via Session.setup_logging().
+    for _name in (
+        "see_agent.agent", "see_agent.brain",
+        "see_agent.eye", "see_agent.hand",
+    ):
+        logging.getLogger(_name).setLevel(logging.WARNING)

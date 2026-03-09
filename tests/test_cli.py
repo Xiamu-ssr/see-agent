@@ -252,6 +252,52 @@ class TestConfigCommands:
 
 
 # -------------------------------------------------------------------- #
+# Setup commands
+# -------------------------------------------------------------------- #
+
+
+class TestSetupCommands:
+    """Tests for setup check CLI command."""
+
+    def test_setup_check_all_installed(self, tmp_path):
+        """setup check with all deps installed shows 'installed'."""
+        _setup_workspace(tmp_path)
+        patches = _workspace_patches(tmp_path)
+        cleanup = _apply_patches(patches)
+        try:
+            with (
+                patch("see_agent.cli.main.importlib") as mock_importlib,
+            ):
+                mock_importlib.import_module.return_value = True
+                result = runner.invoke(app, ["setup", "check"])
+            assert "installed" in result.output
+        finally:
+            cleanup()
+
+    def test_setup_check_missing(self, tmp_path):
+        """setup check with missing mem0ai shows 'not installed'."""
+        _setup_workspace(tmp_path, {
+            "llm": {"api_key": "k"},
+            "memory": {"enabled": True},
+        })
+        patches = _workspace_patches(tmp_path)
+        cleanup = _apply_patches(patches)
+        try:
+            def _import_side_effect(name):
+                if name == "mem0":
+                    raise ImportError("no mem0")
+                return True
+
+            with patch("see_agent.cli.main.importlib") as mock_importlib:
+                mock_importlib.import_module.side_effect = _import_side_effect
+                result = runner.invoke(app, ["setup", "check"])
+            assert "not installed" in result.output
+            assert "see-agent setup install --memory" in result.output
+        finally:
+            cleanup()
+
+
+# -------------------------------------------------------------------- #
 # Resume command
 # -------------------------------------------------------------------- #
 

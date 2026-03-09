@@ -197,7 +197,6 @@ class AgentLoop:
             total steps executed, and elapsed wall-clock time.
         """
         t0 = time.monotonic()
-        final_step = 0
 
         # ── 0. Connect MCP servers (lazy, first run only) ────────────
         if self._mcp_manager is not None and not self._mcp_connected:
@@ -266,6 +265,8 @@ class AgentLoop:
             skills=skills or None,
             memory_block=memory_block,
         )
+        session.log_system_prompt(system_prompt)
+        session.setup_logging()
 
         if session_id:
             # Resume: restore full conversation history from JSONL + screenshots.
@@ -299,6 +300,23 @@ class AgentLoop:
         step_offset = next_step
 
         # ── 4. Main loop ──────────────────────────────────────────────
+        try:
+            return await self._run_loop(
+                session, ctx, scaled, step_offset, t0,
+            )
+        finally:
+            session.teardown_logging()
+
+    async def _run_loop(
+        self,
+        session: Session,
+        ctx: ConversationContext,
+        scaled: "Screenshot",
+        step_offset: int,
+        t0: float,
+    ) -> RunResult:
+        """Inner loop extracted for try/finally teardown in :meth:`run`."""
+        final_step = 0
         consecutive_errors = 0
         no_progress_count = 0
         last_screenshot_hash: str | None = None
@@ -447,7 +465,7 @@ class AgentLoop:
                 shot_path: str | None = None
                 for img in result.images:
                     shot_num = step_offset + step
-                    img_path = task_dir / f"step_{shot_num:03d}.webp"
+                    img_path = session.screenshots_dir / f"step_{shot_num:03d}.webp"
                     import base64 as b64mod
                     img_path.parent.mkdir(parents=True, exist_ok=True)
                     img_path.write_bytes(b64mod.b64decode(img.base64))

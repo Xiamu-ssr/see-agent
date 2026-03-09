@@ -348,6 +348,65 @@ class TestRestoreContext:
         assert session.next_step_number() == 3
 
 
+class TestLogSystemPrompt:
+    """Tests for Session.log_system_prompt()."""
+
+    def test_log_system_prompt_writes_file(self, sessions_dir: Path) -> None:
+        with patch("see_agent.session.store.SESSIONS_DIR", sessions_dir):
+            session = SessionStore.create("Test", {"llm": {"model": "m"}})
+        session.log_system_prompt("You are a helpful assistant.")
+        log_file = session.dir / "system_prompt_log.md"
+        assert log_file.exists()
+        content = log_file.read_text()
+        assert "You are a helpful assistant." in content
+
+    def test_log_system_prompt_skips_duplicate(self, sessions_dir: Path) -> None:
+        with patch("see_agent.session.store.SESSIONS_DIR", sessions_dir):
+            session = SessionStore.create("Test", {"llm": {"model": "m"}})
+        session.log_system_prompt("Same prompt")
+        session.log_system_prompt("Same prompt")
+        content = (session.dir / "system_prompt_log.md").read_text()
+        assert content.count("Same prompt") == 1
+
+    def test_log_system_prompt_appends_on_change(self, sessions_dir: Path) -> None:
+        with patch("see_agent.session.store.SESSIONS_DIR", sessions_dir):
+            session = SessionStore.create("Test", {"llm": {"model": "m"}})
+        session.log_system_prompt("Prompt A")
+        session.log_system_prompt("Prompt B")
+        content = (session.dir / "system_prompt_log.md").read_text()
+        assert "Prompt A" in content
+        assert "Prompt B" in content
+
+
+class TestSessionLogging:
+    """Tests for Session.setup_logging() / teardown_logging()."""
+
+    def test_setup_logging_creates_file(self, sessions_dir: Path) -> None:
+        with patch("see_agent.session.store.SESSIONS_DIR", sessions_dir):
+            session = SessionStore.create("Test", {"llm": {"model": "m"}})
+        session.setup_logging()
+        try:
+            import logging as _logging
+            _logging.getLogger("see_agent.agent").warning("test log entry")
+            log_file = session.dir / "session.log"
+            assert log_file.exists()
+            assert "test log entry" in log_file.read_text()
+        finally:
+            session.teardown_logging()
+
+    def test_teardown_logging_removes_handler(self, sessions_dir: Path) -> None:
+        with patch("see_agent.session.store.SESSIONS_DIR", sessions_dir):
+            session = SessionStore.create("Test", {"llm": {"model": "m"}})
+        session.setup_logging()
+        handler = session._log_handler
+        assert handler is not None
+        import logging as _logging
+        assert handler in _logging.getLogger("see_agent.agent").handlers
+        session.teardown_logging()
+        assert handler not in _logging.getLogger("see_agent.agent").handlers
+        assert session._log_handler is None
+
+
 class TestSessionEdgeCases:
     """Additional edge cases for session management."""
 

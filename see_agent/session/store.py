@@ -9,8 +9,10 @@ Each session is a directory containing:
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import logging
+import logging.handlers
 import shutil
 import time
 from dataclasses import dataclass, field
@@ -61,6 +63,8 @@ class Session:
     _jsonl_path: Path = field(init=False, repr=False)
     _meta_path: Path = field(init=False, repr=False)
     _screenshots_dir: Path = field(init=False, repr=False)
+    _last_prompt_hash: str | None = field(init=False, repr=False, default=None)
+    _log_handler: logging.FileHandler | None = field(init=False, repr=False, default=None)
 
     def __post_init__(self) -> None:
         self._jsonl_path = self.dir / "messages.jsonl"
@@ -70,6 +74,47 @@ class Session:
     @property
     def screenshots_dir(self) -> Path:
         return self._screenshots_dir
+
+    # ---- system prompt audit log ----
+
+    def log_system_prompt(self, prompt: str) -> None:
+        """Append *prompt* to ``system_prompt_log.md`` if it changed since last call."""
+        h = hashlib.md5(prompt.encode()).hexdigest()
+        if h == self._last_prompt_hash:
+            return
+        self._last_prompt_hash = h
+        ts = _now_iso()
+        entry = f"## {ts}\n\n```\n{prompt}\n```\n\n"
+        with open(self.dir / "system_prompt_log.md", "a", encoding="utf-8") as fh:
+            fh.write(entry)
+
+    # ---- per-session logging ----
+
+    _SESSION_LOGGERS = (
+        "see_agent.agent", "see_agent.brain", "see_agent.eye", "see_agent.hand", "httpx",
+    )
+
+    def setup_logging(self) -> None:
+        """Attach a DEBUG file handler to session-related loggers."""
+        handler = logging.FileHandler(self.dir / "session.log", encoding="utf-8")
+        handler.setLevel(logging.DEBUG)
+        handler.setFormatter(logging.Formatter(
+            "%(asctime)s  %(levelname)-8s  %(name)s  %(message)s",
+            datefmt="%H:%M:%S",
+        ))
+        self._log_handler = handler
+        for name in self._SESSION_LOGGERS:
+            logging.getLogger(name).addHandler(handler)
+
+    def teardown_logging(self) -> None:
+        """Remove and close the session file handler."""
+        handler = self._log_handler
+        if handler is None:
+            return
+        for name in self._SESSION_LOGGERS:
+            logging.getLogger(name).removeHandler(handler)
+        handler.close()
+        self._log_handler = None
 
     # ---- message persistence ----
 

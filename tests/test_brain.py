@@ -2,7 +2,6 @@
 
 
 from see_agent.brain.base import BrainResponse, ToolCallInfo
-from see_agent.brain.openai_client import _summarise_messages
 from see_agent.brain.prompts import build_system_prompt
 
 # -------------------------------------------------------------------- #
@@ -116,53 +115,3 @@ class TestBrainResponse:
         assert resp.tool_calls[0].name == "finished"
 
 
-# -------------------------------------------------------------------- #
-# Tests for _summarise_messages
-# -------------------------------------------------------------------- #
-
-
-class TestSummariseMessages:
-    """Tests for the message summarisation helper used in LLM logging."""
-
-    def test_text_message_truncated(self):
-        long_text = "A" * 1000
-        msgs = [{"role": "user", "content": long_text}]
-        result = _summarise_messages(msgs)
-        assert len(result) == 1
-        assert result[0]["role"] == "user"
-        assert len(result[0]["content"]) <= 501 + 1  # 500 + "…"
-        assert result[0]["content"].endswith("…")
-
-    def test_short_text_not_truncated(self):
-        msgs = [{"role": "user", "content": "hello"}]
-        result = _summarise_messages(msgs)
-        assert result[0]["content"] == "hello"
-
-    def test_image_url_replaced(self):
-        fake_data_uri = "data:image/webp;base64," + "A" * 10000
-        msgs = [{
-            "role": "user",
-            "content": [
-                {"type": "text", "text": "Look at this"},
-                {
-                    "type": "image_url",
-                    "image_url": {"url": fake_data_uri, "detail": "high"},
-                },
-            ],
-        }]
-        result = _summarise_messages(msgs)
-        parts = result[0]["content"]
-        assert len(parts) == 2
-        assert parts[0]["type"] == "text"
-        assert parts[1]["type"] == "image"
-        assert parts[1]["detail"] == "high"
-        assert "chars" in parts[1]["size"]
-        # The raw base64 should NOT appear.
-        assert "AAAA" not in str(parts[1])
-
-    def test_tool_result_message(self):
-        msgs = [{"role": "tool", "tool_call_id": "tc_1", "content": "Clicked"}]
-        result = _summarise_messages(msgs)
-        assert result[0]["role"] == "tool"
-        assert result[0]["tool_call_id"] == "tc_1"
-        assert result[0]["content"] == "Clicked"

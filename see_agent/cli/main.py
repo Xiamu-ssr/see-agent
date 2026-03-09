@@ -12,7 +12,10 @@ Commands
 from __future__ import annotations
 
 import asyncio
+import importlib
 import json
+import shutil
+import subprocess
 import sys
 from typing import Any
 
@@ -51,6 +54,13 @@ mcp_app = typer.Typer(
     add_completion=False,
 )
 app.add_typer(mcp_app, name="mcp")
+
+setup_app = typer.Typer(
+    name="setup",
+    help="Install optional dependencies and check environment.",
+    add_completion=False,
+)
+app.add_typer(setup_app, name="setup")
 
 
 # ---------------------------------------------------------------------------
@@ -139,6 +149,11 @@ def _build_components(config: dict, *, no_overlay: bool = False, no_scaling: boo
             from see_agent.hand.mcp import MCPManager
 
             mcp_manager = MCPManager(mcp_servers, global_env=config.get("env", {}))
+        except ImportError:
+            typer.echo(
+                "Warning: MCP configured but mcp not installed. "
+                "Run: see-agent setup install --mcp"
+            )
         except Exception:
             logging.getLogger(__name__).warning(
                 "Failed to initialize MCP manager, continuing without it"
@@ -153,6 +168,11 @@ def _build_components(config: dict, *, no_overlay: bool = False, no_scaling: boo
             from see_agent.memory.mem0_backend import Mem0Memory
 
             memory = Mem0Memory(config=mem_cfg.get("mem0") or None)
+        except ImportError:
+            typer.echo(
+                "Warning: Memory enabled but mem0ai not installed. "
+                "Run: see-agent setup install --memory"
+            )
         except Exception:
             logging.getLogger(__name__).warning(
                 "Failed to initialize memory backend, continuing without it"
@@ -656,6 +676,79 @@ def mcp_remove(
     del servers[name]
     save_config(config)
     typer.echo(f"Removed MCP server: {name}")
+
+
+# ---------------------------------------------------------------------------
+# Setup sub-commands
+# ---------------------------------------------------------------------------
+
+
+@setup_app.command("install")
+def setup_install(
+    full: bool = typer.Option(False, "--full", help="Install all optional deps."),
+    memory: bool = typer.Option(False, "--memory", help="Install memory (mem0ai) deps."),
+    mcp: bool = typer.Option(False, "--mcp", help="Install MCP deps."),
+    dev: bool = typer.Option(False, "--dev", help="Install dev deps."),
+) -> None:
+    """Install optional dependencies for see-agent."""
+    extras: list[str] = []
+    if full or not any([memory, mcp, dev]):
+        extras.append("all")
+    if memory and not full:
+        extras.append("memory")
+    if mcp and not full:
+        extras.append("mcp")
+    if dev:
+        extras.append("dev")
+
+    spec = ",".join(extras)
+    installer = "uv" if shutil.which("uv") else "pip"
+    if installer == "uv":
+        cmd = ["uv", "pip", "install", "-e", f".[{spec}]"]
+    else:
+        cmd = [sys.executable, "-m", "pip", "install", "-e", f".[{spec}]"]
+
+    typer.echo(f"Running: {' '.join(cmd)}")
+    result = subprocess.run(cmd, check=False)
+    raise typer.Exit(code=result.returncode)
+
+
+@setup_app.command("check")
+def setup_check() -> None:
+    """Check which optional dependencies are installed."""
+    config = load_config()
+
+    # Check mem0ai
+    try:
+        importlib.import_module("mem0")
+        mem0_ok = True
+    except ImportError:
+        mem0_ok = False
+
+    mem_enabled = config.get("memory", {}).get("enabled", False)
+    if mem0_ok:
+        typer.echo("mem0ai   ... installed")
+    else:
+        hint = " (config: memory.enabled=true)" if mem_enabled else ""
+        typer.echo(f"mem0ai   ... not installed{hint}")
+        if mem_enabled:
+            typer.echo("  Fix: see-agent setup install --memory")
+
+    # Check mcp
+    try:
+        importlib.import_module("mcp")
+        mcp_ok = True
+    except ImportError:
+        mcp_ok = False
+
+    mcp_configured = bool(config.get("mcp_servers"))
+    if mcp_ok:
+        typer.echo("mcp      ... installed")
+    else:
+        hint = " (config: mcp_servers configured)" if mcp_configured else ""
+        typer.echo(f"mcp      ... not installed{hint}")
+        if mcp_configured:
+            typer.echo("  Fix: see-agent setup install --mcp")
 
 
 # ---------------------------------------------------------------------------
