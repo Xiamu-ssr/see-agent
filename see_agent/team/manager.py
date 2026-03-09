@@ -79,6 +79,9 @@ class TeamManager:
         if self._team_def.owner:
             self._bus.register("owner")
 
+        # Collect environment info once and share across all agents.
+        await self._cache_environment()
+
         # Build agent loops.
         loops: dict[str, AgentLoop] = {}
         for agent_id in self._team_def.members:
@@ -140,6 +143,24 @@ class TeamManager:
     # ------------------------------------------------------------------ #
     # Internal builders
     # ------------------------------------------------------------------ #
+
+    async def _cache_environment(self) -> None:
+        """Collect desktop environment info once and store in global config."""
+        try:
+            from see_agent.agent.environment import collect_environment
+            from see_agent.eye.mac import MacEye
+
+            if self._shared_eye is None:
+                self._shared_eye = MacEye()
+            screenshot = await self._shared_eye.capture()
+            env_block = await collect_environment(
+                screenshot.width, screenshot.height,
+            )
+            self._global_config["_cached_env_block"] = env_block
+        except Exception:
+            logger.warning(
+                "Failed to pre-collect environment info", exc_info=True,
+            )
 
     def _build_agent_loop(self, agent_id: str) -> AgentLoop:
         """Build an :class:`AgentLoop` for a single team member."""
@@ -237,6 +258,7 @@ class TeamManager:
             screen_lock=self._screen_lock,
             memory=memory,
             owner_display=owner_display,
+            task_board=self._board,
         )
         return loop
 

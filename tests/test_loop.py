@@ -1456,3 +1456,101 @@ class TestScreenshotSkip:
 
         assert result.success is True
         eye.capture.assert_not_called()
+
+
+class TestCachedEnvBlock:
+    """Environment block caching in config."""
+
+    @pytest.mark.asyncio
+    async def test_cached_env_skips_collect(self, tmp_path):
+        """When _cached_env_block is set, collect_environment is not called."""
+        brain = AsyncMock()
+        brain.chat = AsyncMock(return_value=_make_finished_response("ok"))
+
+        eye = AsyncMock()
+        eye.capture = AsyncMock(return_value=_make_screenshot())
+
+        registry = MagicMock()
+        registry.get_openai_schemas.return_value = []
+        registry._tools = dict(_DEFAULT_SCREEN_TOOLS)
+
+        config: dict[str, Any] = {
+            "language": "en",
+            "max_steps": 5,
+            "max_images": 5,
+            "screenshot_interval_ms": 0,
+            "tool_delay_ms": 0,
+            "scaling_enabled": False,
+            "_cached_env_block": "Pre-collected env info",
+        }
+        loop = AgentLoop(
+            brain=brain, eye=eye, registry=registry, config=config,
+        )
+
+        with (
+            _patch_sessions(tmp_path),
+            patch(
+                "see_agent.agent.environment.collect_environment",
+            ) as mock_collect,
+        ):
+            result = await loop.run("test cached env")
+
+        assert result.success is True
+        mock_collect.assert_not_called()
+        # Cached env block should appear in messages sent to brain.
+        call_args = brain.chat.call_args
+        messages = call_args[0][0]
+        all_text = str(messages)
+        assert "Pre-collected env info" in all_text
+
+
+class TestFinishedAutoMarkTasks:
+    """finished tool auto-marks tasks on the board."""
+
+    @pytest.mark.asyncio
+    async def test_finished_auto_completes_tasks(self, tmp_path):
+        """When agent finishes, its claimed tasks are marked done."""
+        from see_agent.team.task_board import TaskBoard
+
+        board = TaskBoard(tmp_path / "team")
+        t1 = board.create_task(title="Task 1", created_by="leader")
+        board.claim_task(t1.id, "alice")
+        t2 = board.create_task(title="Task 2", created_by="leader")
+        board.update_task(
+            t2.id, assigned_to="alice", status="in_progress",
+        )
+        # Task owned by another agent — should NOT be touched.
+        t3 = board.create_task(title="Task 3", created_by="leader")
+        board.claim_task(t3.id, "bob")
+
+        brain = AsyncMock()
+        brain.chat = AsyncMock(
+            return_value=_make_finished_response("All done."),
+        )
+
+        eye = AsyncMock()
+        eye.capture = AsyncMock(return_value=_make_screenshot())
+
+        registry = MagicMock()
+        registry.get_openai_schemas.return_value = []
+        registry._tools = dict(_DEFAULT_SCREEN_TOOLS)
+
+        loop = AgentLoop(
+            brain=brain,
+            eye=eye,
+            registry=registry,
+            config={"max_steps": 5, "tool_delay_ms": 0},
+            agent_id="alice",
+            task_board=board,
+        )
+
+        with _patch_sessions(tmp_path):
+            result = await loop.run("do work")
+
+        assert result.success is True
+
+        tasks = board.list_tasks()
+        by_id = {t.id: t for t in tasks}
+        assert by_id[t1.id].status == "done"
+        assert by_id[t2.id].status == "done"
+        assert by_id[t3.id].status == "claimed"  # unchanged

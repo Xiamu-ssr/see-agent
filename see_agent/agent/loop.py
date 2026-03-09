@@ -122,6 +122,7 @@ class AgentLoop:
         team_bus: Any | None = None,
         screen_lock: asyncio.Lock | None = None,
         owner_display: str | None = None,
+        task_board: Any | None = None,
     ) -> None:
         self._brain = brain
         self._eye = eye
@@ -139,6 +140,7 @@ class AgentLoop:
         self._team_bus = team_bus
         self._screen_lock = screen_lock
         self._owner_display = owner_display
+        self._task_board = task_board
 
         # Configurable knobs with sensible defaults.
         self._max_steps: int = int(config.get("max_steps", 50))
@@ -301,6 +303,23 @@ class AgentLoop:
         })
         logger.info("Compaction complete: summary length=%d", len(summary))
 
+    def _auto_complete_tasks(self, summary: str) -> None:
+        """Auto-mark claimed/in_progress tasks for this agent as done."""
+        if self._task_board is None or self._agent_id is None:
+            return
+        try:
+            tasks = self._task_board.list_tasks()
+            for t in tasks:
+                if (
+                    t.assigned_to == self._agent_id
+                    and t.status in ("claimed", "in_progress")
+                ):
+                    self._task_board.complete_task(
+                        t.id, self._agent_id, result=summary,
+                    )
+        except Exception:
+            logger.warning("Auto-complete tasks failed", exc_info=True)
+
     def _save_memory(self, ctx: ConversationContext, session_id: str) -> None:
         """Persist conversation to memory backend (if configured)."""
         if self._memory is None:
@@ -377,9 +396,9 @@ class AgentLoop:
             initial_path = task_dir / f"step_{next_step:03d}.webp"
             scaled.save(initial_path)
 
-        # ── 2b. Collect desktop environment info ──────────────────────
-        env_block = ""
-        if has_screen_tools:
+        # ── 2b. Collect desktop environment info (cached if available) ─
+        env_block = self._config.get("_cached_env_block", "")
+        if not env_block and has_screen_tools:
             from see_agent.agent.environment import collect_environment
 
             try:
@@ -562,6 +581,7 @@ class AgentLoop:
                     summary = tc.arguments.get("summary", "Task completed.")
                     ctx.add_tool_result(tc.id, summary)
                     logger.info("Task finished: %s", summary)
+                    self._auto_complete_tasks(summary)
                     final_step = step
                     elapsed = time.monotonic() - t0
                     session.update_meta(
