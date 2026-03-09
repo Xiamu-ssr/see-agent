@@ -355,9 +355,17 @@ class AgentLoop:
         task_dir.mkdir(parents=True, exist_ok=True)
         logger.info("Session %s — task dir: %s", session.id, task_dir)
 
-        # ── 2. Initial screenshot ─────────────────────────────────────
-        screenshot = await self._eye.capture()
-        scaled = self._maybe_scale(screenshot)
+        # ── 2. Initial screenshot (skipped for text-only agents) ──────
+        has_screen_tools = bool(
+            self._SCREEN_TOOLS & set(self._registry._tools)
+        )
+
+        if has_screen_tools:
+            screenshot = await self._eye.capture()
+            scaled = self._maybe_scale(screenshot)
+        else:
+            screenshot = None
+            scaled = None
 
         # Determine step numbering: continue from last step on resume.
         if session_id:
@@ -365,19 +373,22 @@ class AgentLoop:
         else:
             next_step = 0
 
-        initial_path = task_dir / f"step_{next_step:03d}.webp"
-        scaled.save(initial_path)
+        if scaled is not None:
+            initial_path = task_dir / f"step_{next_step:03d}.webp"
+            scaled.save(initial_path)
 
         # ── 2b. Collect desktop environment info ──────────────────────
-        from see_agent.agent.environment import collect_environment
+        env_block = ""
+        if has_screen_tools:
+            from see_agent.agent.environment import collect_environment
 
-        try:
-            env_block = await collect_environment(
-                screenshot.width, screenshot.height,
-            )
-        except Exception:
-            logger.warning("Failed to collect environment info", exc_info=True)
-            env_block = ""
+            try:
+                env_block = await collect_environment(
+                    screenshot.width, screenshot.height,  # type: ignore[union-attr]
+                )
+            except Exception:
+                logger.warning("Failed to collect environment info", exc_info=True)
+                env_block = ""
 
         # ── 3. Build conversation context ─────────────────────────────
         from see_agent.brain.prompts import build_system_prompt
@@ -417,13 +428,15 @@ class AgentLoop:
                 max_images=self._max_images,
                 on_append=session.append_message,
             )
-            # Append only the new user task (no duplicate system prompt).
             task_text = f"{env_block}\n\n{task}" if env_block else task
-            ctx.add_user_task(
-                task_text, scaled.base64, scaled.detail,
-                mime_type=scaled.mime_type,
-                screenshot_ref=f"step_{next_step:03d}.webp",
-            )
+            if scaled is not None:
+                ctx.add_user_task(
+                    task_text, scaled.base64, scaled.detail,
+                    mime_type=scaled.mime_type,
+                    screenshot_ref=f"step_{next_step:03d}.webp",
+                )
+            else:
+                ctx.add_user_task_text_only(task_text)
         else:
             # New session: fresh context.
             ctx = ConversationContext(
@@ -432,11 +445,14 @@ class AgentLoop:
                 on_append=session.append_message,
             )
             task_text = f"{env_block}\n\n{task}" if env_block else task
-            ctx.add_user_task(
-                task_text, scaled.base64, scaled.detail,
-                mime_type=scaled.mime_type,
-                screenshot_ref=f"step_{next_step:03d}.webp",
-            )
+            if scaled is not None:
+                ctx.add_user_task(
+                    task_text, scaled.base64, scaled.detail,
+                    mime_type=scaled.mime_type,
+                    screenshot_ref=f"step_{next_step:03d}.webp",
+                )
+            else:
+                ctx.add_user_task_text_only(task_text)
 
         # Step offset for screenshot naming in the main loop.
         step_offset = next_step
@@ -457,7 +473,7 @@ class AgentLoop:
         self,
         session: Session,
         ctx: ConversationContext,
-        scaled: "Screenshot",
+        scaled: "Screenshot | None",
         step_offset: int,
         t0: float,
     ) -> RunResult:
@@ -569,6 +585,22 @@ class AgentLoop:
                     if self._overlay:
                         _show_overlay(self._overlay, "call_user", tc.arguments)
 
+                    if self._team_bus is not None and self._agent_id is not None:
+                        # Team mode: send question to owner via bus.
+                        from see_agent.team.bus import BusMessage
+
+                        self._team_bus.send(BusMessage(
+                            sender=self._agent_id,
+                            recipient="owner",
+                            content=question,
+                        ))
+                        ctx.add_tool_result(
+                            tc.id,
+                            "Question sent to owner. Continue working on "
+                            "other tasks while waiting for a reply.",
+                        )
+                        continue
+
                     if self._on_user_input is not None:
                         user_reply = await self._on_user_input(question)
                     else:
@@ -580,7 +612,15 @@ class AgentLoop:
 
                 # ── Scale coordinates & show overlay, then execute ────
                 exec_args = tc.arguments
-                if scaled.screen_width is not None and scaled.screen_height is not None:
+                has_scale_info = (
+                    scaled is not None
+                    and scaled.screen_width is not None
+                    and scaled.screen_height is not None
+                )
+                if has_scale_info:
+                    assert scaled is not None  # guarded above
+                    assert scaled.screen_width is not None
+                    assert scaled.screen_height is not None
                     try:
                         exec_args = scale_tool_args(
                             tc.name, tc.arguments,

@@ -86,6 +86,16 @@ class ConversationContext:
                 "detail": detail,
             })
 
+    def add_user_task_text_only(self, text: str) -> None:
+        """Append a text-only user task message (no screenshot).
+
+        Used for agents that have no screen tools.
+        """
+        self._messages.append({"role": "user", "content": text})
+        logger.debug("Added text-only user task")
+        if self._on_append:
+            self._on_append({"type": "user_task", "text": text})
+
     def add_assistant(self, message: Any) -> None:
         """Append the raw assistant message returned by the LLM.
 

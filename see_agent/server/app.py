@@ -33,6 +33,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Shared mutable state accessible from route handlers via ``request.app.state``.
     app.state.tasks = {}
     app.state.ws_subscribers = {}
+    app.state.team_managers = {}
 
     logger.info(
         "see-agent server started  model=%s  max_steps=%s",

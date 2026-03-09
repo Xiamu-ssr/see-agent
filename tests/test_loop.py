@@ -78,6 +78,42 @@ def _make_click_response(step_id: int = 1) -> BrainResponse:
     )
 
 
+def _make_call_user_response(question: str = "Need help?") -> BrainResponse:
+    """Create a BrainResponse that calls the 'call_user' tool."""
+    raw = MagicMock()
+    raw.model_dump.return_value = {
+        "role": "assistant",
+        "content": "Asking user.",
+        "tool_calls": [
+            {
+                "id": "tc_cu",
+                "type": "function",
+                "function": {
+                    "name": "call_user",
+                    "arguments": f'{{"question": "{question}"}}',
+                },
+            }
+        ],
+    }
+    return BrainResponse(
+        content="Asking user.",
+        tool_calls=[
+            ToolCallInfo(
+                id="tc_cu",
+                name="call_user",
+                arguments={"question": question},
+            )
+        ],
+        raw=raw,
+    )
+
+
+_DEFAULT_SCREEN_TOOLS = {
+    "screenshot": True, "click": True, "type_text": True,
+    "scroll": True, "drag": True, "hotkey": True,
+}
+
+
 def _build_loop(
     brain: Any,
     eye: Any,
@@ -87,6 +123,9 @@ def _build_loop(
     scaling_enabled: bool = False,
 ) -> AgentLoop:
     """Construct an AgentLoop with the given mocked components."""
+    # Ensure registry._tools has screen tools so capture is called.
+    if not isinstance(getattr(registry, "_tools", None), dict):
+        registry._tools = dict(_DEFAULT_SCREEN_TOOLS)
     config: dict[str, Any] = {
         "language": "en",
         "max_steps": max_steps,
@@ -1340,3 +1379,80 @@ class TestAgentLoopTeamParams:
         )
         await loop._execute_with_lock("send_message", {"to": "bob"})
         registry.execute.assert_called_once()
+
+
+class TestCallUserTeamMode:
+    """call_user sends to owner when in team mode."""
+
+    @pytest.mark.asyncio
+    async def test_call_user_sends_to_owner(self, tmp_path):
+        """In team mode, call_user sends question to owner via bus."""
+        from see_agent.team.bus import TeamBus
+
+        bus = TeamBus(tmp_path / "team")
+        bus.register("owner")
+        bus.register("agent1")
+
+        call_user_response = _make_call_user_response()
+        finished_response = _make_finished_response("Done.")
+
+        brain = AsyncMock()
+        brain.chat = AsyncMock(
+            side_effect=[call_user_response, finished_response],
+        )
+
+        eye = AsyncMock()
+        eye.capture = AsyncMock(return_value=_make_screenshot())
+
+        registry = MagicMock()
+        registry.get_openai_schemas.return_value = []
+        registry._tools = {"screenshot": True, "click": True}
+
+        loop = AgentLoop(
+            brain=brain,
+            eye=eye,
+            registry=registry,
+            config={"max_steps": 5, "tool_delay_ms": 0},
+            agent_id="agent1",
+            team_bus=bus,
+        )
+
+        with _patch_sessions(tmp_path):
+            result = await loop.run("test task")
+
+        assert result.success is True
+        # Owner should have received the question.
+        owner_msgs = bus.drain("owner")
+        assert len(owner_msgs) == 1
+        assert owner_msgs[0].sender == "agent1"
+
+
+class TestScreenshotSkip:
+    """Text-only agents skip initial screenshot."""
+
+    @pytest.mark.asyncio
+    async def test_no_screen_tools_skips_capture(self, tmp_path):
+        """When registry has no screen tools, eye.capture is never called."""
+        brain = AsyncMock()
+        brain.chat = AsyncMock(return_value=_make_finished_response("ok"))
+
+        eye = AsyncMock()
+        eye.capture = AsyncMock(return_value=_make_screenshot())
+
+        registry = MagicMock()
+        registry.get_openai_schemas.return_value = []
+        # No screen tools registered.
+        registry._tools = {"send_message": True, "list_tasks": True}
+
+        loop = AgentLoop(
+            brain=brain,
+            eye=eye,
+            registry=registry,
+            config={"max_steps": 5, "tool_delay_ms": 0},
+        )
+
+        with _patch_sessions(tmp_path):
+            result = await loop.run("text task")
+
+        assert result.success is True
+        eye.capture.assert_not_called()

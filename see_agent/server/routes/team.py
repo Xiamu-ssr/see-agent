@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import json
 import logging
+from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
@@ -26,6 +28,11 @@ class CreateTeamRequest(BaseModel):
 
 class RunTeamRequest(BaseModel):
     task: str
+
+
+class OwnerMessageRequest(BaseModel):
+    to: str
+    content: str
 
 
 # -------------------------------------------------------------------- #
@@ -76,7 +83,12 @@ async def run_team(
 
     config = request.app.state.config
     manager = TeamManager(team_def, config)
-    result = await manager.run(body.task)
+    # Store manager for live message injection.
+    request.app.state.team_managers[team_id] = manager
+    try:
+        result = await manager.run(body.task)
+    finally:
+        request.app.state.team_managers.pop(team_id, None)
     return {
         "team_id": result.team_id,
         "success": result.success,
@@ -129,3 +141,139 @@ async def stop_team(team_id: str) -> dict[str, str]:
     team.status = "stopped"
     team.save()
     return {"status": "stopped"}
+
+
+# -------------------------------------------------------------------- #
+# Owner communication endpoints
+# -------------------------------------------------------------------- #
+
+
+def _team_dir(team_id: str) -> Path:
+    # Import at call-time so patches work in tests.
+    import see_agent.config as _cfg
+
+    return _cfg.TEAMS_DIR / team_id
+
+
+@router.post("/{team_id}/message")
+async def owner_send_message(
+    team_id: str, body: OwnerMessageRequest, request: Request,
+) -> dict[str, str]:
+    """Send a message from the owner to an agent."""
+    from see_agent.team.bus import BusMessage
+    from see_agent.team.definition import TeamDefinition
+
+    try:
+        TeamDefinition.load(team_id)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Team not found")
+
+    msg = BusMessage(sender="owner", recipient=body.to, content=body.content)
+
+    # Inject into live bus if team is running.
+    manager = request.app.state.team_managers.get(team_id)
+    if manager is not None:
+        manager._bus.send(msg)
+    else:
+        # Persist to audit log directly.
+        log_path = _team_dir(team_id) / "messages.jsonl"
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(log_path, "a", encoding="utf-8") as fh:
+            fh.write(
+                json.dumps(
+                    {
+                        "sender": msg.sender,
+                        "recipient": msg.recipient,
+                        "content": msg.content,
+                        "ts": msg.ts,
+                    },
+                    ensure_ascii=False,
+                )
+                + "\n"
+            )
+
+    return {"status": "sent"}
+
+
+@router.get("/{team_id}/messages")
+async def owner_get_messages(
+    team_id: str,
+    limit: int = Query(default=50, ge=1, le=500),
+) -> list[dict[str, Any]]:
+    """Get messages where sender or recipient is 'owner'."""
+    from see_agent.team.definition import TeamDefinition
+
+    try:
+        TeamDefinition.load(team_id)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Team not found")
+
+    log_path = _team_dir(team_id) / "messages.jsonl"
+    if not log_path.exists():
+        return []
+
+    results: list[dict[str, Any]] = []
+    for line in log_path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        entry = json.loads(line)
+        if entry.get("sender") == "owner" or entry.get("recipient") == "owner":
+            results.append(entry)
+
+    return results[-limit:]
+
+
+@router.get("/{team_id}/unread")
+async def owner_unread_count(team_id: str) -> dict[str, int]:
+    """Count unread messages sent to 'owner'."""
+    from see_agent.team.definition import TeamDefinition
+
+    try:
+        TeamDefinition.load(team_id)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Team not found")
+
+    td = _team_dir(team_id)
+    log_path = td / "messages.jsonl"
+    if not log_path.exists():
+        return {"unread": 0}
+
+    # Read last_read_ts from owner_state.json.
+    state_path = td / "owner_state.json"
+    last_read_ts = ""
+    if state_path.exists():
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+        last_read_ts = state.get("last_read_ts", "")
+
+    count = 0
+    for line in log_path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        entry = json.loads(line)
+        if entry.get("recipient") == "owner" and entry.get("ts", "") > last_read_ts:
+            count += 1
+
+    return {"unread": count}
+
+
+@router.post("/{team_id}/mark_read")
+async def owner_mark_read(team_id: str) -> dict[str, str]:
+    """Mark all owner messages as read."""
+    from datetime import datetime, timezone
+
+    from see_agent.team.definition import TeamDefinition
+
+    try:
+        TeamDefinition.load(team_id)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Team not found")
+
+    td = _team_dir(team_id)
+    td.mkdir(parents=True, exist_ok=True)
+    state_path = td / "owner_state.json"
+    now = datetime.now(timezone.utc).isoformat()
+    state_path.write_text(
+        json.dumps({"last_read_ts": now}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    return {"last_read_ts": now}
