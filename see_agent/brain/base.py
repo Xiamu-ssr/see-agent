@@ -52,3 +52,11 @@ class BaseBrain(ABC):
             tool calls.
         """
         ...
+
+    async def summarize(self, messages: list[dict[str, Any]]) -> str:
+        """Summarize *messages* into a compact text for context compaction.
+
+        The default implementation raises :class:`NotImplementedError`.
+        Subclasses should override this to provide model-backed summarization.
+        """
+        raise NotImplementedError("summarize() not implemented")

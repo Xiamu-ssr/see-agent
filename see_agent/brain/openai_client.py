@@ -106,3 +106,53 @@ class OpenAIBrain(BaseBrain):
             tool_calls=tool_calls,
             raw=message,
         )
+
+    async def summarize(self, messages: list[dict[str, Any]]) -> str:
+        """Summarize earlier conversation messages for context compaction."""
+        formatted = self._format_for_summary(messages)
+        summary_messages: list[dict[str, Any]] = [
+            {
+                "role": "system",
+                "content": (
+                    "You are a conversation summarizer. Condense the following "
+                    "conversation into a concise summary preserving: key decisions, "
+                    "actions taken, results observed, and current state. "
+                    "Output only the summary, no preamble."
+                ),
+            },
+            {"role": "user", "content": formatted},
+        ]
+
+        response = await self._client.chat.completions.create(
+            model=self._model,
+            messages=cast(Any, summary_messages),
+            max_tokens=2048,
+            stream=False,
+        )
+        return response.choices[0].message.content or ""
+
+    @staticmethod
+    def _format_for_summary(messages: list[dict[str, Any]]) -> str:
+        """Format messages for summarization, stripping images and truncating."""
+        lines: list[str] = []
+        for msg in messages:
+            role = msg.get("role", "?")
+            content = msg.get("content")
+            if isinstance(content, list):
+                # Extract only text parts, skip images.
+                text_parts = [
+                    p.get("text", "")
+                    for p in content
+                    if isinstance(p, dict) and p.get("type") == "text"
+                ]
+                text = " ".join(text_parts)
+            elif isinstance(content, str):
+                text = content
+            else:
+                text = str(content) if content else ""
+            # Truncate long entries.
+            if len(text) > 500:
+                text = text[:497] + "..."
+            if text:
+                lines.append(f"[{role}] {text}")
+        return "\n".join(lines)

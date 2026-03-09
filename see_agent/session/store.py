@@ -192,8 +192,27 @@ class Session:
         ctx = ConversationContext(system_prompt, max_images=max_images)
 
         messages = self.read_messages()
+
+        # Check for compaction: find the last compact entry and skip old messages.
+        compact_summary: str | None = None
+        first_kept_msg_id = 0
+        for msg in reversed(messages):
+            if msg.get("type") == "compact":
+                compact_summary = msg.get("summary", "")
+                first_kept_msg_id = msg.get("first_kept_msg_id", 0)
+                break
+
         for msg in messages:
+            # Skip messages before compaction point.
+            if compact_summary and first_kept_msg_id:
+                msg_id = msg.get("msg_id", 0)
+                if msg_id and msg_id < first_kept_msg_id:
+                    continue
+
             msg_type = msg.get("type")
+            if msg_type == "compact":
+                # Skip compact markers during replay — summary is injected below.
+                continue
             if msg_type == "system":
                 # Already added by ConversationContext.__init__; skip.
                 continue
@@ -246,6 +265,10 @@ class Session:
                     "role": "user",
                     "content": msg.get("text", ""),
                 })
+
+        # Inject compaction summary if present.
+        if compact_summary:
+            ctx.inject_summary(compact_summary)
 
         # NOW activate the on_append callback for future messages.
         ctx._on_append = on_append

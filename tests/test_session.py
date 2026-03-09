@@ -469,6 +469,32 @@ class TestSessionLoggingBug1:
         assert lgr.level == _logging.WARNING
 
 
+class TestRestoreCompact:
+    """Tests for restoring sessions with compact entries."""
+
+    def test_restore_handles_compact_entry(self, sessions_dir: Path) -> None:
+        """Sessions with compact entry should inject summary on restore."""
+        with patch("see_agent.session.store.SESSIONS_DIR", sessions_dir):
+            session = SessionStore.create("Test", {"llm": {"model": "m"}})
+
+        session.append_message({"type": "system", "content": "sys"})
+        session.append_message({"type": "user_task", "text": "old task", "detail": "high"})
+        session.append_message({"type": "assistant", "content": "old response"})
+        session.append_message({
+            "type": "compact",
+            "summary": "Earlier we discussed opening Safari.",
+            "first_kept_msg_id": 3,
+        })
+        session.append_message({"type": "user_reply", "text": "new question"})
+
+        ctx = session.restore_context("sys", max_images=5)
+        msgs = ctx.get_messages()
+        # Should have: system + summary + new question
+        summaries = [m for m in msgs if "[Conversation Summary]" in str(m.get("content", ""))]
+        assert len(summaries) == 1
+        assert "opening Safari" in summaries[0]["content"]
+
+
 class TestSessionEdgeCases:
     """Additional edge cases for session management."""
 

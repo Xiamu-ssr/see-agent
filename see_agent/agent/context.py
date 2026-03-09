@@ -237,6 +237,39 @@ class ConversationContext:
             self._on_append({"type": "system_hint", "text": text})
 
     # ------------------------------------------------------------------ #
+    # Context compaction
+    # ------------------------------------------------------------------ #
+
+    def apply_compaction(self, summary: str, keep_recent: int = 4) -> None:
+        """Replace older messages with a *summary*, keeping recent ones.
+
+        Preserves ``_messages[0]`` (system prompt), inserts the summary as a
+        user message at index 1, then keeps the last *keep_recent* messages.
+        """
+        system = self._messages[0]
+        if keep_recent < len(self._messages):
+            recent = self._messages[-keep_recent:]
+        else:
+            recent = self._messages[1:]
+        summary_msg: dict[str, Any] = {
+            "role": "user",
+            "content": f"[Conversation Summary]\n{summary}",
+        }
+        self._messages = [system, summary_msg] + recent
+        logger.debug(
+            "Compaction applied: summary + %d recent messages kept", len(recent),
+        )
+
+    def inject_summary(self, summary: str) -> None:
+        """Insert a summary message at index 1 (for session resume)."""
+        summary_msg: dict[str, Any] = {
+            "role": "user",
+            "content": f"[Conversation Summary]\n{summary}",
+        }
+        self._messages.insert(1, summary_msg)
+        logger.debug("Injected conversation summary at index 1")
+
+    # ------------------------------------------------------------------ #
     # Context retrieval with sliding window
     # ------------------------------------------------------------------ #
 

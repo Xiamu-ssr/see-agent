@@ -173,6 +173,77 @@ class AgentLoop:
             return screenshot
         return scale_screenshot(screenshot, target)
 
+    @staticmethod
+    def _estimate_tokens(messages: list[dict[str, Any]]) -> int:
+        """Rough token estimate: chars/4 for text, 765 per image."""
+        total = 0
+        for msg in messages:
+            content = msg.get("content")
+            if isinstance(content, str):
+                total += len(content) // 4
+            elif isinstance(content, list):
+                for part in content:
+                    if isinstance(part, dict):
+                        if part.get("type") == "text":
+                            total += len(part.get("text", "")) // 4
+                        elif part.get("type") == "image_url":
+                            total += 765
+            # tool_calls arguments
+            for tc in msg.get("tool_calls", []):
+                func = tc.get("function", {})
+                total += len(func.get("arguments", "")) // 4
+        return total
+
+    async def _maybe_compact(
+        self, ctx: ConversationContext, session: Session,
+    ) -> None:
+        """Compact conversation if over threshold (config-driven)."""
+        compact_cfg = self._config.get("compact", {})
+        if not compact_cfg.get("enabled", False):
+            return
+        context_window = compact_cfg.get("context_window", 128000)
+        target_ratio = compact_cfg.get("target_ratio", 0.75)
+        threshold = int(context_window * target_ratio)
+
+        messages = ctx.get_messages()
+        estimated = self._estimate_tokens(messages)
+        if estimated < threshold:
+            return
+
+        logger.info(
+            "Context compaction triggered: ~%d tokens (threshold %d)",
+            estimated, threshold,
+        )
+        # Keep system + last 4 messages; summarize the rest.
+        keep_recent = 4
+        if len(messages) <= keep_recent + 2:
+            return  # Not enough to compact.
+
+        old_messages = messages[1:-keep_recent]  # skip system, keep recent
+        try:
+            summary = await self._brain.summarize(old_messages)
+        except NotImplementedError:
+            logger.warning("Brain does not support summarize(), skipping compaction")
+            return
+        except Exception:
+            logger.warning("Summarization failed, skipping compaction", exc_info=True)
+            return
+
+        # Determine first_kept_msg_id from the recent messages in JSONL.
+        first_kept_msg_id = 0
+        if hasattr(session, '_msg_counter'):
+            first_kept_msg_id = max(session._msg_counter - keep_recent, 0)
+
+        ctx.apply_compaction(summary, keep_recent=keep_recent)
+
+        # Persist compact marker to JSONL.
+        session.append_message({
+            "type": "compact",
+            "summary": summary,
+            "first_kept_msg_id": first_kept_msg_id,
+        })
+        logger.info("Compaction complete: summary length=%d", len(summary))
+
     def _save_memory(self, ctx: ConversationContext, session_id: str) -> None:
         """Persist conversation to memory backend (if configured)."""
         if self._memory is None:
@@ -333,7 +404,10 @@ class AgentLoop:
         for step in range(1, self._max_steps + 1):
             logger.info("=== Step %d / %d ===", step, self._max_steps)
 
-            # ── 4a. Ask the LLM ──────────────────────────────────────
+            # ── 4a. Maybe compact context ────────────────────────────
+            await self._maybe_compact(ctx, session)
+
+            # ── 4b. Ask the LLM ──────────────────────────────────────
             try:
                 response: BrainResponse = await self._brain.chat(
                     ctx.get_messages(), tools_schema
@@ -361,7 +435,7 @@ class AgentLoop:
             if thought:
                 logger.info("Thought: %s", thought[:200])
 
-            # ── 4b. No tool calls -- LLM wants to stop ──────────────
+            # ── 4c. No tool calls -- LLM wants to stop ──────────────
             if not response.tool_calls:
                 logger.info("No tool calls returned -- ending loop")
                 ctx.add_assistant(response.raw)
@@ -370,7 +444,7 @@ class AgentLoop:
             # Append the full assistant message (may include text + tool_calls).
             ctx.add_assistant(response.raw)
 
-            # ── 4c. Execute all tool calls serially ──────────────────
+            # ── 4d. Execute all tool calls serially ──────────────────
 
             for tc in response.tool_calls:
                 logger.info("Tool call: %s(%s)", tc.name, tc.arguments)
@@ -559,7 +633,7 @@ class AgentLoop:
                 if self._tool_delay_ms > 0:
                     await asyncio.sleep(self._tool_delay_ms / 1000.0)
 
-            # ── 4d. No-screenshot warning ────────────────────────────
+            # ── 4e. No-screenshot warning ────────────────────────────
             if steps_since_screenshot >= MAX_STEPS_WITHOUT_SCREENSHOT:
                 ctx.add_system_hint(
                     f"Hint: you have not taken a screenshot for "

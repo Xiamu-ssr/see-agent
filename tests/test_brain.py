@@ -1,6 +1,10 @@
 """Unit tests for brain prompts and base data types."""
 
 
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
+
 from see_agent.brain.base import BrainResponse, ToolCallInfo
 from see_agent.brain.prompts import build_system_prompt
 
@@ -113,5 +117,35 @@ class TestBrainResponse:
         assert resp.content is None
         assert len(resp.tool_calls) == 1
         assert resp.tool_calls[0].name == "finished"
+
+
+class TestOpenAIBrainSummarize:
+    """Tests for OpenAIBrain.summarize()."""
+
+    @pytest.mark.asyncio
+    async def test_summarize_method(self):
+        """summarize() should call the client and return a string."""
+        from see_agent.brain.openai_client import OpenAIBrain
+
+        brain = OpenAIBrain(
+            base_url="https://api.example.com/v1",
+            api_key="test-key",
+            model="test-model",
+        )
+
+        # Mock the OpenAI client
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = "Summary of the conversation."
+        brain._client = AsyncMock()
+        brain._client.chat.completions.create = AsyncMock(return_value=mock_response)
+
+        messages = [
+            {"role": "user", "content": "Open Safari"},
+            {"role": "assistant", "content": "I will open Safari."},
+        ]
+        result = await brain.summarize(messages)
+        assert result == "Summary of the conversation."
+        brain._client.chat.completions.create.assert_called_once()
 
 

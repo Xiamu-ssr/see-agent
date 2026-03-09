@@ -214,3 +214,34 @@ class TestConversationContext:
         assert len(msgs) == 2
         assert msgs[1]["role"] == "tool"
         assert msgs[1]["content"] == "Clicked OK"
+
+
+class TestContextCompaction:
+    """Tests for apply_compaction and inject_summary."""
+
+    def test_apply_compaction(self):
+        """Compaction keeps system + summary + last N messages."""
+        ctx = ConversationContext(SYSTEM_PROMPT)
+        # Add 9 messages (total = 10 with system)
+        for i in range(9):
+            ctx.add_user_reply(f"msg {i}")
+        msgs = ctx.get_messages()
+        assert len(msgs) == 10
+
+        ctx.apply_compaction("This is a summary.", keep_recent=3)
+        msgs = ctx.get_messages()
+        # system + summary + 3 recent = 5
+        assert len(msgs) == 5
+        assert msgs[0]["role"] == "system"
+        assert "[Conversation Summary]" in msgs[1]["content"]
+        assert "This is a summary." in msgs[1]["content"]
+
+    def test_inject_summary(self):
+        """inject_summary places summary at index 1."""
+        ctx = ConversationContext(SYSTEM_PROMPT)
+        ctx.add_user_reply("hello")
+        ctx.inject_summary("Earlier conversation summary.")
+        msgs = ctx.get_messages()
+        assert len(msgs) == 3
+        assert "[Conversation Summary]" in msgs[1]["content"]
+        assert msgs[2]["content"] == "hello"

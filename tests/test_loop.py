@@ -1044,3 +1044,112 @@ class TestAgentLoopV2Behavior:
 
         mcp_manager.connect_all.assert_called_once()
         mcp_manager.register_tools.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_compact_not_triggered_when_disabled(self, tmp_path):
+        """Compaction should not crash when compact.enabled=False."""
+        brain = AsyncMock()
+        brain.chat = AsyncMock(return_value=_make_finished_response("done"))
+
+        eye = AsyncMock()
+        eye.capture = AsyncMock(return_value=_make_screenshot())
+
+        registry = MagicMock()
+        registry.get_openai_schemas.return_value = []
+
+        config: dict[str, Any] = {
+            "language": "en",
+            "max_steps": 10,
+            "max_images": 5,
+            "screenshot_interval_ms": 0,
+            "tool_delay_ms": 0,
+            "scaling_enabled": False,
+            "compact": {"enabled": False},
+        }
+        loop = AgentLoop(brain=brain, eye=eye, registry=registry, config=config)
+
+        with _patch_sessions(tmp_path):
+            result = await loop.run("test compact disabled")
+
+        assert result.success is True
+
+    @pytest.mark.asyncio
+    async def test_compact_triggered_over_threshold(self, tmp_path):
+        """Compaction should trigger when token estimate exceeds threshold."""
+        # Need enough steps to accumulate messages before compaction triggers.
+        # clicks build up context, then compaction triggers, then finished.
+        ctr = 0
+
+        def _make_varied_click(i: int) -> BrainResponse:
+            raw = MagicMock()
+            raw.model_dump.return_value = {
+                "role": "assistant",
+                "content": f"Click {i}.",
+                "tool_calls": [{
+                    "id": f"tc_{i}",
+                    "type": "function",
+                    "function": {
+                        "name": "click",
+                        "arguments": f'{{"x": {100 + i * 50}, "y": {200 + i * 50}}}',
+                    },
+                }],
+            }
+            return BrainResponse(
+                content=f"Click {i}.",
+                tool_calls=[ToolCallInfo(
+                    id=f"tc_{i}", name="click",
+                    arguments={"x": 100 + i * 50, "y": 200 + i * 50},
+                )],
+                raw=raw,
+            )
+
+        responses = [
+            _make_varied_click(1),
+            _make_varied_click(2),
+            _make_varied_click(3),
+            _make_varied_click(4),
+            _make_varied_click(5),
+            _make_varied_click(6),
+            _make_varied_click(7),
+            _make_finished_response("done"),
+        ]
+
+        brain = AsyncMock()
+        brain.chat = AsyncMock(side_effect=responses)
+        brain.summarize.return_value = "Summary of earlier conversation."
+
+        eye = AsyncMock()
+
+        async def vc():
+            nonlocal ctr
+            ctr += 1
+            raw = f"PNG {ctr}".encode()
+            return _make_screenshot(b64=base64.b64encode(raw).decode("ascii"))
+
+        eye.capture = AsyncMock(side_effect=vc)
+
+        registry = AsyncMock()
+        registry.get_openai_schemas.return_value = []
+        registry.execute = AsyncMock(return_value=ToolResult(text="Clicked"))
+
+        # Low context_window to trigger compaction after a few steps.
+        config: dict[str, Any] = {
+            "language": "en",
+            "max_steps": 20,
+            "max_images": 5,
+            "screenshot_interval_ms": 0,
+            "tool_delay_ms": 0,
+            "scaling_enabled": False,
+            "compact": {
+                "enabled": True,
+                "context_window": 100,
+                "target_ratio": 0.5,
+            },
+        }
+        loop = AgentLoop(brain=brain, eye=eye, registry=registry, config=config)
+
+        with _patch_sessions(tmp_path):
+            result = await loop.run("test compact triggered")
+
+        assert result.success is True
+        assert brain.summarize.call_count >= 1

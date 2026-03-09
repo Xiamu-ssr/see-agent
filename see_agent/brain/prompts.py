@@ -78,6 +78,8 @@ def build_system_prompt(
             "12. 在思考中维护累积状态摘要：已完成的步骤、已检查的元素及其结果、"
             "发现的 UI 规则或规律。早期截图会被裁剪，你的思考是唯一的历史记录，"
             "后续步骤要利用之前记录的信息避免重复操作。\n"
+            "13. 如果看到 [Conversation Summary]，"
+            "它包含了对话早期的压缩摘要，请将其视为可靠上下文。\n"
             "</RULES>"
         )
     else:
@@ -112,6 +114,8 @@ def build_system_prompt(
             "elements checked and their results, UI rules or patterns discovered. "
             "Earlier screenshots will be pruned — your thoughts are the only history. "
             "Use previously recorded information to avoid repeating actions.\n"
+            "13. If you see a [Conversation Summary], it contains compressed earlier history. "
+            "Treat it as reliable context.\n"
             "</RULES>"
         )
 

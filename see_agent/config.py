@@ -39,6 +39,12 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "storage_path": "~/.see-agent/memory/qdrant",
         },
     },
+    "compact": {
+        "enabled": False,
+        "context_window": 128000,
+        "target_ratio": 0.75,
+        "summary_model": "",
+    },
     "env": {},
     "mcp_servers": {},
 }
