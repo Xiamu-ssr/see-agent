@@ -71,3 +71,15 @@ class TestTeamBus:
     def test_get_queue(self, bus):
         q = bus.get_queue("alice")
         assert q is not None
+
+    def test_has_prior_message_true(self, bus):
+        bus.send(BusMessage(sender="alice", recipient="bob", content="hi"))
+        assert bus.has_prior_message("alice", "bob") is True
+
+    def test_has_prior_message_false(self, bus):
+        assert bus.has_prior_message("alice", "bob") is False
+
+    def test_has_prior_message_direction(self, bus):
+        bus.send(BusMessage(sender="alice", recipient="bob", content="hi"))
+        # Reverse direction should not match.
+        assert bus.has_prior_message("bob", "alice") is False

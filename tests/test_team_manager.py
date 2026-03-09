@@ -91,6 +91,19 @@ class TestTeamManager:
         task_str = mgr._build_agent_task("a", "Fix the bug")
         assert task_str == "Fix the bug"
 
+    def test_owner_context(self, teams_dir, agents_dir):
+        from see_agent.agent.definition import AgentDefinition
+
+        AgentDefinition.create("a", name="Alice", role="leader")
+        owner = {"name": "john", "display": "John Doe"}
+        team_def = TeamDefinition.create(
+            "T", ["a"], leader="a", owner=owner,
+        )
+        mgr = TeamManager(team_def, FAKE_CONFIG)
+        ctx = mgr._build_team_context("a")
+        assert "John Doe" in ctx
+        assert "Owner" in ctx
+
     @pytest.mark.asyncio
     async def test_stop(self, teams_dir):
         team_def = TeamDefinition.create("T", ["a"])

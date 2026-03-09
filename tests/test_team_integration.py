@@ -7,7 +7,7 @@ of bus, board, tools, and session scoping — all with mocked brain/eye.
 from __future__ import annotations
 
 import json
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -166,3 +166,23 @@ class TestTeamIntegration:
         team_def = TeamDefinition.create("T", ["alice"])
         mgr = TeamManager(team_def, FAKE_CONFIG)
         assert isinstance(mgr._screen_lock, asyncio.Lock)
+
+    @pytest.mark.asyncio
+    async def test_owner_registered_on_bus(self, workspace):
+        """When owner is set, 'owner' is registered on the bus during run."""
+        AgentDefinition.create("alice", name="Alice", role="leader")
+        owner = {"name": "john", "display": "John"}
+        team_def = TeamDefinition.create(
+            "T", ["alice"], leader="alice", owner=owner,
+        )
+        mgr = TeamManager(team_def, FAKE_CONFIG)
+
+        # Mock _build_agent_loop to avoid needing real brain/eye.
+        mock_loop = MagicMock()
+        mock_loop.run = AsyncMock(return_value=MagicMock(
+            summary="done", success=True,
+        ))
+        with patch.object(mgr, "_build_agent_loop", return_value=mock_loop):
+            await mgr.run("test task")
+
+        assert "owner" in mgr._bus._queues

@@ -75,6 +75,10 @@ class TeamManager:
             title=task, description=task, created_by="system",
         )
 
+        # Register owner on bus if configured.
+        if self._team_def.owner:
+            self._bus.register("owner")
+
         # Build agent loops.
         loops: dict[str, AgentLoop] = {}
         for agent_id in self._team_def.members:
@@ -208,6 +212,10 @@ class TeamManager:
 
         memory = FileMemory(memory_dir=agent_base / "memory")
 
+        owner_display: str | None = None
+        if self._team_def.owner:
+            owner_display = self._team_def.owner.get("display", "Owner")
+
         loop = AgentLoop(
             brain=brain,
             eye=eye,
@@ -218,6 +226,7 @@ class TeamManager:
             team_bus=self._bus,
             screen_lock=self._screen_lock,
             memory=memory,
+            owner_display=owner_display,
         )
         return loop
 
@@ -236,7 +245,10 @@ class TeamManager:
         )
 
         tools = [
-            SendMessageTool(self._bus, agent_id),
+            SendMessageTool(
+                self._bus, agent_id,
+                leader_id=self._team_def.leader,
+            ),
             ListTasksTool(self._board),
             CreateTaskTool(self._board, agent_id),
             ClaimTaskTool(self._board, agent_id),
@@ -284,10 +296,17 @@ class TeamManager:
             else "你是 Team Worker，专注执行分配给你的任务。"
         )
 
+        # Owner info
+        owner_info = ""
+        if self._team_def.owner:
+            display = self._team_def.owner.get("display", "Owner")
+            owner_info = f"- Owner: {display}\n"
+
         return (
             f"## Team Context\n"
             f"- Team: {self._team_def.name}\n"
             f"- Leader: {leader_name}\n"
+            f"{owner_info}"
             f"- 队友:\n"
             + "\n".join(f"  {m}" for m in members_info)
             + "\n\n"
@@ -297,6 +316,7 @@ class TeamManager:
             "- 用 send_message 工具和队友沟通\n"
             "- 用 claim_task 领取任务，complete_task 完成任务\n"
             "- 收到队友消息（[teammate xxx]: ...）时优先处理\n"
+            "- 用 send_message(to='owner') 向项目负责人汇报\n"
         )
 
     def _build_agent_task(self, agent_id: str, task: str) -> str:

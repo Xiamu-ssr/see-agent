@@ -22,6 +22,7 @@ class TeamDefinition:
     name: str
     members: list[str] = field(default_factory=list)
     leader: str | None = None
+    owner: dict[str, str] | None = None
     screen_mode: str = "serial"
     status: str = "created"
     created_at: str = ""
@@ -42,6 +43,7 @@ class TeamDefinition:
             "screen_mode": self.screen_mode,
             "status": self.status,
             "created_at": self.created_at,
+            "owner": self.owner,
         }
         (team_dir / "team.json").write_text(
             json.dumps(data, indent=2, ensure_ascii=False),
@@ -53,6 +55,7 @@ class TeamDefinition:
         name: str,
         members: list[str],
         leader: str | None = None,
+        owner: dict[str, str] | None = None,
     ) -> TeamDefinition:
         """Create and persist a new team."""
         team_id = secrets.token_hex(4)
@@ -62,6 +65,7 @@ class TeamDefinition:
             name=name,
             members=members,
             leader=leader,
+            owner=owner,
             created_at=now,
         )
         defn.save()
@@ -82,6 +86,7 @@ class TeamDefinition:
             name=data.get("name", ""),
             members=data.get("members", []),
             leader=data.get("leader"),
+            owner=data.get("owner"),
             screen_mode=data.get("screen_mode", "serial"),
             status=data.get("status", "created"),
             created_at=data.get("created_at", ""),

@@ -42,6 +42,36 @@ class TestSendMessageTool:
         assert msgs[0].content == "hello"
 
 
+class TestSendMessagePermission:
+
+    @pytest.mark.asyncio
+    async def test_non_leader_blocked_from_owner(self, bus):
+        """Non-leader without prior owner message is denied."""
+        bus.register("owner")
+        tool = SendMessageTool(bus, "bob", leader_id="alice")
+        result = await tool.execute(to="owner", content="hello")
+        assert "Permission denied" in result
+
+    @pytest.mark.asyncio
+    async def test_non_leader_allowed_after_owner_message(self, bus):
+        """Non-leader who received a message from owner can reply."""
+        from see_agent.team.bus import BusMessage
+
+        bus.register("owner")
+        bus.send(BusMessage(sender="owner", recipient="bob", content="hi"))
+        tool = SendMessageTool(bus, "bob", leader_id="alice")
+        result = await tool.execute(to="owner", content="reply")
+        assert "Message sent" in result
+
+    @pytest.mark.asyncio
+    async def test_leader_can_message_owner(self, bus):
+        """Leader can always message owner."""
+        bus.register("owner")
+        tool = SendMessageTool(bus, "alice", leader_id="alice")
+        result = await tool.execute(to="owner", content="report")
+        assert "Message sent" in result
+
+
 class TestListTasksTool:
 
     @pytest.mark.asyncio

@@ -121,6 +121,7 @@ class AgentLoop:
         session_root: "Path | None" = None,
         team_bus: Any | None = None,
         screen_lock: asyncio.Lock | None = None,
+        owner_display: str | None = None,
     ) -> None:
         self._brain = brain
         self._eye = eye
@@ -137,6 +138,7 @@ class AgentLoop:
         self._session_root = session_root
         self._team_bus = team_bus
         self._screen_lock = screen_lock
+        self._owner_display = owner_display
 
         # Configurable knobs with sensible defaults.
         self._max_steps: int = int(config.get("max_steps", 50))
@@ -207,7 +209,11 @@ class AgentLoop:
         count = 0
         messages = self._team_bus.drain(self._agent_id)
         for msg in messages:
-            ctx.add_user_reply(f"[teammate {msg.sender}]: {msg.content}")
+            if msg.sender == "owner" and self._owner_display:
+                prefix = f"[{self._owner_display}]"
+            else:
+                prefix = f"[teammate {msg.sender}]"
+            ctx.add_user_reply(f"{prefix}: {msg.content}")
             count += 1
             logger.info("Injected team bus message from %s", msg.sender)
         return count

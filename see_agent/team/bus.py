@@ -89,6 +89,18 @@ class TeamBus:
         """Return the raw queue for *agent_id*."""
         return self._queues[agent_id]
 
+    def has_prior_message(self, from_: str, to: str) -> bool:
+        """Check messages.jsonl for any message from *from_* to *to*."""
+        if not self._log_path.exists():
+            return False
+        for line in self._log_path.read_text().splitlines():
+            if not line.strip():
+                continue
+            entry = json.loads(line)
+            if entry.get("sender") == from_ and entry.get("recipient") == to:
+                return True
+        return False
+
     def _log(self, msg: BusMessage) -> None:
         try:
             with open(self._log_path, "a", encoding="utf-8") as fh:

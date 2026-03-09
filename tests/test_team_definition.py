@@ -50,3 +50,10 @@ class TestTeamDefinition:
         team.save()
         reloaded = TeamDefinition.load(team.id)
         assert reloaded.status == "running"
+
+    def test_owner_round_trip(self, teams_dir):
+        owner = {"name": "john", "display": "John Doe"}
+        team = TeamDefinition.create("T", ["a"], owner=owner)
+        loaded = TeamDefinition.load(team.id)
+        assert loaded.owner == owner
+        assert loaded.owner["display"] == "John Doe"

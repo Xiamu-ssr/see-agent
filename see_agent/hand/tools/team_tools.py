@@ -21,9 +21,11 @@ class SendMessageTool(Tool):
 
     def __init__(
         self, bus: TeamBus, sender_id: str,
+        leader_id: str | None = None,
     ) -> None:
         self._bus = bus
         self._sender_id = sender_id
+        self._leader_id = leader_id
 
     @property
     def name(self) -> str:
@@ -31,7 +33,9 @@ class SendMessageTool(Tool):
 
     @property
     def description(self) -> str:
-        return "Send a message to a teammate or broadcast to all."
+        return (
+            "Send a message to a teammate, 'owner', or broadcast to all."
+        )
 
     @property
     def parameters(self) -> dict[str, Any]:
@@ -41,7 +45,7 @@ class SendMessageTool(Tool):
                 "to": {
                     "type": "string",
                     "description": (
-                        "Recipient agent ID, or '__all__' to broadcast."
+                        "Recipient agent ID, 'owner', or '__all__' to broadcast."
                     ),
                 },
                 "content": {
@@ -57,6 +61,18 @@ class SendMessageTool(Tool):
 
         to = kwargs["to"]
         content = kwargs["content"]
+
+        # Permission check: non-leader agents need prior owner message to reply.
+        if (
+            to == "owner"
+            and self._sender_id != self._leader_id
+            and not self._bus.has_prior_message("owner", self._sender_id)
+        ):
+            return (
+                "Permission denied: only the leader or agents who have "
+                "received a message from the owner can message the owner."
+            )
+
         self._bus.send(
             BusMessage(
                 sender=self._sender_id,
