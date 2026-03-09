@@ -538,3 +538,27 @@ class TestSessionEdgeCases:
         msgs = ctx.get_messages()
         assert len(msgs) == 1
         assert msgs[0]["role"] == "system"
+
+
+class TestSessionStoreRootDir:
+    """Tests for root_dir parameter on SessionStore methods."""
+
+    def test_create_with_root_dir(self, tmp_path: Path) -> None:
+        custom_root = tmp_path / "custom_sessions"
+        custom_root.mkdir()
+        session = SessionStore.create("task", {"llm": {}}, root_dir=custom_root)
+        assert session.dir.parent == custom_root
+
+    def test_load_with_root_dir(self, tmp_path: Path) -> None:
+        custom_root = tmp_path / "custom_sessions"
+        custom_root.mkdir()
+        session = SessionStore.create("task", {"llm": {}}, root_dir=custom_root)
+        loaded = SessionStore.load(session.id, root_dir=custom_root)
+        assert loaded.id == session.id
+
+    def test_list_with_root_dir(self, tmp_path: Path) -> None:
+        custom_root = tmp_path / "custom_sessions"
+        custom_root.mkdir()
+        SessionStore.create("task", {"llm": {}}, root_dir=custom_root)
+        sessions = SessionStore.list(root_dir=custom_root)
+        assert len(sessions) == 1

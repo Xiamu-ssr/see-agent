@@ -130,6 +130,17 @@ def load_skills(dirs: list[str]) -> list[SkillInfo]:
     return skills
 
 
+def filter_skills(
+    skills: list[SkillInfo],
+    disabled: list[str] | None = None,
+) -> list[SkillInfo]:
+    """Return skills excluding those in *disabled* list."""
+    if not disabled:
+        return skills
+    disabled_set = set(disabled)
+    return [s for s in skills if s.name not in disabled_set]
+
+
 def gate_skills(skills: list[SkillInfo]) -> list[SkillInfo]:
     """Check requirements for each skill and mark unavailable ones as blocked.
 

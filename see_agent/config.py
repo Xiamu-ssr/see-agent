@@ -5,6 +5,7 @@ import logging
 import logging.handlers
 import os
 import shutil
+import warnings
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -127,6 +128,14 @@ def load_config(profile: str | None = None) -> dict[str, Any]:
     # If no explicit profile, check config-level default.
     if profile is None:
         profile = config.get("profile")
+
+    if profile is not None:
+        warnings.warn(
+            "Profiles are deprecated and will be removed in v3.0. "
+            "Use agent definitions instead: see-agent agent create <id>",
+            DeprecationWarning,
+            stacklevel=2,
+        )
 
     # Profile overlay
     if profile is not None:

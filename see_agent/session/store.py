@@ -333,10 +333,15 @@ class SessionStore:
     """Pure-file session store rooted at ``~/.see-agent/sessions/``."""
 
     @staticmethod
-    def create(task: str, config: dict[str, Any]) -> Session:
+    def create(
+        task: str,
+        config: dict[str, Any],
+        root_dir: Path | None = None,
+    ) -> Session:
         """Create a new session directory and return the :class:`Session`."""
+        base = root_dir if root_dir is not None else SESSIONS_DIR
         session_id = datetime.now().strftime("%Y%m%d_%H%M%S") + "_" + _short_id()
-        session_dir = SESSIONS_DIR / session_id
+        session_dir = base / session_id
         session_dir.mkdir(parents=True, exist_ok=True)
         (session_dir / "screenshots").mkdir(exist_ok=True)
 
@@ -365,13 +370,14 @@ class SessionStore:
         return Session(id=session_id, task=task, status="running", dir=session_dir, meta=meta)
 
     @staticmethod
-    def load(session_id: str) -> Session:
+    def load(session_id: str, root_dir: Path | None = None) -> Session:
         """Load an existing session from disk.
 
         Raises:
             FileNotFoundError: If the session directory or meta.json is missing.
         """
-        session_dir = SESSIONS_DIR / session_id
+        base = root_dir if root_dir is not None else SESSIONS_DIR
+        session_dir = base / session_id
         meta_path = session_dir / "meta.json"
         if not meta_path.exists():
             raise FileNotFoundError(f"Session not found: {session_id}")
@@ -385,12 +391,18 @@ class SessionStore:
         )
 
     @staticmethod
-    def list(*, status: str | None = None, limit: int = 20) -> list[SessionSummary]:
+    def list(
+        *,
+        status: str | None = None,
+        limit: int = 20,
+        root_dir: Path | None = None,
+    ) -> list[SessionSummary]:
         """List sessions sorted by creation time (newest first)."""
-        if not SESSIONS_DIR.exists():
+        base = root_dir if root_dir is not None else SESSIONS_DIR
+        if not base.exists():
             return []
         summaries: list[SessionSummary] = []
-        for d in sorted(SESSIONS_DIR.iterdir(), reverse=True):
+        for d in sorted(base.iterdir(), reverse=True):
             meta_path = d / "meta.json"
             if not meta_path.exists():
                 continue
@@ -416,26 +428,33 @@ class SessionStore:
         return summaries
 
     @staticmethod
-    def delete(session_id: str) -> None:
+    def delete(session_id: str, root_dir: Path | None = None) -> None:
         """Delete a session directory entirely."""
-        session_dir = SESSIONS_DIR / session_id
+        base = root_dir if root_dir is not None else SESSIONS_DIR
+        session_dir = base / session_id
         if session_dir.exists():
             shutil.rmtree(session_dir)
             logger.info("Deleted session %s", session_id)
 
     @staticmethod
-    def clean(*, keep_days: int = 7, empty_only: bool = False) -> tuple[int, int]:
+    def clean(
+        *,
+        keep_days: int = 7,
+        empty_only: bool = False,
+        root_dir: Path | None = None,
+    ) -> tuple[int, int]:
         """Clean old or empty sessions.
 
         Returns:
             ``(deleted_count, freed_bytes)``
         """
-        if not SESSIONS_DIR.exists():
+        base = root_dir if root_dir is not None else SESSIONS_DIR
+        if not base.exists():
             return 0, 0
         cutoff = time.time() - keep_days * 86400
         deleted = 0
         freed = 0
-        for d in list(SESSIONS_DIR.iterdir()):
+        for d in list(base.iterdir()):
             meta_path = d / "meta.json"
             if not meta_path.exists():
                 # Orphan directory — remove.

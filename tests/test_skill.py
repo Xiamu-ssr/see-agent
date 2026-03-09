@@ -160,6 +160,31 @@ class TestSkillLoaderEdgeCases:
         assert "🌐" in skills[0].description
 
 
+class TestFilterSkills:
+    """Tests for filter_skills()."""
+
+    def test_filter_with_disabled(self):
+        from see_agent.skill.loader import SkillInfo, filter_skills
+
+        skills = [
+            SkillInfo(name="a", description="A", body="", path=Path(".")),
+            SkillInfo(name="b", description="B", body="", path=Path(".")),
+            SkillInfo(name="c", description="C", body="", path=Path(".")),
+        ]
+        filtered = filter_skills(skills, disabled=["b"])
+        assert len(filtered) == 2
+        assert {s.name for s in filtered} == {"a", "c"}
+
+    def test_filter_none_disabled(self):
+        from see_agent.skill.loader import SkillInfo, filter_skills
+
+        skills = [
+            SkillInfo(name="a", description="A", body="", path=Path(".")),
+        ]
+        assert filter_skills(skills, disabled=None) == skills
+        assert filter_skills(skills) == skills
+
+
 class TestSkillGating:
     """Tests for gate_skills() requirement checking."""
 
