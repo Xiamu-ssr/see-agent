@@ -59,16 +59,17 @@ You manage everything from a web-based pixel office UI. No terminal needed after
 # Clone and install
 git clone https://github.com/Xiamu-ssr/see-agent.git
 cd see-agent
-uv sync
+uv sync                                        # Python deps
+uv run see-agent install                       # Optional deps (memory, MCP, etc.)
 
 # Build the web UI
 cd web && npm install && npm run build && cd ..
 
-# Start (registers as launchd service, opens browser)
+# Launch (registers as launchd service, opens browser)
 uv run see-agent start
 ```
 
-That's it. The browser opens `http://localhost:8000` with the full management UI.
+That's it. The browser opens `http://localhost:8000`. Configure your LLM API key in the Config page and you're ready to go.
 
 ## 🤔 How It Works
 
