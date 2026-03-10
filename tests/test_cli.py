@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from unittest.mock import patch
 
 from typer.testing import CliRunner
@@ -57,168 +58,7 @@ def _setup_workspace(tmp_path, config_data=None):
 
 
 # -------------------------------------------------------------------- #
-# MCP commands
-# -------------------------------------------------------------------- #
-
-
-class TestMCPCommands:
-    """Tests for mcp list/add/remove CLI commands."""
-
-    def test_mcp_list_empty(self, tmp_path):
-        """mcp list with no servers shows message."""
-        _setup_workspace(tmp_path)
-        patches = _workspace_patches(tmp_path)
-        cleanup = _apply_patches(patches)
-        try:
-            result = runner.invoke(app, ["mcp", "list"])
-            assert "No MCP servers" in result.output
-        finally:
-            cleanup()
-
-    def test_mcp_list_shows_servers(self, tmp_path):
-        """mcp list with configured servers shows them."""
-        _setup_workspace(tmp_path, {
-            "llm": {"api_key": "k"},
-            "mcp_servers": {
-                "tavily": {"command": "npx", "args": ["-y", "tavily-server"]},
-            },
-        })
-        patches = _workspace_patches(tmp_path)
-        cleanup = _apply_patches(patches)
-        try:
-            result = runner.invoke(app, ["mcp", "list"])
-            assert "tavily" in result.output
-        finally:
-            cleanup()
-
-    def test_mcp_add_stdio(self, tmp_path):
-        """mcp add creates a stdio server entry in config."""
-        _setup_workspace(tmp_path)
-        patches = _workspace_patches(tmp_path)
-        cleanup = _apply_patches(patches)
-        try:
-            result = runner.invoke(
-                app, ["mcp", "add", "test-srv", "node", "--arg", "server.js"]
-            )
-            assert result.exit_code == 0
-            assert "Added" in result.output
-            # Verify written to config.json
-            saved = json.loads((tmp_path / "config.json").read_text())
-            assert "test-srv" in saved["mcp_servers"]
-            assert saved["mcp_servers"]["test-srv"]["command"] == "node"
-        finally:
-            cleanup()
-
-    def test_mcp_add_http(self, tmp_path):
-        """mcp add --type http --url creates an HTTP server entry."""
-        _setup_workspace(tmp_path)
-        patches = _workspace_patches(tmp_path)
-        cleanup = _apply_patches(patches)
-        try:
-            result = runner.invoke(
-                app, [
-                    "mcp", "add", "remote",
-                    "--type", "http",
-                    "--url", "https://mcp.example.com",
-                ]
-            )
-            assert result.exit_code == 0
-            saved = json.loads((tmp_path / "config.json").read_text())
-            assert saved["mcp_servers"]["remote"]["type"] == "http"
-            assert saved["mcp_servers"]["remote"]["url"] == "https://mcp.example.com"
-        finally:
-            cleanup()
-
-    def test_mcp_add_http_requires_url(self, tmp_path):
-        """mcp add --type http without --url should fail."""
-        _setup_workspace(tmp_path)
-        patches = _workspace_patches(tmp_path)
-        cleanup = _apply_patches(patches)
-        try:
-            result = runner.invoke(app, ["mcp", "add", "bad", "--type", "http"])
-            assert result.exit_code == 1
-        finally:
-            cleanup()
-
-    def test_mcp_remove(self, tmp_path):
-        """mcp remove deletes a server from config."""
-        _setup_workspace(tmp_path, {
-            "llm": {"api_key": "k"},
-            "mcp_servers": {"to-remove": {"command": "echo"}},
-        })
-        patches = _workspace_patches(tmp_path)
-        cleanup = _apply_patches(patches)
-        try:
-            result = runner.invoke(app, ["mcp", "remove", "to-remove"])
-            assert result.exit_code == 0
-            assert "Removed" in result.output
-            saved = json.loads((tmp_path / "config.json").read_text())
-            assert "to-remove" not in saved.get("mcp_servers", {})
-        finally:
-            cleanup()
-
-    def test_mcp_remove_nonexistent(self, tmp_path):
-        """mcp remove of unknown server exits with code 1."""
-        _setup_workspace(tmp_path)
-        patches = _workspace_patches(tmp_path)
-        cleanup = _apply_patches(patches)
-        try:
-            result = runner.invoke(app, ["mcp", "remove", "ghost"])
-            assert result.exit_code == 1
-        finally:
-            cleanup()
-
-
-# -------------------------------------------------------------------- #
-# Sessions commands
-# -------------------------------------------------------------------- #
-
-
-class TestSessionsCommands:
-    """Tests for sessions list/show/clean CLI commands."""
-
-    def test_sessions_list_empty(self, tmp_path):
-        """sessions list with no sessions shows message."""
-        _setup_workspace(tmp_path)
-        patches = _workspace_patches(tmp_path)
-        cleanup = _apply_patches(patches)
-        try:
-            with patch("see_agent.session.store.SESSIONS_DIR", tmp_path / "sessions"):
-                result = runner.invoke(app, ["sessions", "list"])
-            assert "No sessions found" in result.output
-        finally:
-            cleanup()
-
-    def test_sessions_show_nonexistent(self, tmp_path):
-        """sessions show of unknown session exits with code 1."""
-        _setup_workspace(tmp_path)
-        patches = _workspace_patches(tmp_path)
-        cleanup = _apply_patches(patches)
-        try:
-            with patch("see_agent.session.store.SESSIONS_DIR", tmp_path / "sessions"):
-                result = runner.invoke(app, ["sessions", "show", "nonexistent-id"])
-            assert result.exit_code == 1
-        finally:
-            cleanup()
-
-    def test_sessions_list_shows_sessions(self, tmp_path):
-        """sessions list displays created sessions."""
-        _setup_workspace(tmp_path)
-        patches = _workspace_patches(tmp_path)
-        cleanup = _apply_patches(patches)
-        try:
-            with patch("see_agent.session.store.SESSIONS_DIR", tmp_path / "sessions"):
-                from see_agent.session import SessionStore
-
-                s = SessionStore.create("test task", {"llm": {"model": "m"}})
-                result = runner.invoke(app, ["sessions", "list"])
-            assert s.id in result.output
-        finally:
-            cleanup()
-
-
-# -------------------------------------------------------------------- #
-# Config show with profile
+# Config commands
 # -------------------------------------------------------------------- #
 
 
@@ -285,149 +125,54 @@ class TestSetupCommands:
 
 
 # -------------------------------------------------------------------- #
-# Resume command
+# Version command
 # -------------------------------------------------------------------- #
 
 
-class TestResumeCommand:
-    """Tests for the resume command."""
+class TestVersionCommand:
+    """Tests for the version command."""
 
-    def test_resume_nonexistent_session(self, tmp_path):
-        """resume of nonexistent session exits with code 1."""
-        _setup_workspace(tmp_path)
-        patches = _workspace_patches(tmp_path)
-        cleanup = _apply_patches(patches)
-        try:
-            with patch("see_agent.session.store.SESSIONS_DIR", tmp_path / "sessions"):
-                result = runner.invoke(app, ["resume", "nonexistent-id"])
-            assert result.exit_code == 1
-        finally:
-            cleanup()
-
-    def test_resume_last_no_sessions(self, tmp_path):
-        """resume --last with no sessions exits with code 1."""
-        _setup_workspace(tmp_path)
-        patches = _workspace_patches(tmp_path)
-        cleanup = _apply_patches(patches)
-        try:
-            with patch("see_agent.session.store.SESSIONS_DIR", tmp_path / "sessions"):
-                result = runner.invoke(app, ["resume", "--last"])
-            assert result.exit_code == 1
-        finally:
-            cleanup()
+    def test_version(self):
+        result = runner.invoke(app, ["version"])
+        assert result.exit_code == 0
+        assert "v3.0.0" in result.output
 
 
 # -------------------------------------------------------------------- #
-# Agent commands
+# Stop command
 # -------------------------------------------------------------------- #
 
 
-class TestAgentCommands:
-    """Tests for agent create/list/show CLI commands."""
+class TestStopCommand:
+    """Tests for the stop command."""
 
-    def test_agent_create(self, tmp_path):
-        _setup_workspace(tmp_path)
-        patches = _workspace_patches(tmp_path)
-        cleanup = _apply_patches(patches)
-        try:
-            with patch("see_agent.agent.definition.AGENTS_DIR", tmp_path / "agents"):
-                result = runner.invoke(
-                    app, ["agent", "create", "alice", "--name", "Alice", "--role", "coder"],
-                )
-            assert result.exit_code == 0
-            assert "Created agent" in result.output
-        finally:
-            cleanup()
+    def test_stop_no_pid_file(self, tmp_path):
+        """stop with no PID file exits with code 1."""
+        pid_file = tmp_path / "server.pid"
+        with patch("see_agent.cli.main._PID_FILE", str(pid_file)):
+            result = runner.invoke(app, ["stop"])
+        assert result.exit_code == 1
+        assert "No running server" in result.output
 
-    def test_agent_list_empty(self, tmp_path):
-        _setup_workspace(tmp_path)
-        patches = _workspace_patches(tmp_path)
-        cleanup = _apply_patches(patches)
-        try:
-            with patch("see_agent.agent.definition.AGENTS_DIR", tmp_path / "agents"):
-                result = runner.invoke(app, ["agent", "list"])
-            assert "No agents" in result.output
-        finally:
-            cleanup()
+    def test_stop_stale_pid(self, tmp_path):
+        """stop with a stale PID (process not found) cleans up."""
+        pid_file = tmp_path / "server.pid"
+        pid_file.write_text("999999999")  # unlikely to be a real PID
+        with patch("see_agent.cli.main._PID_FILE", str(pid_file)):
+            result = runner.invoke(app, ["stop"])
+        assert result.exit_code == 0
+        assert "not found" in result.output
+        assert not pid_file.exists()
 
-    def test_agent_list_shows_agents(self, tmp_path):
-        _setup_workspace(tmp_path)
-        patches = _workspace_patches(tmp_path)
-        cleanup = _apply_patches(patches)
-        try:
-            with patch("see_agent.agent.definition.AGENTS_DIR", tmp_path / "agents"):
-                runner.invoke(app, ["agent", "create", "bob", "--name", "Bob"])
-                result = runner.invoke(app, ["agent", "list"])
-            assert "bob" in result.output
-        finally:
-            cleanup()
-
-    def test_agent_show_not_found(self, tmp_path):
-        _setup_workspace(tmp_path)
-        patches = _workspace_patches(tmp_path)
-        cleanup = _apply_patches(patches)
-        try:
-            with patch("see_agent.agent.definition.AGENTS_DIR", tmp_path / "agents"):
-                result = runner.invoke(app, ["agent", "show", "ghost"])
-            assert result.exit_code == 1
-        finally:
-            cleanup()
-
-
-# -------------------------------------------------------------------- #
-# Team commands
-# -------------------------------------------------------------------- #
-
-
-class TestTeamCommands:
-    """Tests for team create/list/status CLI commands."""
-
-    def test_team_create(self, tmp_path):
-        _setup_workspace(tmp_path)
-        patches = _workspace_patches(tmp_path)
-        cleanup = _apply_patches(patches)
-        try:
-            with patch("see_agent.team.definition.TEAMS_DIR", tmp_path / "teams"):
-                result = runner.invoke(
-                    app, ["team", "create", "--name", "Alpha", "--members", "a,b"],
-                )
-            assert result.exit_code == 0
-            assert "Created team" in result.output
-        finally:
-            cleanup()
-
-    def test_team_list_empty(self, tmp_path):
-        _setup_workspace(tmp_path)
-        patches = _workspace_patches(tmp_path)
-        cleanup = _apply_patches(patches)
-        try:
-            with patch("see_agent.team.definition.TEAMS_DIR", tmp_path / "teams"):
-                result = runner.invoke(app, ["team", "list"])
-            assert "No teams" in result.output
-        finally:
-            cleanup()
-
-    def test_team_list_shows_teams(self, tmp_path):
-        _setup_workspace(tmp_path)
-        patches = _workspace_patches(tmp_path)
-        cleanup = _apply_patches(patches)
-        try:
-            with patch("see_agent.team.definition.TEAMS_DIR", tmp_path / "teams"):
-                runner.invoke(
-                    app, ["team", "create", "--name", "Beta", "--members", "x,y"],
-                )
-                result = runner.invoke(app, ["team", "list"])
-            assert "Beta" in result.output
-        finally:
-            cleanup()
-
-    def test_team_status_not_found(self, tmp_path):
-        _setup_workspace(tmp_path)
-        patches = _workspace_patches(tmp_path)
-        cleanup = _apply_patches(patches)
-        try:
-            with patch("see_agent.team.definition.TEAMS_DIR", tmp_path / "teams"):
-                result = runner.invoke(app, ["team", "status", "ghost"])
-            assert result.exit_code == 1
-        finally:
-            cleanup()
+    def test_stop_running_server(self, tmp_path):
+        """stop sends SIGTERM to the running process."""
+        pid_file = tmp_path / "server.pid"
+        pid_file.write_text(str(os.getpid()))  # use our own PID for testing
+        with (
+            patch("see_agent.cli.main._PID_FILE", str(pid_file)),
+            patch("os.kill") as mock_kill,
+        ):
+            result = runner.invoke(app, ["stop"])
+        assert result.exit_code == 0
+        assert "Stopped" in result.output
+        mock_kill.assert_called_once()

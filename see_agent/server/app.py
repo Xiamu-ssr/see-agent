@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import AsyncIterator
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from see_agent.config import load_config
 from see_agent.server.routes import (
@@ -16,6 +19,7 @@ from see_agent.server.routes import (
     dashboard,
     health,
     logs,
+    mcp,
     sessions,
     skills,
     task,
@@ -62,8 +66,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(
     title="see-agent",
-    version="0.1.0",
+    version="3.0.0",
     lifespan=lifespan,
+)
+
+# ── CORS (dev server) ────────────────────────────────────────────────
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # ── Register route routers ─────────────────────────────────────────────
@@ -79,3 +92,9 @@ app.include_router(skills.router)
 app.include_router(config_routes.router)
 app.include_router(dashboard.router)
 app.include_router(logs.router)
+app.include_router(mcp.router)
+
+# ── Serve frontend build (production) ─────────────────────────────────
+_frontend_dir = Path(__file__).parent.parent.parent / "web" / "dist"
+if _frontend_dir.is_dir():
+    app.mount("/", StaticFiles(directory=str(_frontend_dir), html=True), name="frontend")

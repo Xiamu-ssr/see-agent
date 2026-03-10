@@ -13,7 +13,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from see_agent.agent.loop import AgentLoop, RunResult
 from see_agent.brain.base import BrainResponse, ToolCallInfo
 
 # -------------------------------------------------------------------- #
@@ -98,51 +97,6 @@ _PATCHES_REGISTRY = "see_agent.hand.tools.create_registry"
 _SRV_EYE = "see_agent.server.routes.chat.MacEye"
 _SRV_BRAIN = "see_agent.server.routes.chat.OpenAIBrain"
 _SRV_REGISTRY = "see_agent.server.routes.chat.create_registry"
-
-
-# -------------------------------------------------------------------- #
-# CLI: _build_components
-# -------------------------------------------------------------------- #
-
-
-class TestCliBuildComponents:
-    """Tests for ``src.cli.main._build_components``."""
-
-    @patch(_PATCHES_REGISTRY, return_value=MagicMock())
-    @patch(_PATCHES_BRAIN, return_value=_make_mock_brain())
-    @patch(_PATCHES_EYE, return_value=_make_mock_eye())
-    def test_returns_agent_loop(self, _eye, _brain, _reg):
-        """_build_components should return an AgentLoop without TypeError."""
-        from see_agent.cli.main import _build_components
-
-        loop = _build_components(FAKE_CONFIG)
-
-        assert isinstance(loop, AgentLoop)
-
-    @patch(_PATCHES_REGISTRY, return_value=MagicMock())
-    @patch(_PATCHES_BRAIN, return_value=_make_mock_brain())
-    @patch(_PATCHES_EYE, return_value=_make_mock_eye())
-    def test_loop_run_accepts_task_only(self, _eye, _brain, _reg):
-        """loop.run(task) must work with a single positional str argument."""
-        from see_agent.cli.main import _build_components
-
-        loop = _build_components(FAKE_CONFIG)
-        result = asyncio.run(loop.run("hello"))
-
-        assert isinstance(result, RunResult)
-        assert isinstance(result.summary, str)
-
-    @patch(_PATCHES_REGISTRY, return_value=MagicMock())
-    @patch(_PATCHES_BRAIN, return_value=_make_mock_brain())
-    @patch(_PATCHES_EYE, return_value=_make_mock_eye())
-    def test_config_values_propagate(self, _eye, _brain, _reg):
-        """AgentLoop should read max_steps / max_images from config."""
-        from see_agent.cli.main import _build_components
-
-        loop = _build_components(FAKE_CONFIG)
-
-        assert loop._max_steps == FAKE_CONFIG["max_steps"]
-        assert loop._max_images == FAKE_CONFIG["max_images"]
 
 
 # -------------------------------------------------------------------- #

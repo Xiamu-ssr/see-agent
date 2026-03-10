@@ -4,6 +4,7 @@ import json
 import logging
 import logging.handlers
 import os
+import shutil
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -61,6 +62,23 @@ TEAMS_DIR = WORKSPACE_DIR / "teams"
 _TEMPLATE_DIR = Path(__file__).parent / "templates"
 
 
+def _sync_builtin_skills() -> None:
+    """Copy bundled skills to the user skills directory.
+
+    Only copies skills that don't already exist (won't overwrite user edits).
+    """
+    builtin_dir = Path(__file__).parent / "builtin_skills"
+    if not builtin_dir.exists():
+        return
+    SKILLS_DIR.mkdir(parents=True, exist_ok=True)
+    for skill_dir in builtin_dir.iterdir():
+        if skill_dir.is_dir() and not skill_dir.name.startswith("_"):
+            target = SKILLS_DIR / skill_dir.name
+            if not target.exists():
+                shutil.copytree(skill_dir, target)
+                logger.info("Installed builtin skill: %s", skill_dir.name)
+
+
 def ensure_workspace() -> None:
     """Ensure ~/.see-agent/ exists with default files."""
     WORKSPACE_DIR.mkdir(parents=True, exist_ok=True)
@@ -71,6 +89,8 @@ def ensure_workspace() -> None:
 
     if not CONFIG_PATH.exists():
         CONFIG_PATH.write_text(json.dumps(DEFAULT_CONFIG, indent=4, ensure_ascii=False))
+
+    _sync_builtin_skills()
 
 
 def _deep_merge(base: dict[str, Any], overlay: dict[str, Any]) -> dict[str, Any]:
