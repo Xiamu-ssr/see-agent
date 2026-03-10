@@ -8,7 +8,13 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
-from see_agent.server.schemas import AgentCreateResponse, AgentDetail, AgentSummary
+from see_agent.server.schemas import (
+    AgentCreateResponse,
+    AgentDetail,
+    AgentSummary,
+    SandboxAllowResponse,
+    SandboxViolation,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -185,4 +191,60 @@ async def update_agent(
         id=defn.id,
         name=defn.name,
         role=defn.role,
+    )
+
+
+# -------------------------------------------------------------------- #
+# Sandbox routes
+# -------------------------------------------------------------------- #
+
+
+class SandboxAllowRequest(BaseModel):
+    path: str
+    mode: str = "read"  # "read" | "write"
+
+
+@router.get("/{agent_id}/sandbox/violations")
+async def get_sandbox_violations(
+    agent_id: str,
+) -> list[SandboxViolation]:
+    """Get recent sandbox deny records for an agent."""
+    from see_agent.sandbox.collector import SandboxViolationCollector
+
+    collector = SandboxViolationCollector()
+    # We don't have a live PID — return empty for now.
+    # In a running team, the PID would be tracked by TeamManager.
+    return [
+        SandboxViolation(**v) for v in await collector.collect(agent_pid=0)
+    ]
+
+
+@router.post("/{agent_id}/sandbox/allow")
+async def sandbox_allow(
+    agent_id: str, body: SandboxAllowRequest,
+) -> SandboxAllowResponse:
+    """Add a path to the agent's sandbox allow list."""
+    from see_agent.agent.definition import AgentDefinition
+
+    try:
+        defn, agent_dir, _team_id = AgentDefinition.find(agent_id)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    sandbox = defn.sandbox or {}
+    if body.mode == "write":
+        extra = sandbox.setdefault("extra_write", [])
+    else:
+        extra = sandbox.setdefault("extra_read", [])
+
+    if body.path not in extra:
+        extra.append(body.path)
+
+    defn.sandbox = sandbox
+    defn.save_to(agent_dir.parent)
+
+    return SandboxAllowResponse(
+        status="allowed",
+        path=body.path,
+        mode=body.mode,
     )

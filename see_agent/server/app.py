@@ -20,6 +20,7 @@ from see_agent.server.routes import (
     health,
     logs,
     mcp,
+    screen,
     sessions,
     skills,
     task,
@@ -93,6 +94,7 @@ app.include_router(config_routes.router)
 app.include_router(dashboard.router)
 app.include_router(logs.router)
 app.include_router(mcp.router)
+app.include_router(screen.router)
 
 # ── Serve frontend build (production) ─────────────────────────────────
 _frontend_dir = Path(__file__).parent.parent.parent / "web" / "dist"

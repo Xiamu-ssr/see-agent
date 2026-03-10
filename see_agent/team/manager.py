@@ -196,13 +196,25 @@ class TeamManager:
         config_path = agent_base / "worker_config.json"
         result_path = agent_base / "worker_result.json"
 
+        # Load agent definition.
+        agent_def: AgentDefinition | None = None
+        try:
+            agent_def = AgentDefinition.load(agent_id)
+        except FileNotFoundError:
+            pass
+
         # Add subprocess-specific keys.
         config["_agent_id"] = agent_id
         config["_session_root"] = str(agent_base / "sessions")
         config["_memory_dir"] = str(agent_base / "memory")
         config["_result_path"] = str(result_path)
         config["_leader_id"] = self._team_def.leader
-        config["_screen_access"] = True  # Default; Phase 3 will add sandbox check.
+
+        # Determine screen_access from agent sandbox config.
+        sandbox_cfg: dict[str, Any] = {}
+        if agent_def:
+            sandbox_cfg = agent_def.sandbox or {}
+        config["_screen_access"] = sandbox_cfg.get("screen_access", True)
 
         owner_display: str | None = None
         if self._team_def.owner:
@@ -213,11 +225,6 @@ class TeamManager:
         config["_team_context"] = self._build_team_context(agent_id)
 
         # Collect denied tools.
-        agent_def: AgentDefinition | None = None
-        try:
-            agent_def = AgentDefinition.load(agent_id)
-        except FileNotFoundError:
-            pass
         denied: list[str] = []
         if agent_def and agent_def.tools_config:
             denied = agent_def.tools_config.get("denied", [])
@@ -233,6 +240,13 @@ class TeamManager:
             sys.executable, "-m", "see_agent.agent.worker",
             str(config_path), str(sock_path), task,
         ]
+
+        # Wrap with sandbox-exec if enabled.
+        if sandbox_cfg.get("enabled", False):
+            profile_path = self._generate_sandbox_profile(
+                agent_id, sandbox_cfg,
+            )
+            cmd = ["sandbox-exec", "-f", str(profile_path)] + cmd
 
         log_path = agent_base / "logs" / "worker.log"
         log_fh = open(log_path, "a")
@@ -278,6 +292,37 @@ class TeamManager:
             total_steps=0,
             elapsed_seconds=0,
             success=returncode == 0,
+        )
+
+    def _generate_sandbox_profile(
+        self, agent_id: str, sandbox_cfg: dict[str, Any],
+    ) -> Path:
+        """Generate a sandbox-exec profile for an agent subprocess."""
+        from see_agent.sandbox.manager import SandboxProfileGenerator
+
+        # Check if agent uses node-based MCP servers.
+        agent_def: AgentDefinition | None = None
+        try:
+            agent_def = AgentDefinition.load(agent_id)
+        except FileNotFoundError:
+            pass
+        has_node_mcp = False
+        if agent_def and agent_def.mcp_config:
+            # Rough heuristic: any MCP server using npx/node.
+            mcp_servers = self._global_config.get("mcp_servers", {})
+            for cfg in mcp_servers.values():
+                cmd = cfg.get("command", "")
+                if "npx" in cmd or "node" in cmd:
+                    has_node_mcp = True
+                    break
+
+        gen = SandboxProfileGenerator()
+        return gen.generate(
+            agent_id=agent_id,
+            team_id=self._team_def.id,
+            team_dir=self._team_dir,
+            sandbox_cfg=sandbox_cfg,
+            has_node_mcp=has_node_mcp,
         )
 
     def _build_agent_config(self, agent_id: str) -> dict[str, Any]:
