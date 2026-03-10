@@ -10,6 +10,21 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel
 
+from see_agent.server.schemas import (
+    AgentStatusResponse,
+    MarkReadResponse,
+    StatusResponse,
+    TaskItem,
+    TeamCreateResponse,
+    TeamLogEntry,
+    TeamMessage,
+    TeamRunResponse,
+    TeamStatus,
+    TeamSummary,
+    TeamUpdateResponse,
+    UnreadResponse,
+)
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/teams", tags=["teams"])
@@ -51,29 +66,29 @@ class OwnerMessageRequest(BaseModel):
 
 
 @router.post("")
-async def create_team(body: CreateTeamRequest) -> dict[str, Any]:
+async def create_team(body: CreateTeamRequest) -> TeamCreateResponse:
     """Create a new team."""
     from see_agent.team.definition import TeamDefinition
 
     team = TeamDefinition.create(
         body.name, body.members, leader=body.leader,
     )
-    return {"id": team.id, "name": team.name, "status": team.status}
+    return TeamCreateResponse(id=team.id, name=team.name, status=team.status)
 
 
 @router.get("")
-async def list_teams() -> list[dict[str, Any]]:
+async def list_teams() -> list[TeamSummary]:
     """List all teams."""
     from see_agent.team.definition import TeamDefinition
 
     teams = TeamDefinition.list_all()
     return [
-        {
-            "id": t.id,
-            "name": t.name,
-            "members": t.members,
-            "status": t.status,
-        }
+        TeamSummary(
+            id=t.id,
+            name=t.name,
+            members=t.members,
+            status=t.status,
+        )
         for t in teams
     ]
 
@@ -81,7 +96,7 @@ async def list_teams() -> list[dict[str, Any]]:
 @router.put("/{team_id}")
 async def update_team(
     team_id: str, body: UpdateTeamRequest,
-) -> dict[str, Any]:
+) -> TeamUpdateResponse:
     """Update an existing team definition."""
     from see_agent.config import _deep_merge
     from see_agent.team.definition import TeamDefinition
@@ -110,18 +125,18 @@ async def update_team(
             team.overrides = body.overrides
 
     team.save()
-    return {
-        "id": team.id,
-        "name": team.name,
-        "members": team.members,
-        "status": team.status,
-    }
+    return TeamUpdateResponse(
+        id=team.id,
+        name=team.name,
+        members=team.members,
+        status=team.status,
+    )
 
 
 @router.post("/{team_id}/run")
 async def run_team(
     team_id: str, body: RunTeamRequest, request: Request,
-) -> dict[str, Any]:
+) -> TeamRunResponse:
     """Run a task on a team."""
     from see_agent.team.definition import TeamDefinition
     from see_agent.team.manager import TeamManager
@@ -139,15 +154,15 @@ async def run_team(
         result = await manager.run(body.task)
     finally:
         request.app.state.team_managers.pop(team_id, None)
-    return {
-        "team_id": result.team_id,
-        "success": result.success,
-        "summary": result.summary,
-    }
+    return TeamRunResponse(
+        team_id=result.team_id,
+        success=result.success,
+        summary=result.summary,
+    )
 
 
 @router.get("/{team_id}/status")
-async def get_team_status(team_id: str) -> dict[str, Any]:
+async def get_team_status(team_id: str) -> TeamStatus:
     """Get team status and task board."""
     from see_agent.config import TEAMS_DIR
     from see_agent.team.definition import TeamDefinition
@@ -160,26 +175,26 @@ async def get_team_status(team_id: str) -> dict[str, Any]:
 
     board = TaskBoard(TEAMS_DIR / team_id)
     tasks = board.list_tasks()
-    return {
-        "id": team.id,
-        "name": team.name,
-        "members": team.members,
-        "leader": team.leader,
-        "status": team.status,
-        "tasks": [
-            {
-                "id": t.id,
-                "title": t.title,
-                "status": t.status,
-                "assigned_to": t.assigned_to,
-            }
+    return TeamStatus(
+        id=team.id,
+        name=team.name,
+        members=team.members,
+        leader=team.leader,
+        status=team.status,
+        tasks=[
+            TaskItem(
+                id=t.id,
+                title=t.title,
+                status=t.status,
+                assigned_to=t.assigned_to,
+            )
             for t in tasks
         ],
-    }
+    )
 
 
 @router.post("/{team_id}/stop")
-async def stop_team(team_id: str) -> dict[str, str]:
+async def stop_team(team_id: str) -> StatusResponse:
     """Stop a running team."""
     from see_agent.team.definition import TeamDefinition
 
@@ -190,7 +205,7 @@ async def stop_team(team_id: str) -> dict[str, str]:
 
     team.status = "stopped"
     team.save()
-    return {"status": "stopped"}
+    return StatusResponse(status="stopped")
 
 
 # -------------------------------------------------------------------- #
@@ -208,7 +223,7 @@ def _team_dir(team_id: str) -> Path:
 @router.post("/{team_id}/message")
 async def owner_send_message(
     team_id: str, body: OwnerMessageRequest, request: Request,
-) -> dict[str, str]:
+) -> StatusResponse:
     """Send a message from the owner to an agent."""
     from see_agent.team.bus import BusMessage
     from see_agent.team.definition import TeamDefinition
@@ -242,14 +257,14 @@ async def owner_send_message(
                 + "\n"
             )
 
-    return {"status": "sent"}
+    return StatusResponse(status="sent")
 
 
 @router.get("/{team_id}/messages")
 async def owner_get_messages(
     team_id: str,
     limit: int = Query(default=50, ge=1, le=500),
-) -> list[dict[str, Any]]:
+) -> list[TeamMessage]:
     """Get messages where sender or recipient is 'owner'."""
     from see_agent.team.definition import TeamDefinition
 
@@ -262,19 +277,19 @@ async def owner_get_messages(
     if not log_path.exists():
         return []
 
-    results: list[dict[str, Any]] = []
+    results: list[TeamMessage] = []
     for line in log_path.read_text(encoding="utf-8").splitlines():
         if not line.strip():
             continue
         entry = json.loads(line)
         if entry.get("sender") == "owner" or entry.get("recipient") == "owner":
-            results.append(entry)
+            results.append(TeamMessage(**entry))
 
     return results[-limit:]
 
 
 @router.get("/{team_id}/unread")
-async def owner_unread_count(team_id: str) -> dict[str, int]:
+async def owner_unread_count(team_id: str) -> UnreadResponse:
     """Count unread messages sent to 'owner'."""
     from see_agent.team.definition import TeamDefinition
 
@@ -286,7 +301,7 @@ async def owner_unread_count(team_id: str) -> dict[str, int]:
     td = _team_dir(team_id)
     log_path = td / "messages.jsonl"
     if not log_path.exists():
-        return {"unread": 0}
+        return UnreadResponse(unread=0)
 
     # Read last_read_ts from owner_state.json.
     state_path = td / "owner_state.json"
@@ -303,11 +318,11 @@ async def owner_unread_count(team_id: str) -> dict[str, int]:
         if entry.get("recipient") == "owner" and entry.get("ts", "") > last_read_ts:
             count += 1
 
-    return {"unread": count}
+    return UnreadResponse(unread=count)
 
 
 @router.post("/{team_id}/mark_read")
-async def owner_mark_read(team_id: str) -> dict[str, str]:
+async def owner_mark_read(team_id: str) -> MarkReadResponse:
     """Mark all owner messages as read."""
     from datetime import datetime, timezone
 
@@ -326,7 +341,7 @@ async def owner_mark_read(team_id: str) -> dict[str, str]:
         json.dumps({"last_read_ts": now}, ensure_ascii=False),
         encoding="utf-8",
     )
-    return {"last_read_ts": now}
+    return MarkReadResponse(last_read_ts=now)
 
 
 # -------------------------------------------------------------------- #
@@ -338,7 +353,7 @@ async def owner_mark_read(team_id: str) -> dict[str, str]:
 async def get_team_logs(
     team_id: str,
     limit: int = Query(default=100, ge=1, le=1000),
-) -> list[dict[str, Any]]:
+) -> list[TeamLogEntry]:
     """Return messages.jsonl content for a team."""
     from see_agent.team.definition import TeamDefinition
 
@@ -351,11 +366,11 @@ async def get_team_logs(
     if not log_path.exists():
         return []
 
-    results: list[dict[str, Any]] = []
+    results: list[TeamLogEntry] = []
     for line in log_path.read_text(encoding="utf-8").splitlines():
         if not line.strip():
             continue
-        results.append(json.loads(line))
+        results.append(TeamLogEntry(**json.loads(line)))
 
     return results[-limit:]
 
@@ -363,7 +378,7 @@ async def get_team_logs(
 @router.get("/{team_id}/agents/{agent_id}/status")
 async def get_agent_status(
     team_id: str, agent_id: str, request: Request,
-) -> dict[str, Any]:
+) -> AgentStatusResponse:
     """Get an agent's session status within a team."""
     from see_agent.team.definition import TeamDefinition
 
@@ -379,8 +394,8 @@ async def get_agent_status(
 
     manager = request.app.state.team_managers.get(team_id)
     running = manager is not None
-    return {
-        "agent_id": agent_id,
-        "team_id": team_id,
-        "team_running": running,
-    }
+    return AgentStatusResponse(
+        agent_id=agent_id,
+        team_id=team_id,
+        team_running=running,
+    )

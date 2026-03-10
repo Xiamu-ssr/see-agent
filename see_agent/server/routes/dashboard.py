@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 from fastapi import APIRouter, Request
+
+from see_agent.server.schemas import DashboardResponse
 
 logger = logging.getLogger(__name__)
 
@@ -13,7 +14,7 @@ router = APIRouter(prefix="/api", tags=["dashboard"])
 
 
 @router.get("/dashboard")
-async def get_dashboard(request: Request) -> dict[str, Any]:
+async def get_dashboard(request: Request) -> DashboardResponse:
     """Return dashboard summary statistics."""
     from see_agent.agent.definition import AgentDefinition
     from see_agent.config import TEAMS_DIR
@@ -38,11 +39,11 @@ async def get_dashboard(request: Request) -> dict[str, Any]:
             total_tasks += 1
             tasks_by_status[task.status] = tasks_by_status.get(task.status, 0) + 1
 
-    return {
-        "teams_count": len(teams),
-        "teams_by_status": teams_by_status,
-        "agents_in_team": agents_in_team,
-        "agents_idle": agents_idle,
-        "total_tasks": total_tasks,
-        "tasks_by_status": tasks_by_status,
-    }
+    return DashboardResponse(
+        teams_count=len(teams),
+        teams_by_status=teams_by_status,
+        agents_in_team=agents_in_team,
+        agents_idle=agents_idle,
+        total_tasks=total_tasks,
+        tasks_by_status=tasks_by_status,
+    )

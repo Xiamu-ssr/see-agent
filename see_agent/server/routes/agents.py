@@ -8,6 +8,8 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
+from see_agent.server.schemas import AgentCreateResponse, AgentDetail, AgentSummary
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
@@ -44,7 +46,7 @@ class UpdateAgentRequest(BaseModel):
 
 
 @router.get("")
-async def list_agents(request: Request) -> list[dict[str, Any]]:
+async def list_agents(request: Request) -> list[AgentSummary]:
     """List all agents (global + team-scoped) with status."""
     from see_agent.agent.definition import AgentDefinition
     from see_agent.team.definition import TeamDefinition
@@ -52,7 +54,7 @@ async def list_agents(request: Request) -> list[dict[str, Any]]:
     all_agents = AgentDefinition.list_all_global()
     managers: dict[str, Any] = getattr(request.app.state, "team_managers", {})
 
-    results: list[dict[str, Any]] = []
+    results: list[AgentSummary] = []
     for defn, team_id in all_agents:
         team_name: str | None = None
         status = "idle"
@@ -64,19 +66,19 @@ async def list_agents(request: Request) -> list[dict[str, Any]]:
                 team_name = team_id
             if team_id in managers:
                 status = "busy"
-        results.append({
-            "id": defn.id,
-            "name": defn.name,
-            "role": defn.role,
-            "team_id": team_id,
-            "team_name": team_name,
-            "status": status,
-        })
+        results.append(AgentSummary(
+            id=defn.id,
+            name=defn.name,
+            role=defn.role,
+            team_id=team_id,
+            team_name=team_name,
+            status=status,
+        ))
     return results
 
 
 @router.get("/{agent_id}")
-async def get_agent(agent_id: str) -> dict[str, Any]:
+async def get_agent(agent_id: str) -> AgentDetail:
     """Get detailed information about a single agent."""
     from see_agent.agent.definition import AgentDefinition
 
@@ -97,23 +99,23 @@ async def get_agent(agent_id: str) -> dict[str, Any]:
 
     has_soul = (agent_dir / "SOUL.md").exists()
 
-    return {
-        "id": defn.id,
-        "name": defn.name,
-        "role": defn.role,
-        "config_overrides": defn.config_overrides,
-        "tools_config": defn.tools_config,
-        "skills_config": defn.skills_config,
-        "mcp_config": defn.mcp_config,
-        "team_id": team_id,
-        "team_name": team_name,
-        "has_soul": has_soul,
-        "location": str(agent_dir),
-    }
+    return AgentDetail(
+        id=defn.id,
+        name=defn.name,
+        role=defn.role,
+        config_overrides=defn.config_overrides,
+        tools_config=defn.tools_config,
+        skills_config=defn.skills_config,
+        mcp_config=defn.mcp_config,
+        team_id=team_id,
+        team_name=team_name,
+        has_soul=has_soul,
+        location=str(agent_dir),
+    )
 
 
 @router.post("")
-async def create_agent(body: CreateAgentRequest) -> dict[str, Any]:
+async def create_agent(body: CreateAgentRequest) -> AgentCreateResponse:
     """Create a new agent definition."""
     from see_agent.agent.definition import AgentDefinition
     from see_agent.config import AGENTS_DIR
@@ -138,17 +140,17 @@ async def create_agent(body: CreateAgentRequest) -> dict[str, Any]:
         soul_path = AGENTS_DIR / body.id / "SOUL.md"
         soul_path.write_text(body.soul, encoding="utf-8")
 
-    return {
-        "id": defn.id,
-        "name": defn.name,
-        "role": defn.role,
-    }
+    return AgentCreateResponse(
+        id=defn.id,
+        name=defn.name,
+        role=defn.role,
+    )
 
 
 @router.put("/{agent_id}")
 async def update_agent(
     agent_id: str, body: UpdateAgentRequest,
-) -> dict[str, Any]:
+) -> AgentCreateResponse:
     """Update an existing agent definition."""
     from see_agent.agent.definition import AgentDefinition
 
@@ -172,8 +174,8 @@ async def update_agent(
 
     # Save back to the directory where the agent was found.
     defn.save_to(agent_dir.parent)
-    return {
-        "id": defn.id,
-        "name": defn.name,
-        "role": defn.role,
-    }
+    return AgentCreateResponse(
+        id=defn.id,
+        name=defn.name,
+        role=defn.role,
+    )

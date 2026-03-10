@@ -11,6 +11,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from see_agent.config import save_config
+from see_agent.server.schemas import McpInstallResponse
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +29,7 @@ class InstallMcpRequest(BaseModel):
 
 
 @router.post("/install")
-async def install_mcp(body: InstallMcpRequest, request: Request) -> dict[str, Any]:
+async def install_mcp(body: InstallMcpRequest, request: Request) -> McpInstallResponse:
     """Install and configure an MCP server."""
     config = request.app.state.config
     if "mcp_servers" not in config:
@@ -86,4 +87,4 @@ async def install_mcp(body: InstallMcpRequest, request: Request) -> dict[str, An
     config["mcp_servers"][body.name] = server_cfg
     save_config(config)
     request.app.state.config = config
-    return {"status": "ok", "name": body.name, "config": server_cfg}
+    return McpInstallResponse(status="ok", name=body.name, config=server_cfg)

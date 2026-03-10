@@ -10,6 +10,8 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
+from see_agent.server.schemas import StatusResponse
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["config"])
@@ -35,7 +37,7 @@ class UpdateConfigRequest(BaseModel):
 @router.put("/config")
 async def update_config(
     body: UpdateConfigRequest, request: Request,
-) -> dict[str, str]:
+) -> StatusResponse:
     """Update global config."""
     from see_agent.config import _deep_merge, save_config
 
@@ -43,7 +45,7 @@ async def update_config(
     merged = _deep_merge(current, body.config)
     save_config(merged)
     request.app.state.config = merged
-    return {"status": "updated"}
+    return StatusResponse(status="updated")
 
 
 _SCHEMA_DIR = Path(__file__).parent.parent.parent / "schemas"

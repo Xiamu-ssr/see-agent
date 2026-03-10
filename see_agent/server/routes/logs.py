@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Any
 
 from fastapi import APIRouter, Query
+
+from see_agent.server.schemas import LogEntry
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +27,7 @@ async def get_logs(
     level: str = Query(default="", description="Minimum log level filter"),
     limit: int = Query(default=100, ge=1, le=1000),
     offset: int = Query(default=0, ge=0),
-) -> list[dict[str, Any]]:
+) -> list[LogEntry]:
     """Read and parse log entries from the daily log file."""
     from datetime import datetime
 
@@ -45,7 +46,7 @@ async def get_logs(
     if level_upper in level_order:
         min_idx = level_order.index(level_upper)
 
-    entries: list[dict[str, Any]] = []
+    entries: list[LogEntry] = []
     for line in log_file.read_text(encoding="utf-8").splitlines():
         m = _LOG_RE.match(line)
         if not m:
@@ -56,11 +57,11 @@ async def get_logs(
             if entry_stripped in level_order:
                 if level_order.index(entry_stripped) < min_idx:
                     continue
-        entries.append({
-            "time": time_str,
-            "level": entry_level.strip(),
-            "logger": logger_name,
-            "message": message,
-        })
+        entries.append(LogEntry(
+            time=time_str,
+            level=entry_level.strip(),
+            logger=logger_name,
+            message=message,
+        ))
 
     return entries[offset:offset + limit]

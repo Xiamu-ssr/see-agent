@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import logging
 import subprocess
-from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from see_agent.config import SKILLS_DIR
+from see_agent.server.schemas import SkillInfo, SkillInstallResponse
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +17,7 @@ router = APIRouter(prefix="/api", tags=["skills"])
 
 
 @router.get("/skills")
-async def list_skills(request: Request) -> list[dict[str, Any]]:
+async def list_skills(request: Request) -> list[SkillInfo]:
     """List loaded skills with gating status."""
     from see_agent.skill.loader import gate_skills, load_skills
 
@@ -27,13 +27,13 @@ async def list_skills(request: Request) -> list[dict[str, Any]]:
     gated = gate_skills(skills) if skills else []
 
     gated_names = {s.name for s in gated}
-    results: list[dict[str, Any]] = []
+    results: list[SkillInfo] = []
     for s in skills:
-        results.append({
-            "name": s.name,
-            "description": s.description,
-            "available": s.name in gated_names,
-        })
+        results.append(SkillInfo(
+            name=s.name,
+            description=s.description,
+            available=s.name in gated_names,
+        ))
     return results
 
 
@@ -42,7 +42,7 @@ class InstallSkillRequest(BaseModel):
 
 
 @router.post("/skills/install")
-async def install_skill(body: InstallSkillRequest) -> dict[str, str]:
+async def install_skill(body: InstallSkillRequest) -> SkillInstallResponse:
     """Install a skill from ClawHub."""
     result = subprocess.run(
         ["clawhub", "install", body.name, "--target", str(SKILLS_DIR)],
@@ -52,4 +52,4 @@ async def install_skill(body: InstallSkillRequest) -> dict[str, str]:
     )
     if result.returncode != 0:
         raise HTTPException(status_code=400, detail=f"Install failed: {result.stderr}")
-    return {"status": "ok", "name": body.name}
+    return SkillInstallResponse(status="ok", name=body.name)
