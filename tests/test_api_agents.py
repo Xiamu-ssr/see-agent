@@ -127,7 +127,7 @@ class TestGetAgent:
         data = resp.json()
         assert data["id"] == "alice"
         assert data["name"] == "Alice"
-        assert data["has_soul"] is False
+        assert data["has_soul"] is True
         assert data["team_id"] is None
 
     def test_get_not_found(self, client):

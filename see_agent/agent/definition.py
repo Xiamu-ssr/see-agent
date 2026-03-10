@@ -8,11 +8,12 @@ from __future__ import annotations
 
 import json
 import logging
+import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from see_agent.config import AGENTS_DIR, TEAMS_DIR, load_agent_config
+from see_agent.config import _TEMPLATE_DIR, AGENTS_DIR, TEAMS_DIR, load_agent_config
 
 logger = logging.getLogger(__name__)
 
@@ -99,9 +100,24 @@ class AgentDefinition:
 
     @staticmethod
     def create(agent_id: str, **kwargs: Any) -> AgentDefinition:
-        """Create and persist a new agent definition."""
+        """Create and persist a new agent definition.
+
+        Also sets up the agent directory with:
+        - ``memory/`` subdirectory
+        - ``AGENTS.md`` and ``SOUL.md`` copied from templates (if not present)
+        """
         defn = AgentDefinition(id=agent_id, **kwargs)
         defn.save()
+
+        agent_dir = AGENTS_DIR / agent_id
+        (agent_dir / "memory").mkdir(exist_ok=True)
+
+        for template_name in ("AGENTS.md", "SOUL.md"):
+            target = agent_dir / template_name
+            source = _TEMPLATE_DIR / template_name
+            if not target.exists() and source.exists():
+                shutil.copy2(source, target)
+
         return defn
 
     @staticmethod

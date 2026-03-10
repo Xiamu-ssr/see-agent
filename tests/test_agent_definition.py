@@ -1,11 +1,15 @@
 """Unit tests for AgentDefinition."""
 
 import json
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
 from see_agent.agent.definition import AgentDefinition
+
+# Real template directory (so create() can copy AGENTS.md / SOUL.md).
+_REAL_TEMPLATE_DIR = Path(__file__).resolve().parent.parent / "see_agent" / "templates"
 
 
 @pytest.fixture
@@ -17,6 +21,7 @@ def agents_dir(tmp_path):
     with (
         patch("see_agent.agent.definition.AGENTS_DIR", d),
         patch("see_agent.agent.definition.TEAMS_DIR", teams),
+        patch("see_agent.agent.definition._TEMPLATE_DIR", _REAL_TEMPLATE_DIR),
     ):
         yield d
 
@@ -123,6 +128,33 @@ class TestAgentDefinition:
         agents = AgentDefinition.list_all()
         assert len(agents) == 1
         assert agents[0].id == "good"
+
+
+class TestCreateSetup:
+    """Tests for create() template and directory setup."""
+
+    def test_create_generates_memory_dir(self, agents_dir):
+        AgentDefinition.create("mem-agent", name="MemAgent")
+        assert (agents_dir / "mem-agent" / "memory").is_dir()
+
+    def test_create_copies_agents_md(self, agents_dir):
+        AgentDefinition.create("tmpl-agent", name="TmplAgent")
+        agents_md = agents_dir / "tmpl-agent" / "AGENTS.md"
+        assert agents_md.exists()
+        content = agents_md.read_text(encoding="utf-8")
+        assert "记忆管理" in content
+
+    def test_create_copies_soul_md(self, agents_dir):
+        AgentDefinition.create("soul-agent", name="SoulAgent")
+        soul_md = agents_dir / "soul-agent" / "SOUL.md"
+        assert soul_md.exists()
+
+    def test_create_does_not_overwrite_existing(self, agents_dir):
+        agent_dir = agents_dir / "custom-agent"
+        agent_dir.mkdir(parents=True)
+        (agent_dir / "AGENTS.md").write_text("custom content")
+        AgentDefinition.create("custom-agent", name="Custom")
+        assert (agent_dir / "AGENTS.md").read_text() == "custom content"
 
 
 class TestLoadFromSaveTo:
