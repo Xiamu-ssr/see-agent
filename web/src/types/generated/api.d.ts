@@ -441,6 +441,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/agents/{agent_id}/sandbox/violations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Sandbox Violations
+         * @description Get recent sandbox deny records for an agent.
+         */
+        get: operations["get_sandbox_violations_api_agents__agent_id__sandbox_violations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agents/{agent_id}/sandbox/allow": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sandbox Allow
+         * @description Add a path to the agent's sandbox allow list.
+         */
+        post: operations["sandbox_allow_api_agents__agent_id__sandbox_allow_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/tools": {
         parameters: {
             query?: never;
@@ -599,6 +639,30 @@ export interface paths {
          * @description Install and configure an MCP server.
          */
         post: operations["install_mcp_api_mcp_install_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/screen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Screen Status
+         * @description Get current screen lease status.
+         *
+         *     Returns holder info and queue length.  The ScreenManager lives inside
+         *     an AgentRouter which is owned by a running TeamManager, so we return
+         *     a basic status summary here.
+         */
+        get: operations["get_screen_status_api_screen_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -867,6 +931,51 @@ export interface components {
         RunTeamRequest: {
             /** Task */
             task: string;
+        };
+        /** SandboxAllowRequest */
+        SandboxAllowRequest: {
+            /** Path */
+            path: string;
+            /**
+             * Mode
+             * @default read
+             */
+            mode: string;
+        };
+        /** SandboxAllowResponse */
+        SandboxAllowResponse: {
+            /** Status */
+            status: string;
+            /** Path */
+            path: string;
+            /** Mode */
+            mode: string;
+        };
+        /** SandboxViolation */
+        SandboxViolation: {
+            /** Timestamp */
+            timestamp: string;
+            /** Operation */
+            operation: string;
+            /** Path */
+            path: string;
+        };
+        /** ScreenLeaseStatus */
+        ScreenLeaseStatus: {
+            /** Holder */
+            holder?: string | null;
+            /** Started At */
+            started_at?: string | null;
+            /**
+             * Idle Seconds
+             * @default 0
+             */
+            idle_seconds: number;
+            /**
+             * Queue Length
+             * @default 0
+             */
+            queue_length: number;
         };
         /** SessionDetailResponse */
         SessionDetailResponse: {
@@ -1883,6 +1992,72 @@ export interface operations {
             };
         };
     };
+    get_sandbox_violations_api_agents__agent_id__sandbox_violations_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SandboxViolation"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sandbox_allow_api_agents__agent_id__sandbox_allow_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SandboxAllowRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SandboxAllowResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_tools_api_tools_get: {
         parameters: {
             query?: never;
@@ -2129,6 +2304,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_screen_status_api_screen_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScreenLeaseStatus"];
                 };
             };
         };

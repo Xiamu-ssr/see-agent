@@ -64,6 +64,23 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # ── Shutdown ───────────────────────────────────────────────────────
     logger.info("see-agent server shutting down")
 
+    # Stop all running team managers and their agent subprocesses.
+    managers: dict = getattr(app.state, "team_managers", {})
+    for team_id, mgr in list(managers.items()):
+        try:
+            await mgr.stop()
+            logger.info("Stopped team manager: %s", team_id)
+        except Exception:
+            logger.exception("Error stopping team %s", team_id)
+    managers.clear()
+
+    # Clean up stale UDS socket files.
+    from see_agent.config import RUN_DIR
+
+    if RUN_DIR.exists():
+        for sock in RUN_DIR.glob("*.sock"):
+            sock.unlink(missing_ok=True)
+
 
 app = FastAPI(
     title="see-agent",

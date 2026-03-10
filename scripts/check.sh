@@ -90,7 +90,7 @@ run_step "API smoke" bash -c '
 
 # ── 8. CLI 冒烟测试 ──
 run_step "CLI version" .venv/bin/see-agent version
-run_step "CLI config show" .venv/bin/see-agent config show
+run_step "CLI status" .venv/bin/see-agent status
 
 # ── 汇总 ──
 echo ""

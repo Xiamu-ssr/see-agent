@@ -1,31 +1,26 @@
 """CLI entry point for see-agent — built with Typer.
 
-Commands
---------
-- ``see-agent start``         Start the server + open browser.
-- ``see-agent stop``          Stop the running server.
-- ``see-agent version``       Show version.
-- ``see-agent config show``   Display current configuration.
-- ``see-agent config init``   Interactive configuration wizard.
-- ``see-agent setup install`` Install optional dependencies.
-- ``see-agent setup check``   Check environment status.
+v3.1 commands (launchd-based):
+- ``see-agent install``   Install all dependencies.
+- ``see-agent start``     Start via launchd + open browser.
+- ``see-agent stop``      Stop via launchd (kills all agent subprocesses).
+- ``see-agent restart``   Restart the service.
+- ``see-agent status``    Show service status.
+- ``see-agent uninstall`` Remove launchd service + optionally data.
+- ``see-agent version``   Show version.
 """
 
 from __future__ import annotations
 
-import importlib
-import json
-import signal
+import os
 import subprocess
 import sys
+import time
+from pathlib import Path
 
 import typer
 
-from see_agent.config import ensure_workspace, load_config, save_config, setup_logging
-
-# ---------------------------------------------------------------------------
-# Typer app hierarchy
-# ---------------------------------------------------------------------------
+from see_agent.config import RUN_DIR, ensure_workspace, load_config
 
 app = typer.Typer(
     name="see-agent",
@@ -33,181 +28,108 @@ app = typer.Typer(
     add_completion=False,
 )
 
-config_app = typer.Typer(
-    name="config",
-    help="View or initialise see-agent configuration.",
-    add_completion=False,
-)
-app.add_typer(config_app, name="config")
-
-setup_app = typer.Typer(
-    name="setup",
-    help="Install optional dependencies and check environment.",
-    add_completion=False,
-)
-app.add_typer(setup_app, name="setup")
-
-
 # ---------------------------------------------------------------------------
-# Helpers
+# launchd constants
 # ---------------------------------------------------------------------------
 
-def _mask_api_key(key: str) -> str:
-    """Return a masked version of *key*, showing only the last 4 characters."""
-    if len(key) <= 4:
-        return "****"
-    return "*" * (len(key) - 4) + key[-4:]
+PLIST_LABEL = "dev.see-agent.server"
+PLIST_DIR = Path("~/Library/LaunchAgents").expanduser()
+PLIST_PATH = PLIST_DIR / f"{PLIST_LABEL}.plist"
+LOG_PATH = Path("~/.see-agent/logs/server.log").expanduser()
+
+
+def _get_uid() -> int:
+    return os.getuid()
+
+
+def _is_running() -> bool:
+    result = subprocess.run(
+        ["launchctl", "print", f"gui/{_get_uid()}/{PLIST_LABEL}"],
+        capture_output=True,
+    )
+    return result.returncode == 0
 
 
 def _validate_api_key(config: dict) -> None:  # type: ignore[type-arg]
-    """Abort with a friendly message when the API key is missing."""
     api_key: str = config.get("llm", {}).get("api_key", "")
     if not api_key:
         typer.echo(
             "Error: API key is not configured.\n"
-            "Run `see-agent config init` to set it, "
+            "Open the Web UI Config page to set it, "
             "or export SEE_AGENT_API_KEY.",
             err=True,
         )
         raise typer.Exit(code=1)
 
 
-_PID_FILE = "~/.see-agent/server.pid"
+def _generate_plist(port: int) -> str:
+    python = sys.executable
+    home = str(Path("~/.see-agent").expanduser())
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>{PLIST_LABEL}</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>{python}</string>
+        <string>-m</string>
+        <string>uvicorn</string>
+        <string>see_agent.server.app:app</string>
+        <string>--host</string>
+        <string>0.0.0.0</string>
+        <string>--port</string>
+        <string>{port}</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>{home}</string>
+    <key>RunAtLoad</key>
+    <false/>
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+    <key>AbandonProcessGroup</key>
+    <false/>
+    <key>StandardOutPath</key>
+    <string>{LOG_PATH}</string>
+    <key>StandardErrorPath</key>
+    <string>{LOG_PATH}</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin:{Path(python).parent}</string>
+        <key>SEE_AGENT_HOME</key>
+        <string>{home}</string>
+    </dict>
+</dict>
+</plist>"""
 
 
 # ---------------------------------------------------------------------------
 # Commands
 # ---------------------------------------------------------------------------
 
+
 @app.command()
-def start(
-    port: int = typer.Option(8000, "--port", "-p", help="Port to listen on."),
-    no_browser: bool = typer.Option(False, "--no-browser", help="Don't open browser."),
+def install(
+    full: bool = typer.Option(
+        False, "--full", help="Install all optional deps.",
+    ),
+    memory: bool = typer.Option(
+        False, "--memory", help="Install memory (mem0ai) deps.",
+    ),
+    mcp: bool = typer.Option(
+        False, "--mcp", help="Install MCP deps.",
+    ),
+    dev: bool = typer.Option(
+        False, "--dev", help="Install dev deps.",
+    ),
 ) -> None:
-    """Start the see-agent server and open the browser."""
-    ensure_workspace()
-    setup_logging()
-    config = load_config()
-    _validate_api_key(config)
-
-    import os
-    from pathlib import Path
-
-    pid_path = Path(os.path.expanduser(_PID_FILE))
-    pid_path.write_text(str(os.getpid()))
-
-    url = f"http://localhost:{port}"
-    typer.echo(f"Starting see-agent on {url}")
-
-    if not no_browser:
-        import threading
-        import webbrowser
-
-        threading.Timer(1.5, lambda: webbrowser.open(url)).start()
-
-    import uvicorn
-
-    uvicorn.run("see_agent.server.app:app", host="0.0.0.0", port=port, reload=False)
-
-
-@app.command()
-def stop() -> None:
-    """Stop a running see-agent server."""
-    import os
-    from pathlib import Path
-
-    pid_path = Path(os.path.expanduser(_PID_FILE))
-    if not pid_path.exists():
-        typer.echo("No running server found (PID file missing).", err=True)
-        raise typer.Exit(code=1)
-
-    pid = int(pid_path.read_text().strip())
-    try:
-        os.kill(pid, signal.SIGTERM)
-        typer.echo(f"Stopped see-agent server (PID {pid}).")
-    except ProcessLookupError:
-        typer.echo(f"Process {pid} not found (already stopped).")
-    finally:
-        pid_path.unlink(missing_ok=True)
-
-
-@app.command()
-def version() -> None:
-    """Show see-agent version."""
-    typer.echo("see-agent v3.0.0")
-
-
-# ---------------------------------------------------------------------------
-# Config sub-commands
-# ---------------------------------------------------------------------------
-
-@config_app.command("show")
-def config_show() -> None:
-    """Pretty-print the current configuration (API key masked)."""
-    config = load_config()
-
-    # Mask the API key for display
-    display = json.loads(json.dumps(config))  # deep copy
-    if "llm" in display and "api_key" in display["llm"]:
-        display["llm"]["api_key"] = _mask_api_key(display["llm"]["api_key"])
-
-    typer.echo(json.dumps(display, indent=4, ensure_ascii=False))
-
-
-@config_app.command("init")
-def config_init() -> None:
-    """Interactive wizard to initialise see-agent configuration."""
-    ensure_workspace()
-    config = load_config()
-
-    llm = config.get("llm", {})
-
-    typer.echo("see-agent configuration wizard")
-    typer.echo("=" * 40)
-    typer.echo("Press Enter to keep the current value shown in [brackets].\n")
-
-    # --- base_url ---
-    current_base_url: str = llm.get("base_url", "https://api.openai.com/v1")
-    base_url = input(f"LLM base URL [{current_base_url}]: ").strip()
-    if not base_url:
-        base_url = current_base_url
-
-    # --- api_key ---
-    current_key: str = llm.get("api_key", "")
-    masked = _mask_api_key(current_key) if current_key else "(not set)"
-    api_key = input(f"API key [{masked}]: ").strip()
-    if not api_key:
-        api_key = current_key
-
-    # --- model ---
-    current_model: str = llm.get("model", "gpt-4o")
-    model = input(f"Model [{current_model}]: ").strip()
-    if not model:
-        model = current_model
-
-    # Apply
-    config["llm"] = {
-        "base_url": base_url,
-        "api_key": api_key,
-        "model": model,
-    }
-
-    save_config(config)
-    typer.echo("\nConfiguration saved.")
-
-
-# ---------------------------------------------------------------------------
-# Setup sub-commands
-# ---------------------------------------------------------------------------
-
-@setup_app.command("install")
-def setup_install(
-    full: bool = typer.Option(False, "--full", help="Install all optional deps."),
-    memory: bool = typer.Option(False, "--memory", help="Install memory (mem0ai) deps."),
-    mcp: bool = typer.Option(False, "--mcp", help="Install MCP deps."),
-    dev: bool = typer.Option(False, "--dev", help="Install dev deps."),
-) -> None:
-    """Install optional dependencies for see-agent."""
+    """Install see-agent dependencies."""
     extras: list[str] = []
     if full or not any([memory, mcp, dev]):
         extras.append("all")
@@ -226,42 +148,199 @@ def setup_install(
     raise typer.Exit(code=result.returncode)
 
 
-@setup_app.command("check")
-def setup_check() -> None:
-    """Check which optional dependencies are installed."""
+@app.command()
+def start(
+    port: int = typer.Option(
+        8000, "--port", "-p", help="Port to listen on.",
+    ),
+    no_browser: bool = typer.Option(
+        False, "--no-browser", help="Don't open browser.",
+    ),
+    foreground: bool = typer.Option(
+        False, "--foreground", "-f",
+        help="Run in foreground (skip launchd).",
+    ),
+) -> None:
+    """Start the see-agent server."""
+    ensure_workspace()
     config = load_config()
+    _validate_api_key(config)
 
-    # Check mem0ai
-    try:
-        importlib.import_module("mem0")
-        mem0_ok = True
-    except ImportError:
-        mem0_ok = False
+    if foreground:
+        _start_foreground(port, no_browser)
+        return
 
-    mem_enabled = config.get("memory", {}).get("enabled", False)
-    if mem0_ok:
-        typer.echo("mem0ai   ... installed")
+    if _is_running():
+        typer.echo("see-agent is already running")
+        if not no_browser:
+            import webbrowser
+
+            webbrowser.open(f"http://localhost:{port}")
+        return
+
+    LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    PLIST_DIR.mkdir(parents=True, exist_ok=True)
+    PLIST_PATH.write_text(_generate_plist(port))
+
+    subprocess.run(
+        [
+            "launchctl", "bootstrap",
+            f"gui/{_get_uid()}", str(PLIST_PATH),
+        ],
+        check=True,
+    )
+    typer.echo("see-agent started (launchd)")
+    typer.echo(f"Log: {LOG_PATH}")
+
+    if not no_browser:
+        import webbrowser
+
+        time.sleep(2)
+        webbrowser.open(f"http://localhost:{port}")
+
+
+def _start_foreground(port: int, no_browser: bool) -> None:
+    """Run uvicorn in the current process (dev mode)."""
+    from see_agent.config import setup_logging
+
+    setup_logging()
+
+    url = f"http://localhost:{port}"
+    typer.echo(f"Starting see-agent on {url} (foreground)")
+
+    if not no_browser:
+        import threading
+        import webbrowser
+
+        threading.Timer(1.5, lambda: webbrowser.open(url)).start()
+
+    import uvicorn
+
+    uvicorn.run(
+        "see_agent.server.app:app",
+        host="0.0.0.0",
+        port=port,
+        reload=False,
+    )
+
+
+@app.command()
+def stop() -> None:
+    """Stop the see-agent server (and all agent subprocesses)."""
+    if not _is_running():
+        typer.echo("see-agent is not running")
+        return
+
+    subprocess.run(
+        [
+            "launchctl", "bootout",
+            f"gui/{_get_uid()}/{PLIST_LABEL}",
+        ],
+        capture_output=True,
+    )
+    typer.echo("see-agent stopped")
+
+    PLIST_PATH.unlink(missing_ok=True)
+
+    # Clean up UDS sockets.
+    if RUN_DIR.exists():
+        for sock in RUN_DIR.glob("*.sock"):
+            sock.unlink(missing_ok=True)
+
+
+@app.command()
+def restart(
+    port: int = typer.Option(
+        8000, "--port", "-p", help="Port to listen on.",
+    ),
+) -> None:
+    """Restart the see-agent server."""
+    if _is_running():
+        subprocess.run(
+            [
+                "launchctl", "bootout",
+                f"gui/{_get_uid()}/{PLIST_LABEL}",
+            ],
+            capture_output=True,
+        )
+        time.sleep(1)
+
+    LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    PLIST_DIR.mkdir(parents=True, exist_ok=True)
+    PLIST_PATH.write_text(_generate_plist(port))
+
+    subprocess.run(
+        [
+            "launchctl", "bootstrap",
+            f"gui/{_get_uid()}", str(PLIST_PATH),
+        ],
+        check=True,
+    )
+    typer.echo("see-agent restarted")
+
+    import webbrowser
+
+    time.sleep(2)
+    webbrowser.open(f"http://localhost:{port}")
+
+
+@app.command()
+def status() -> None:
+    """Show see-agent service status."""
+    if _is_running():
+        result = subprocess.run(
+            [
+                "launchctl", "print",
+                f"gui/{_get_uid()}/{PLIST_LABEL}",
+            ],
+            capture_output=True,
+            text=True,
+        )
+        for line in result.stdout.splitlines():
+            low = line.lower()
+            if "pid" in low or "state" in low:
+                typer.echo(f"  {line.strip()}")
+        typer.echo("see-agent is running")
     else:
-        hint = " (config: memory.enabled=true)" if mem_enabled else ""
-        typer.echo(f"mem0ai   ... not installed{hint}")
-        if mem_enabled:
-            typer.echo("  Fix: see-agent setup install --memory")
+        typer.echo("see-agent is not running")
 
-    # Check mcp
-    try:
-        importlib.import_module("mcp")
-        mcp_ok = True
-    except ImportError:
-        mcp_ok = False
 
-    mcp_configured = bool(config.get("mcp_servers"))
-    if mcp_ok:
-        typer.echo("mcp      ... installed")
-    else:
-        hint = " (config: mcp_servers configured)" if mcp_configured else ""
-        typer.echo(f"mcp      ... not installed{hint}")
-        if mcp_configured:
-            typer.echo("  Fix: see-agent setup install --mcp")
+@app.command()
+def uninstall(
+    delete_data: bool = typer.Option(
+        False, "--delete-data",
+        help="Also delete ~/.see-agent data.",
+    ),
+) -> None:
+    """Uninstall the see-agent launchd service."""
+    if _is_running():
+        subprocess.run(
+            [
+                "launchctl", "bootout",
+                f"gui/{_get_uid()}/{PLIST_LABEL}",
+            ],
+            capture_output=True,
+        )
+        typer.echo("Service stopped")
+
+    PLIST_PATH.unlink(missing_ok=True)
+    typer.echo("Plist removed")
+
+    if delete_data:
+        import shutil
+
+        data_dir = Path("~/.see-agent").expanduser()
+        if data_dir.exists():
+            shutil.rmtree(data_dir)
+            typer.echo(f"Data deleted: {data_dir}")
+
+    typer.echo("see-agent uninstalled")
+
+
+@app.command()
+def version() -> None:
+    """Show see-agent version."""
+    typer.echo("see-agent v3.1.0")
 
 
 # ---------------------------------------------------------------------------
