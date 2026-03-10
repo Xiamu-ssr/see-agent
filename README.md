@@ -6,7 +6,7 @@
 
 <br/><br/>
 
-**AI agents that see your screen, remember your workflow, and operate your Mac as a team.**
+**AI agents that see your screen and operate your Mac as a team.**
 
 <br/>
 
@@ -16,7 +16,7 @@
 &nbsp;&nbsp;
 <img src="https://badgen.net/static/%F0%9F%94%92%20Sandbox/macOS%20Kernel-Level/10B981" alt="Sandbox"/>
 &nbsp;&nbsp;
-<img src="https://badgen.net/static/%F0%9F%A7%A0%20Memory/Persistent%20Cross-Session/8B5CF6" alt="Memory"/>
+<img src="https://badgen.net/static/%F0%9F%A7%A0%20Memory/Markdown%20%C2%B7%20Agent-Managed/8B5CF6" alt="Memory"/>
 &nbsp;&nbsp;
 <img src="https://badgen.net/static/%F0%9F%94%8C%20Extensible/MCP%20%2B%20Skills/06B6D4" alt="MCP + Skills"/>
 
@@ -25,12 +25,12 @@
 [![Python](https://badgen.net/static/python/3.11+/3776AB)](https://python.org)
 [![License](https://badgen.net/github/license/Xiamu-ssr/see-agent)](LICENSE)
 [![Stars](https://badgen.net/github/stars/Xiamu-ssr/see-agent)](https://github.com/Xiamu-ssr/see-agent)
-[![Tests](https://badgen.net/static/tests/384%20passed/green)](https://github.com/Xiamu-ssr/see-agent)
+[![Tests](https://badgen.net/static/tests/368%20passed/green)](https://github.com/Xiamu-ssr/see-agent)
 [![Built with uv](https://badgen.net/static/built%20with/uv/7C4DFF)](https://docs.astral.sh/uv/)
 
 <br/>
 
-[Quick Start](#-quick-start) · [How It Works](#-how-it-works) · [Web UI](#-web-ui) · [Agent Teams](#-agent-teams) · [Sandbox](#-sandbox-isolation) · [Architecture](#%EF%B8%8F-architecture)
+[Quick Start](#-quick-start) · [How It Works](#-how-it-works) · [Web UI](#-web-ui) · [Agent Teams](#-agent-teams) · [Memory](#-memory) · [Sandbox](#-sandbox-isolation) · [Architecture](#%EF%B8%8F-architecture)
 
 </div>
 
@@ -40,18 +40,7 @@
 
 see-agent is an open-source AI agent platform for macOS. Each agent can see your screen (via screenshots), think (via LLM), and act (clicks, types, scrolls, shell commands). Multiple agents form teams to tackle complex tasks — each running in its own sandboxed subprocess, communicating through a message bus, and taking turns using the screen through a lease system.
 
-You manage everything from a web-based pixel office UI. No terminal needed after installation.
-
-## ✨ Highlights
-
-- **Multi-agent teams** — leader decomposes tasks, workers execute in parallel, async message bus for coordination
-- **Process isolation** — each agent runs in an independent subprocess, one crash won't take down others
-- **Kernel-level sandbox** — macOS `sandbox-exec` restricts each agent's file/network access. Dynamic permissions managed via UI
-- **Screen lease system** — agents take turns using the screen with 10-minute leases, no more switching conflicts
-- **Persistent memory** — file-based (zero deps) or Mem0 vector search, survives across sessions
-- **MCP + Skills** — connect any MCP server, install skills from [ClawhHub](https://clawhub.com)
-- **Web management UI** — pixel-art office, team management, config editor, log viewer, all in the browser
-- **launchd service** — runs in background, auto-restarts on crash, doesn't occupy a terminal
+You manage everything from a web-based pixel office. No terminal needed after installation.
 
 ## 🚀 Quick Start
 
@@ -63,7 +52,7 @@ see-agent install    # Install optional deps + build frontend
 see-agent start      # Start service + open browser
 ```
 
-That's it. The browser opens `http://localhost:8000`. Configure your LLM API key in the Config page and you're ready to go.
+The browser opens `http://localhost:8000`. Configure your LLM API key in the Config page and you're ready to go.
 
 ## 🤔 How It Works
 
@@ -96,36 +85,21 @@ Each agent follows a **ReAct loop**: screenshot → think → act → screenshot
 
 ## 🏢 Web UI
 
-```
-┌──────────────────────────────────────────────────┐
-│                                                  │
-│  🏢 Pixel Office                                  │
-│                                                  │
-│  🧑‍💻 leader [working]  👩‍💻 alice [idle]  👨‍💻 bob [idle] │
-│                                                  │
-│  ┌─ Task Board ──────┐  ┌─ Messages ──────────┐  │
-│  │ ☑ Parse emails     │  │ leader: 任务分好了    │  │
-│  │ ☐ Write report     │  │ alice: 收到，开始     │  │
-│  │ ☐ Send summary     │  │ bob: 邮件解析完了     │  │
-│  └───────────────────┘  └─────────────────────┘  │
-│                                                  │
-├────────────┬─────────────────────────────────────┤
-│ 📮 Teams    │  Create / run / monitor teams       │
-│ 📊 Dashboard│  Global stats at a glance           │
-│ 🤖 Agents   │  CRUD, SOUL, sandbox permissions    │
-│ 🔧 Skills   │  Install from ClawhHub              │
-│ 🔌 MCP      │  Add MCP servers (npm/pip/manual)   │
-│ ⚙️ Config    │  Schema-driven form + JSON editor   │
-│ 📋 Logs     │  Filterable by date and level        │
-└─────────────┴─────────────────────────────────────┘
-```
+The management interface features a **Phaser 3 pixel-art office** where you can see your agents working at their desks, plus a full management panel:
+
+- **Pixel Office** — Interactive game view with agent sprites, desks, and status indicators
+- **Teams** — Create and run teams, task board, owner messaging
+- **Agents** — CRUD, SOUL personality, sandbox permissions, memory viewer
+- **Skills & MCP** — Install from [ClawhHub](https://clawhub.com) or add MCP servers
+- **Config** — JSON Schema-driven form with live editor
+- **Logs** — Filterable by date and level
 
 ## 🤝 Agent Teams
 
 Define agents with different roles, form teams, and let them collaborate:
 
 ```json
-// ~/.see-agent/agents/alice/agent.json
+// Agent definition
 {
   "name": "Alice",
   "role": "前端操作，浏览器交互",
@@ -134,24 +108,34 @@ Define agents with different roles, form teams, and let them collaborate:
 }
 ```
 
-```json
-// ~/.see-agent/teams/{id}/team.json
-{
-  "name": "Weekly Report",
-  "leader": "leader",
-  "members": ["leader", "alice", "bob"],
-  "owner": { "display": "You" }
-}
-```
-
 **How teams run:**
 
 1. Leader gets the task, reads the screen, decomposes into subtasks
 2. Workers claim subtasks from the shared task board
-3. Agents communicate via async message bus (not polling, not shared memory)
+3. Agents communicate via async message bus
 4. Screen access is managed by lease — one agent at a time, 10-minute windows
 5. Owner (you) can message any agent or broadcast to the whole team
-6. All messages logged to `messages.jsonl` for audit
+6. All messages logged for audit
+
+## 🧠 Memory
+
+Agents manage their own memory as **plain Markdown files** — no vector database needed:
+
+```
+agents/{id}/
+├── AGENTS.md              ← Behavior guidelines (auto-generated template)
+├── SOUL.md                ← Personality description
+└── memory/
+    ├── MEMORY.md          ← Long-term memory (agent curates this)
+    ├── 2026-03-10.md      ← Daily journal
+    └── 2026-03-09.md
+```
+
+Agents get two tools to manage their memory:
+- **`memory_search`** — Search across all memory files for relevant context
+- **`write_memory`** — Write to daily journal or update long-term memory
+
+The agent decides what's worth remembering. Before context compaction, a **memoryFlush** event prompts the agent to save important information from the current conversation.
 
 ## 🔒 Sandbox Isolation
 
@@ -161,79 +145,61 @@ Each agent subprocess is wrapped in macOS `sandbox-exec` — kernel-level, not b
 sandbox-exec -f agent-profile.sb python -m see_agent.agent.worker ...
 ```
 
-**Default permissions (no config needed):**
-- ✅ Read system runtime (`/usr`, `/bin`, `/System`)
-- ✅ Read/write own agent directory
-- ✅ Read/write team shared workspace
-- ✅ Network access (for LLM API calls)
-- ✅ Python + Node.js toolchains
+**Defaults (no config needed):**
+- ✅ Read system runtime, own agent directory, team shared workspace
+- ✅ Network access, Python + Node.js toolchains
 - ❌ Everything else (deny by default)
 
-**What you can toggle per agent:**
+**Per-agent toggles:** `screen_access`, `network`, `extra_read`, `extra_write`
 
-| Permission | Default | Effect |
-|-----------|---------|--------|
-| `screen_access` | `true` | Can use screenshot/click/type tools |
-| `network` | `true` | Can make HTTP requests |
-| `extra_read` | `[]` | Additional read-only paths |
-| `extra_write` | `[]` | Additional read-write paths |
-
-**Permission denied?** The Web UI shows sandbox violations with one-click "Allow" — writes to `agent.json`, takes effect on next agent restart.
+**Permission denied?** The Web UI shows violations with one-click "Allow" — takes effect on next agent restart.
 
 Sandbox profiles are layered: [Safehouse](https://github.com/eugene1g/agent-safehouse) base (54 profiles) + see-agent common layer + per-agent dynamic layer.
 
 ## 🏗️ Architecture
 
 ```
-┌────────────────────────────────────────────────────────┐
-│  🖥️ Web UI (React 19 + TypeScript + Tailwind)          │
-│  Pixel Office / Management Panel                       │
-├────────────────────────────────────────────────────────┤
-│  🌐 FastAPI Server (main process)                      │
-│  REST API + Pydantic response models + OpenAPI spec    │
-├────────────────────────────────────────────────────────┤
-│  📡 AgentRouter (UDS server in main process)           │
-│  Bus relay · TaskBoard proxy · ScreenManager           │
-├────────────────────────────────────────────────────────┤
-│  🤖 Agent subprocesses (one per agent)                 │
-│  AgentLoop · Brain (LLM) · Remote tools (via UDS)     │
-│  Wrapped in sandbox-exec                               │
-└────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────┐
+│  🖥️ Web UI (React 19 + Phaser 3 + Tailwind)          │
+│  Pixel Office / Management Panel                     │
+├──────────────────────────────────────────────────────┤
+│  🌐 FastAPI Server (main process, launchd managed)   │
+│  REST API + WebSocket + Pydantic response models     │
+├──────────────────────────────────────────────────────┤
+│  📡 AgentRouter (UDS server in main process)         │
+│  Bus relay · TaskBoard proxy · ScreenManager         │
+├──────────────────────────────────────────────────────┤
+│  🤖 Agent subprocesses (one per agent)               │
+│  AgentLoop · Brain (LLM) · Memory tools · Remote IPC │
+│  Wrapped in sandbox-exec                             │
+└──────────────────────────────────────────────────────┘
 ```
 
 **Process model:**
 
 ```
-Main process (launchd managed)
+Main process (launchd)
 ├── FastAPI server (port 8000)
 ├── AgentRouter (UDS: ~/.see-agent/run/{team}.sock)
-│   ├── TeamBus (asyncio.Queue per agent)
-│   ├── TaskBoard (tasks.json)
+│   ├── TeamBus (message relay)
+│   ├── TaskBoard (shared tasks)
 │   └── ScreenManager (lease system)
 │
-├── Agent "leader" subprocess
-│   ├── sandbox-exec wrapper
-│   ├── UDS client → AgentRouter
-│   └── AgentLoop (independent event loop)
-│
-├── Agent "alice" subprocess
-│   └── ...
-│
-└── Agent "bob" subprocess
-    └── ...
+├── Agent "leader" ── sandbox-exec ── UDS client ── AgentLoop
+├── Agent "alice"  ── sandbox-exec ── UDS client ── AgentLoop
+└── Agent "bob"    ── sandbox-exec ── UDS client ── AgentLoop
 ```
 
-**IPC**: JSON-RPC over Unix Domain Socket. ~0.1ms latency (vs 2-5s LLM calls). Standard library, zero external deps.
+**IPC**: JSON-RPC over Unix Domain Socket. ~0.1ms latency vs 2-5s LLM calls. Zero external deps.
 
 ## 🔧 Configuration
 
-All configuration is managed through the Web UI. The config page provides a JSON Schema-driven form with live JSON preview.
+All configuration is managed through the Web UI. Config page provides a JSON Schema-driven form with live JSON preview.
 
 ```jsonc
 // ~/.see-agent/config.json
 {
   "llm": { "base_url": "...", "api_key": "...", "model": "claude-opus-4-6" },
-  "memory": { "enabled": true, "provider": "file" },
   "compact": { "enabled": true, "context_window": 128000 },
   "mcp_servers": {
     "tavily": { "type": "stdio", "command": "npx", "args": ["tavily-mcp@latest"] }
@@ -245,11 +211,11 @@ Agents inherit global config and override per-agent in `agent.json`.
 
 ## 📖 CLI
 
-v3.1 CLI is minimal — everything else is in the Web UI:
+Minimal CLI — everything else is in the Web UI:
 
 | Command | Description |
 |---------|-------------|
-| `see-agent install` | Install all dependencies |
+| `see-agent install` | Install all dependencies (Python + frontend) |
 | `see-agent start` | Start as launchd service, open browser |
 | `see-agent start -f` | Start in foreground (dev mode) |
 | `see-agent stop` | Stop service + kill all agent subprocesses |
@@ -260,34 +226,34 @@ v3.1 CLI is minimal — everything else is in the Web UI:
 
 ## 🛡️ Quality Gates
 
-Every code change runs through `scripts/check.sh` (9 steps):
+Every code change runs through `scripts/check.sh`:
 
 ```
  1. pyright        → Backend type checking
  2. ruff           → Backend linting
  3. tsc            → Frontend type checking
- 4. pytest         → 384 backend tests (isolated to tmp dirs)
+ 4. pytest         → 368 backend tests
  5. vite build     → Frontend build
- 6. API contract   → Pydantic schemas ↔ TypeScript types sync
+ 6. API contract   → Pydantic ↔ TypeScript type sync
  7. API smoke      → Server starts + core endpoints respond
- 8. CLI version    → Basic CLI works
- 9. CLI status     → Service management works
+ 8-9. CLI smoke    → version + status work
 ```
 
-**Frontend-backend type safety**: All API response types defined in `schemas.py` (Pydantic) → auto-generated as TypeScript types via OpenAPI spec → `tsc` catches field mismatches at compile time.
+**Frontend-backend type safety**: API response types defined in `schemas.py` → auto-generated as TypeScript via OpenAPI → `tsc` catches field mismatches at compile time.
 
 ## 🔮 Roadmap
 
-- [ ] Phaser 3 pixel office with sprite animations
-- [ ] Per-agent screen recording and replay
-- [ ] Multi-machine distributed agent teams
+- [ ] WebSocket real-time push (agent status, messages, tasks)
+- [ ] Agent event-driven loop (persistent agents, not one-shot)
+- [ ] Config hot-reload without agent restart
+- [ ] Multi-machine distributed teams
 - [ ] Linux sandbox support (seccomp/AppArmor)
 
 ---
 
 <div align="center">
 
-**Built with** 🐍 Python · ⚛️ React · 🧠 Claude · 🔍 Anthropic Vision · ⚡ uv
+**Built with** 🐍 Python · ⚛️ React · 🎮 Phaser 3 · 🧠 Claude · 🔍 Anthropic Vision · ⚡ uv
 
 <sub>If you find this useful, a ⭐ on GitHub would be awesome!</sub>
 
