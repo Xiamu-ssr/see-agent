@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "agent",
+  "description": "Agent definition schema",
+  "type": "object",
+  "required": ["id", "name"],
+  "properties": {
+    "id": { "type": "string" },
+    "name": { "type": "string" },
+    "role": { "type": "string", "default": "general assistant" },
+    "config_overrides": { "type": "object", "default": {} },
+    "tools_config": { "type": "object", "default": {} },
+    "skills_config": { "type": "object", "default": {} },
+    "mcp_config": { "type": "object", "default": {} },
+    "soul_path": { "type": ["string", "null"] }
+  }
+}

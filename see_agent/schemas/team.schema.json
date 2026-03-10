@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "team",
+  "description": "Team definition schema",
+  "type": "object",
+  "required": ["id", "name", "members"],
+  "properties": {
+    "id": { "type": "string" },
+    "name": { "type": "string" },
+    "members": { "type": "array", "items": { "type": "string" } },
+    "leader": { "type": ["string", "null"] },
+    "owner": {
+      "type": ["object", "null"],
+      "properties": {
+        "name": { "type": "string" },
+        "display": { "type": "string" }
+      }
+    },
+    "overrides": { "type": ["object", "null"] },
+    "seating": { "type": "object", "additionalProperties": { "type": "integer" } },
+    "screen_mode": { "type": "string", "enum": ["serial", "parallel"] },
+    "status": { "type": "string" },
+    "created_at": { "type": "string" }
+  }
+}

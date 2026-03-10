@@ -58,7 +58,7 @@ AGENTS_DIR = WORKSPACE_DIR / "agents"
 TEAMS_DIR = WORKSPACE_DIR / "teams"
 
 # Path to bundled workspace templates
-_TEMPLATE_DIR = Path(__file__).parent.parent / "workspace"
+_TEMPLATE_DIR = Path(__file__).parent / "templates"
 
 
 def ensure_workspace() -> None:

@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "config",
+  "description": "Global see-agent configuration",
+  "type": "object",
+  "properties": {
+    "llm": {
+      "type": "object",
+      "properties": {
+        "base_url": { "type": "string" },
+        "api_key": { "type": "string" },
+        "model": { "type": "string" }
+      }
+    },
+    "language": { "type": "string" },
+    "max_steps": { "type": "integer", "minimum": 1 },
+    "max_images": { "type": "integer", "minimum": 0 },
+    "screenshot_interval_ms": { "type": "integer", "minimum": 100 },
+    "tool_delay_ms": { "type": "integer", "minimum": 0 },
+    "show_overlay": { "type": "boolean" },
+    "scaling_enabled": { "type": "boolean" },
+    "scaling_match": { "type": "string", "enum": ["aspect_ratio", "exact"] },
+    "soul_path": { "type": ["string", "null"] },
+    "skills_dirs": { "type": "array", "items": { "type": "string" } },
+    "context_engine": { "type": "string" },
+    "memory": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "provider": { "type": "string" }
+      }
+    },
+    "compact": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "context_window": { "type": "integer" },
+        "target_ratio": { "type": "number" },
+        "keep_recent": { "type": "integer" },
+        "summary_model": { "type": "string" }
+      }
+    },
+    "env": { "type": "object" },
+    "mcp_servers": { "type": "object" }
+  }
+}
