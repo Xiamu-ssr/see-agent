@@ -36,7 +36,7 @@ class TestSendMessageTool:
     async def test_send(self, bus):
         tool = SendMessageTool(bus, "alice")
         result = await tool.execute(to="bob", content="hello")
-        assert "bob" in result
+        assert "bob" in result.text
         msgs = bus.drain("bob")
         assert len(msgs) == 1
         assert msgs[0].content == "hello"
@@ -50,7 +50,7 @@ class TestSendMessagePermission:
         bus.register("owner")
         tool = SendMessageTool(bus, "bob", leader_id="alice")
         result = await tool.execute(to="owner", content="hello")
-        assert "Permission denied" in result
+        assert "Permission denied" in result.text
 
     @pytest.mark.asyncio
     async def test_non_leader_allowed_after_owner_message(self, bus):
@@ -61,7 +61,7 @@ class TestSendMessagePermission:
         bus.send(BusMessage(sender="owner", recipient="bob", content="hi"))
         tool = SendMessageTool(bus, "bob", leader_id="alice")
         result = await tool.execute(to="owner", content="reply")
-        assert "Message sent" in result
+        assert "Message sent" in result.text
 
     @pytest.mark.asyncio
     async def test_leader_can_message_owner(self, bus):
@@ -69,7 +69,7 @@ class TestSendMessagePermission:
         bus.register("owner")
         tool = SendMessageTool(bus, "alice", leader_id="alice")
         result = await tool.execute(to="owner", content="report")
-        assert "Message sent" in result
+        assert "Message sent" in result.text
 
 
 class TestListTasksTool:
@@ -78,14 +78,14 @@ class TestListTasksTool:
     async def test_list_empty(self, board):
         tool = ListTasksTool(board)
         result = await tool.execute()
-        assert "No tasks" in result
+        assert "No tasks" in result.text
 
     @pytest.mark.asyncio
     async def test_list_with_tasks(self, board):
         board.create_task("Fix bug")
         tool = ListTasksTool(board)
         result = await tool.execute()
-        assert "Fix bug" in result
+        assert "Fix bug" in result.text
 
 
 class TestCreateTaskTool:
@@ -94,7 +94,7 @@ class TestCreateTaskTool:
     async def test_create(self, board):
         tool = CreateTaskTool(board, "alice")
         result = await tool.execute(title="New task", description="desc")
-        assert "created" in result.lower()
+        assert "created" in result.text.lower()
         tasks = board.list_tasks()
         assert len(tasks) == 1
         assert tasks[0].created_by == "alice"
@@ -107,7 +107,7 @@ class TestClaimTaskTool:
         task = board.create_task("Task A")
         tool = ClaimTaskTool(board, "bob")
         result = await tool.execute(task_id=task.id)
-        assert "Claimed" in result
+        assert "Claimed" in result.text
         updated = board.list_tasks()[0]
         assert updated.status == "claimed"
 
@@ -119,7 +119,7 @@ class TestCompleteTaskTool:
         task = board.create_task("Task A")
         tool = CompleteTaskTool(board, "bob")
         result = await tool.execute(task_id=task.id, result="done")
-        assert "Completed" in result
+        assert "Completed" in result.text
         updated = board.list_tasks()[0]
         assert updated.status == "done"
 
@@ -131,7 +131,7 @@ class TestUpdateTaskTool:
         task = board.create_task("Task A")
         tool = UpdateTaskTool(board)
         result = await tool.execute(task_id=task.id, status="in_progress")
-        assert "in_progress" in result
+        assert "in_progress" in result.text
 
 
 class TestAssignTaskTool:
@@ -141,6 +141,6 @@ class TestAssignTaskTool:
         task = board.create_task("Task A")
         tool = AssignTaskTool(board)
         result = await tool.execute(task_id=task.id, agent_id="charlie")
-        assert "charlie" in result
+        assert "charlie" in result.text
         updated = board.list_tasks()[0]
         assert updated.assigned_to == "charlie"

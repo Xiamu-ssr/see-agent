@@ -121,6 +121,8 @@ def _build_loop(
     max_steps: int = 5,
     on_step: Any = None,
     scaling_enabled: bool = False,
+    session_root: Path | None = None,
+    tmp_path: Path | None = None,
 ) -> AgentLoop:
     """Construct an AgentLoop with the given mocked components."""
     # Ensure registry._tools has screen tools so capture is called.
@@ -134,18 +136,18 @@ def _build_loop(
         "tool_delay_ms": 0,
         "scaling_enabled": scaling_enabled,
     }
+    # Default session_root to tmp_path/"sessions" when not explicitly given
+    if session_root is None and tmp_path is not None:
+        session_root = tmp_path / "sessions"
+        session_root.mkdir(parents=True, exist_ok=True)
     return AgentLoop(
         brain=brain,
         eye=eye,
         registry=registry,
         config=config,
         on_step=on_step,
+        session_root=session_root,
     )
-
-
-def _patch_sessions(tmp_path: Path):
-    """Return a patch context manager that redirects SessionStore to tmp_path."""
-    return patch("see_agent.session.store.SESSIONS_DIR", tmp_path / "sessions")
 
 
 @pytest.fixture(autouse=True)
@@ -174,9 +176,9 @@ class TestAgentLoop:
         registry = MagicMock()
         registry.get_openai_schemas.return_value = []
 
-        loop = _build_loop(brain, eye, registry, max_steps=10)
+        loop = _build_loop(brain, eye, registry, max_steps=10, tmp_path=tmp_path)
 
-        with _patch_sessions(tmp_path):
+        if True:
             result = await loop.run("Open Safari")
 
         assert isinstance(result, RunResult)
@@ -208,9 +210,9 @@ class TestAgentLoop:
         registry.execute = AsyncMock(return_value=ToolResult(text="Clicked (100, 200)"))
 
         max_steps = 3
-        loop = _build_loop(brain, eye, registry, max_steps=max_steps)
+        loop = _build_loop(brain, eye, registry, max_steps=max_steps, tmp_path=tmp_path)
 
-        with _patch_sessions(tmp_path):
+        if True:
             result = await loop.run("Do something forever")
 
         assert isinstance(result, RunResult)
@@ -246,9 +248,12 @@ class TestAgentLoop:
 
         step_callback = AsyncMock()
 
-        loop = _build_loop(brain, eye, registry, max_steps=10, on_step=step_callback)
+        loop = _build_loop(
+            brain, eye, registry, max_steps=10,
+            on_step=step_callback, tmp_path=tmp_path,
+        )
 
-        with _patch_sessions(tmp_path):
+        if True:
             result = await loop.run("Click then finish")
 
         assert isinstance(result, RunResult)
@@ -285,9 +290,9 @@ class TestAgentLoop:
         registry.get_openai_schemas.return_value = []
         registry.execute = AsyncMock(return_value=ToolResult(text="Clicked (100, 200)"))
 
-        loop = _build_loop(brain, eye, registry, max_steps=20)
+        loop = _build_loop(brain, eye, registry, max_steps=20, tmp_path=tmp_path)
 
-        with _patch_sessions(tmp_path):
+        if True:
             result = await loop.run("Click forever")
 
         assert isinstance(result, RunResult)
@@ -328,14 +333,14 @@ class TestAgentLoop:
 
         loop = _build_loop(
             brain, eye, registry, max_steps=10,
-            on_step=capture_step, scaling_enabled=True,
+            on_step=capture_step, scaling_enabled=True, tmp_path=tmp_path,
         )
 
         # Patch _maybe_scale to return the screenshot as-is (it already
         # carries screen_width/screen_height for coordinate mapping).
         loop._maybe_scale = lambda s: s  # type: ignore[assignment]
 
-        with _patch_sessions(tmp_path):
+        if True:
             result = await loop.run("click scaled")
 
         assert result.success is True
@@ -364,9 +369,9 @@ class TestAgentLoop:
         registry = MagicMock()
         registry.get_openai_schemas.return_value = []
 
-        loop = _build_loop(brain, eye, registry, max_steps=10)
+        loop = _build_loop(brain, eye, registry, max_steps=10, tmp_path=tmp_path)
 
-        with _patch_sessions(tmp_path):
+        if True:
             result1 = await loop.run("Search weather")
 
         assert result1.success is True
@@ -382,9 +387,9 @@ class TestAgentLoop:
         eye2 = AsyncMock()
         eye2.capture = AsyncMock(return_value=_make_screenshot())
 
-        loop2 = _build_loop(brain2, eye2, registry, max_steps=10)
+        loop2 = _build_loop(brain2, eye2, registry, max_steps=10, tmp_path=tmp_path)
 
-        with _patch_sessions(tmp_path):
+        if True:
             result2 = await loop2.run(
                 "What was the temperature?", session_id=session_id,
             )
@@ -417,9 +422,9 @@ class TestAgentLoop:
         registry = MagicMock()
         registry.get_openai_schemas.return_value = []
 
-        loop = _build_loop(brain, eye, registry, max_steps=10)
+        loop = _build_loop(brain, eye, registry, max_steps=10, tmp_path=tmp_path)
 
-        with _patch_sessions(tmp_path):
+        if True:
             result1 = await loop.run("Task 1")
             session_id = result1.session_id
 
@@ -430,10 +435,12 @@ class TestAgentLoop:
             )
             eye2 = AsyncMock()
             eye2.capture = AsyncMock(return_value=_make_screenshot())
-            loop2 = _build_loop(brain2, eye2, registry, max_steps=10)
+            loop2 = _build_loop(brain2, eye2, registry, max_steps=10, tmp_path=tmp_path)
             await loop2.run("Task 2", session_id=session_id)
 
-            session = SessionStore.load(session_id)
+            session = SessionStore.load(
+                session_id, root_dir=tmp_path / "sessions",
+            )
 
         messages = session.read_messages()
         system_msgs = [m for m in messages if m.get("type") == "system"]
@@ -487,9 +494,9 @@ class TestAgentLoop:
         registry.get_openai_schemas.return_value = []
         registry.execute = AsyncMock(side_effect=mock_execute)
 
-        loop = _build_loop(brain, eye, registry, max_steps=10)
+        loop = _build_loop(brain, eye, registry, max_steps=10, tmp_path=tmp_path)
 
-        with _patch_sessions(tmp_path):
+        if True:
             result = await loop.run("Multi tool test")
 
         assert result.success is True
@@ -518,9 +525,9 @@ class TestAgentLoop:
         registry = MagicMock()
         registry.get_openai_schemas.return_value = []
 
-        loop = _build_loop(brain, eye, registry, max_steps=10)
+        loop = _build_loop(brain, eye, registry, max_steps=10, tmp_path=tmp_path)
 
-        with _patch_sessions(tmp_path):
+        if True:
             await loop.run("Just think")
 
         # Loop ends at step budget since no finished was called, but
@@ -566,9 +573,9 @@ class TestAgentLoop:
         registry.get_openai_schemas.return_value = []
         registry.execute = AsyncMock(return_value=ToolResult(text="clicked"))
 
-        loop = _build_loop(brain, eye, registry, max_steps=10)
+        loop = _build_loop(brain, eye, registry, max_steps=10, tmp_path=tmp_path)
 
-        with _patch_sessions(tmp_path):
+        if True:
             result = await loop.run("Finish early")
 
         assert result.success is True
@@ -663,9 +670,9 @@ class TestAgentLoopV2Behavior:
         registry.get_openai_schemas.return_value = []
         registry.execute = AsyncMock(return_value=ToolResult(text="Clicked"))
 
-        loop = _build_loop(brain, eye, registry, max_steps=num_clicks + 2)
+        loop = _build_loop(brain, eye, registry, max_steps=num_clicks + 2, tmp_path=tmp_path)
 
-        with _patch_sessions(tmp_path):
+        if True:
             result = await loop.run("click a lot")
 
         assert result.success is True
@@ -706,9 +713,9 @@ class TestAgentLoopV2Behavior:
             images=[ToolResultImage(base64=img_b64)],
         ))
 
-        loop = _build_loop(brain, eye, registry, max_steps=10)
+        loop = _build_loop(brain, eye, registry, max_steps=10, tmp_path=tmp_path)
 
-        with _patch_sessions(tmp_path):
+        if True:
             result = await loop.run("take screenshot")
 
         assert result.success is True
@@ -745,9 +752,9 @@ class TestAgentLoopV2Behavior:
             images=[ToolResultImage(base64=same_b64)],
         ))
 
-        loop = _build_loop(brain, eye, registry, max_steps=num_ss + 2)
+        loop = _build_loop(brain, eye, registry, max_steps=num_ss + 2, tmp_path=tmp_path)
 
-        with _patch_sessions(tmp_path):
+        if True:
             result = await loop.run("screenshot loop")
 
         assert result.success is True
@@ -804,9 +811,12 @@ class TestAgentLoopV2Behavior:
             "tool_delay_ms": 100,
             "scaling_enabled": False,
         }
-        loop = AgentLoop(brain=brain, eye=eye, registry=registry, config=config)
+        loop = AgentLoop(
+            brain=brain, eye=eye, registry=registry,
+            config=config, session_root=tmp_path / "sessions",
+        )
 
-        with _patch_sessions(tmp_path):
+        if True:
             result = await loop.run("click twice")
 
         assert result.success is True
@@ -843,9 +853,10 @@ class TestAgentLoopV2Behavior:
         loop = AgentLoop(
             brain=brain, eye=eye, registry=registry,
             config=config, memory=memory,
+            session_root=tmp_path / "sessions",
         )
 
-        with _patch_sessions(tmp_path):
+        if True:
             result = await loop.run("test memory")
 
         assert result.success is True
@@ -885,9 +896,10 @@ class TestAgentLoopV2Behavior:
         loop = AgentLoop(
             brain=brain, eye=eye, registry=registry,
             config=config, memory=memory,
+            session_root=tmp_path / "sessions",
         )
 
-        with _patch_sessions(tmp_path):
+        if True:
             result = await loop.run("test memory fail")
 
         assert result.success is True
@@ -921,9 +933,10 @@ class TestAgentLoopV2Behavior:
         loop = AgentLoop(
             brain=brain, eye=eye, registry=registry,
             config=config, memory=memory,
+            session_root=tmp_path / "sessions",
         )
 
-        with _patch_sessions(tmp_path):
+        if True:
             result = await loop.run("test search fail")
 
         assert result.success is True
@@ -956,10 +969,10 @@ class TestAgentLoopV2Behavior:
             "scaling_enabled": False,
             "skills_dirs": [str(tmp_path / "skills")],
         }
-        loop = _build_loop(brain, eye, registry, max_steps=10)
+        loop = _build_loop(brain, eye, registry, max_steps=10, tmp_path=tmp_path)
         loop._config = config
 
-        with _patch_sessions(tmp_path):
+        if True:
             result = await loop.run("test skills")
 
         assert result.success is True
@@ -1006,9 +1019,10 @@ class TestAgentLoopV2Behavior:
         loop = AgentLoop(
             brain=brain, eye=eye, registry=registry,
             config=config, memory=memory,
+            session_root=tmp_path / "sessions",
         )
 
-        with _patch_sessions(tmp_path):
+        if True:
             result = await loop.run("test max steps memory")
 
         assert result.success is False
@@ -1053,9 +1067,10 @@ class TestAgentLoopV2Behavior:
         loop = AgentLoop(
             brain=brain, eye=eye, registry=registry,
             config=config, memory=memory,
+            session_root=tmp_path / "sessions",
         )
 
-        with _patch_sessions(tmp_path):
+        if True:
             await loop.run("test no tool calls memory")
 
         memory.add.assert_called_once()
@@ -1076,10 +1091,10 @@ class TestAgentLoopV2Behavior:
         mcp_manager.connect_all = AsyncMock()
         mcp_manager.register_tools = AsyncMock()
 
-        loop = _build_loop(brain, eye, registry, max_steps=10)
+        loop = _build_loop(brain, eye, registry, max_steps=10, tmp_path=tmp_path)
         loop._mcp_manager = mcp_manager
 
-        with _patch_sessions(tmp_path):
+        if True:
             await loop.run("test mcp")
 
         mcp_manager.connect_all.assert_called_once()
@@ -1106,9 +1121,12 @@ class TestAgentLoopV2Behavior:
             "scaling_enabled": False,
             "compact": {"enabled": False},
         }
-        loop = AgentLoop(brain=brain, eye=eye, registry=registry, config=config)
+        loop = AgentLoop(
+            brain=brain, eye=eye, registry=registry,
+            config=config, session_root=tmp_path / "sessions",
+        )
 
-        with _patch_sessions(tmp_path):
+        if True:
             result = await loop.run("test compact disabled")
 
         assert result.success is True
@@ -1186,9 +1204,12 @@ class TestAgentLoopV2Behavior:
                 "target_ratio": 0.5,
             },
         }
-        loop = AgentLoop(brain=brain, eye=eye, registry=registry, config=config)
+        loop = AgentLoop(
+            brain=brain, eye=eye, registry=registry,
+            config=config, session_root=tmp_path / "sessions",
+        )
 
-        with _patch_sessions(tmp_path):
+        if True:
             result = await loop.run("test compact triggered")
 
         assert result.success is True
@@ -1220,9 +1241,10 @@ class TestAgentLoopV2Behavior:
         loop = AgentLoop(
             brain=brain, eye=eye, registry=registry,
             config=config, user_queue=user_queue,
+            session_root=tmp_path / "sessions",
         )
 
-        with _patch_sessions(tmp_path):
+        if True:
             result = await loop.run("test queue")
 
         assert result.success is True
@@ -1244,10 +1266,10 @@ class TestAgentLoopV2Behavior:
         registry = MagicMock()
         registry.get_openai_schemas.return_value = []
 
-        loop = _build_loop(brain, eye, registry, max_steps=10)
+        loop = _build_loop(brain, eye, registry, max_steps=10, tmp_path=tmp_path)
         assert loop._user_queue is None  # default
 
-        with _patch_sessions(tmp_path):
+        if True:
             result = await loop.run("test no queue")
 
         assert result.success is True
@@ -1296,20 +1318,6 @@ class TestAgentLoopTeamParams:
         )
         assert loop._team_bus is bus
 
-    def test_screen_lock_stored(self):
-        """screen_lock param is stored on the loop."""
-        import asyncio
-
-        brain = AsyncMock()
-        eye = AsyncMock()
-        registry = MagicMock()
-        lock = asyncio.Lock()
-        loop = AgentLoop(
-            brain=brain, eye=eye, registry=registry,
-            config={"max_steps": 1}, screen_lock=lock,
-        )
-        assert loop._screen_lock is lock
-
     def test_drain_team_bus(self):
         """_drain_team_bus drains messages from team bus into context."""
         from see_agent.agent.context import ConversationContext
@@ -1349,38 +1357,6 @@ class TestAgentLoopTeamParams:
         ctx = ConversationContext("system prompt")
         assert loop._drain_team_bus(ctx) == 0
 
-    @pytest.mark.asyncio
-    async def test_execute_with_lock_screen_tool(self):
-        """Screen tools acquire the lock."""
-        import asyncio
-
-        brain = AsyncMock()
-        eye = AsyncMock()
-        registry = MagicMock()
-        registry.execute = AsyncMock(return_value=MagicMock(text="ok", images=[]))
-        lock = asyncio.Lock()
-        loop = AgentLoop(
-            brain=brain, eye=eye, registry=registry,
-            config={"max_steps": 1}, screen_lock=lock,
-        )
-        await loop._execute_with_lock("click", {"x": 100, "y": 200})
-        registry.execute.assert_called_once_with("click", {"x": 100, "y": 200})
-
-    @pytest.mark.asyncio
-    async def test_execute_with_lock_non_screen_tool(self):
-        """Non-screen tools skip the lock."""
-        brain = AsyncMock()
-        eye = AsyncMock()
-        registry = MagicMock()
-        registry.execute = AsyncMock(return_value=MagicMock(text="ok", images=[]))
-        loop = AgentLoop(
-            brain=brain, eye=eye, registry=registry,
-            config={"max_steps": 1}, screen_lock=None,
-        )
-        await loop._execute_with_lock("send_message", {"to": "bob"})
-        registry.execute.assert_called_once()
-
-
 class TestCallUserTeamMode:
     """call_user sends to owner when in team mode."""
 
@@ -1415,9 +1391,10 @@ class TestCallUserTeamMode:
             config={"max_steps": 5, "tool_delay_ms": 0},
             agent_id="agent1",
             team_bus=bus,
+            session_root=tmp_path / "sessions",
         )
 
-        with _patch_sessions(tmp_path):
+        if True:
             result = await loop.run("test task")
 
         assert result.success is True
@@ -1449,9 +1426,10 @@ class TestScreenshotSkip:
             eye=eye,
             registry=registry,
             config={"max_steps": 5, "tool_delay_ms": 0},
+            session_root=tmp_path / "sessions",
         )
 
-        with _patch_sessions(tmp_path):
+        if True:
             result = await loop.run("text task")
 
         assert result.success is True
@@ -1485,14 +1463,12 @@ class TestCachedEnvBlock:
         }
         loop = AgentLoop(
             brain=brain, eye=eye, registry=registry, config=config,
+            session_root=tmp_path / "sessions",
         )
 
-        with (
-            _patch_sessions(tmp_path),
-            patch(
-                "see_agent.agent.environment.collect_environment",
-            ) as mock_collect,
-        ):
+        with patch(
+            "see_agent.agent.environment.collect_environment",
+        ) as mock_collect:
             result = await loop.run("test cached env")
 
         assert result.success is True
@@ -1542,9 +1518,10 @@ class TestFinishedAutoMarkTasks:
             config={"max_steps": 5, "tool_delay_ms": 0},
             agent_id="alice",
             task_board=board,
+            session_root=tmp_path / "sessions",
         )
 
-        with _patch_sessions(tmp_path):
+        if True:
             result = await loop.run("do work")
 
         assert result.success is True

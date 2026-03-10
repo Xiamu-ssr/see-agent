@@ -124,26 +124,17 @@ class ConversationContext:
         self,
         tool_call_id: str,
         result: str | ToolResult,
-        screenshot_b64: str | None = None,
-        detail: str = "high",
-        mime_type: str = "image/webp",
         screenshot_ref: str | None = None,
     ) -> None:
         """Append a tool-result message and optional follow-up screenshot(s).
 
-        Accepts either a plain ``str`` (backward-compatible) or a
-        :class:`ToolResult`.  When a ``ToolResult`` is provided, its images
-        are automatically appended via :meth:`add_screenshot`.
-
-        The explicit *screenshot_b64* parameter is still honoured for callers
-        that pass a separate screenshot (legacy path).
+        Accepts either a plain ``str`` or a :class:`ToolResult`.  When a
+        ``ToolResult`` is provided, its images are automatically appended
+        via :meth:`add_screenshot`.
 
         Parameters:
             tool_call_id: The ``id`` of the tool call this result corresponds to.
             result: Textual result or a :class:`ToolResult` returned by the tool.
-            screenshot_b64: Optional base64-encoded image taken after execution.
-            detail: OpenAI vision detail level for the screenshot.
-            mime_type: MIME type of the encoded image.
             screenshot_ref: Optional filename for JSONL persistence (no base64).
         """
         from see_agent.hand.tool import ToolResult as _ToolResult
@@ -175,15 +166,10 @@ class ConversationContext:
         for img in images:
             self.add_screenshot(img.base64, img.detail, mime_type=img.mime_type)
 
-        # Legacy explicit screenshot parameter
-        if screenshot_b64 is not None:
-            self.add_screenshot(screenshot_b64, detail, mime_type=mime_type)
-
         logger.debug(
-            "Added tool result (id=%s, images=%d, has_legacy_screenshot=%s)",
+            "Added tool result (id=%s, images=%d)",
             tool_call_id,
             len(images),
-            screenshot_b64 is not None,
         )
 
     def add_screenshot(

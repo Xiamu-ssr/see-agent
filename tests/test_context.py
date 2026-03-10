@@ -95,7 +95,9 @@ class TestConversationContext:
         assert msgs[1]["content"] == "I will click OK."
 
     def test_add_tool_result(self):
-        """add_tool_result adds a tool message and optional screenshot."""
+        """add_tool_result adds a tool message and optional screenshot via ToolResult."""
+        from see_agent.hand.tool import ToolResult, ToolResultImage
+
         ctx = ConversationContext(SYSTEM_PROMPT)
 
         # Without screenshot
@@ -106,8 +108,12 @@ class TestConversationContext:
         assert msgs[1]["tool_call_id"] == "tc_1"
         assert msgs[1]["content"] == "Clicked OK"
 
-        # With screenshot
-        ctx.add_tool_result("tc_2", "Typed hello", FAKE_B64, "high")
+        # With screenshot via ToolResult
+        tr = ToolResult(
+            text="Typed hello",
+            images=[ToolResultImage(base64=FAKE_B64, detail="high")],
+        )
+        ctx.add_tool_result("tc_2", tr)
         msgs = ctx.get_messages()
         assert len(msgs) == 4  # system + tool_1 + tool_2 + screenshot
         assert msgs[2]["role"] == "tool"

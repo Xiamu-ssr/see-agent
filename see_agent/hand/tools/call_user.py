@@ -9,7 +9,7 @@ question string.
 import logging
 from typing import Any
 
-from see_agent.hand.tool import Tool
+from see_agent.hand.tool import Tool, ToolResult
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +38,7 @@ class CallUserTool(Tool):
             "required": ["question"],
         }
 
-    async def execute(self, **kwargs: Any) -> str:
+    async def execute(self, **kwargs: Any) -> ToolResult:
         question: str = kwargs["question"]
         logger.info("call_user: %s", question)
-        return question
+        return ToolResult(text=question)

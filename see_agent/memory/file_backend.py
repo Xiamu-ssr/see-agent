@@ -23,11 +23,7 @@ logger = logging.getLogger(__name__)
 class FileMemory(BaseMemory):
     """JSONL-based memory.  Keyword-overlap search, zero external deps."""
 
-    def __init__(self, memory_dir: Path | None = None) -> None:
-        if memory_dir is None:
-            from see_agent.config import WORKSPACE_DIR
-
-            memory_dir = WORKSPACE_DIR / "memory"
+    def __init__(self, memory_dir: Path) -> None:
         self._dir = memory_dir
         self._dir.mkdir(parents=True, exist_ok=True)
 

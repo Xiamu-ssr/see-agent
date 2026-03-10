@@ -63,11 +63,8 @@ class Tool(ABC):
         ...
 
     @abstractmethod
-    async def execute(self, **kwargs: Any) -> str | ToolResult:
+    async def execute(self, **kwargs: Any) -> ToolResult:
         """Run the tool with the given arguments and return a result.
-
-        May return a plain ``str`` (backward-compatible) or a :class:`ToolResult`
-        for richer responses including images.
 
         All implementations must be async-safe even if the underlying operation
         is synchronous (wrap with ``asyncio.to_thread`` when appropriate).
@@ -167,20 +164,13 @@ class ToolRegistry:
     async def execute(self, name: str, args: dict[str, Any]) -> ToolResult:
         """Look up the tool by *name* and execute it with *args*.
 
-        Returns a :class:`ToolResult`.  If the tool returns a plain ``str``
-        it is automatically wrapped.
-
         Raises ``KeyError`` for unknown tools and propagates any exception
         raised by the tool itself.
         """
         tool = self.get(name)
         logger.info("Executing tool '%s' with args: %s", name, args)
         try:
-            raw = await tool.execute(**args)
-            if isinstance(raw, ToolResult):
-                result = raw
-            else:
-                result = ToolResult(text=str(raw))
+            result = await tool.execute(**args)
             logger.info("Tool '%s' result: %s", name, result.text)
             return result
         except Exception:

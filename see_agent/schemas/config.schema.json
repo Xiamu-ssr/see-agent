@@ -17,12 +17,10 @@
     "max_images": { "type": "integer", "minimum": 0, "default": 5 },
     "screenshot_interval_ms": { "type": "integer", "minimum": 100, "default": 800 },
     "tool_delay_ms": { "type": "integer", "minimum": 0, "default": 200 },
-    "show_overlay": { "type": "boolean", "default": true },
     "scaling_enabled": { "type": "boolean", "default": true },
     "scaling_match": { "type": "string", "enum": ["aspect_ratio", "pixel_count", "exact"], "default": "aspect_ratio" },
-    "soul_path": { "type": ["string", "null"], "default": null },
     "skills_dirs": { "type": "array", "items": { "type": "string" }, "default": ["~/.see-agent/skills"] },
-    "context_engine": { "type": "string", "default": "legacy" },
+    "context_engine": { "type": "string", "default": "default" },
     "memory": {
       "type": "object",
       "properties": {

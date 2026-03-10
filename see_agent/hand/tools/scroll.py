@@ -5,7 +5,7 @@ from typing import Any
 
 import pyautogui
 
-from see_agent.hand.tool import Tool
+from see_agent.hand.tool import Tool, ToolResult
 
 pyautogui.FAILSAFE = True
 pyautogui.PAUSE = 0.1
@@ -44,7 +44,7 @@ class ScrollTool(Tool):
             "required": ["x", "y", "direction"],
         }
 
-    async def execute(self, **kwargs: Any) -> str:
+    async def execute(self, **kwargs: Any) -> ToolResult:
         x: int = kwargs["x"]
         y: int = kwargs["y"]
         direction: str = kwargs["direction"]
@@ -71,6 +71,6 @@ class ScrollTool(Tool):
                 logger.warning(
                     "hscroll not available; horizontal scroll ignored"
                 )
-                return f"水平滚动不支持当前平台 (direction={direction})"
+                return ToolResult(text=f"水平滚动不支持当前平台 (direction={direction})")
 
-        return f"已在 ({x}, {y}) 向{direction}滚动 {amount} 格"
+        return ToolResult(text=f"已在 ({x}, {y}) 向{direction}滚动 {amount} 格")

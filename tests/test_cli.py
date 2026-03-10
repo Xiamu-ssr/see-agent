@@ -22,7 +22,6 @@ def _workspace_patches(tmp_path):
     return [
         patch("see_agent.config.WORKSPACE_DIR", tmp_path),
         patch("see_agent.config.CONFIG_PATH", tmp_path / "config.json"),
-        patch("see_agent.config.SESSIONS_DIR", tmp_path / "sessions"),
         patch("see_agent.config.LOGS_DIR", tmp_path / "logs"),
         patch("see_agent.config.SKILLS_DIR", tmp_path / "skills"),
         patch("see_agent.config.AGENTS_DIR", tmp_path / "agents"),

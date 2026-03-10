@@ -5,7 +5,6 @@ from __future__ import annotations
 import base64
 import json
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
@@ -24,9 +23,8 @@ class TestSessionStore:
     """Tests for SessionStore static methods."""
 
     def test_create_session(self, sessions_dir: Path) -> None:
-        with patch("see_agent.session.store.SESSIONS_DIR", sessions_dir):
-            config = {"llm": {"model": "gpt-4o"}, "max_steps": 50}
-            session = SessionStore.create("Open Safari", config)
+        config = {"llm": {"model": "gpt-4o"}, "max_steps": 50}
+        session = SessionStore.create("Open Safari", config, root_dir=sessions_dir)
 
         assert session.id
         assert session.task == "Open Safari"
@@ -41,54 +39,51 @@ class TestSessionStore:
         assert meta["config_snapshot"]["model"] == "gpt-4o"
 
     def test_load_session(self, sessions_dir: Path) -> None:
-        with patch("see_agent.session.store.SESSIONS_DIR", sessions_dir):
-            created = SessionStore.create("Test task", {"llm": {"model": "m"}, "max_steps": 10})
-            loaded = SessionStore.load(created.id)
+        created = SessionStore.create(
+            "Test task", {"llm": {"model": "m"}, "max_steps": 10},
+            root_dir=sessions_dir,
+        )
+        loaded = SessionStore.load(created.id, root_dir=sessions_dir)
 
         assert loaded.id == created.id
         assert loaded.task == "Test task"
 
     def test_load_nonexistent_raises(self, sessions_dir: Path) -> None:
-        with patch("see_agent.session.store.SESSIONS_DIR", sessions_dir):
-            with pytest.raises(FileNotFoundError):
-                SessionStore.load("nonexistent_session_id")
+        with pytest.raises(FileNotFoundError):
+            SessionStore.load("nonexistent_session_id", root_dir=sessions_dir)
 
     def test_list_sessions(self, sessions_dir: Path) -> None:
-        with patch("see_agent.session.store.SESSIONS_DIR", sessions_dir):
-            SessionStore.create("Task 1", {"llm": {"model": "m"}})
-            SessionStore.create("Task 2", {"llm": {"model": "m"}})
-            sessions = SessionStore.list()
+        SessionStore.create("Task 1", {"llm": {"model": "m"}}, root_dir=sessions_dir)
+        SessionStore.create("Task 2", {"llm": {"model": "m"}}, root_dir=sessions_dir)
+        sessions = SessionStore.list(root_dir=sessions_dir)
 
         assert len(sessions) == 2
         assert all(isinstance(s, SessionSummary) for s in sessions)
 
     def test_list_sessions_with_status_filter(self, sessions_dir: Path) -> None:
-        with patch("see_agent.session.store.SESSIONS_DIR", sessions_dir):
-            s1 = SessionStore.create("Task 1", {"llm": {"model": "m"}})
-            s1.update_meta(status="completed")
-            SessionStore.create("Task 2", {"llm": {"model": "m"}})
-            completed = SessionStore.list(status="completed")
-            running = SessionStore.list(status="running")
+        s1 = SessionStore.create("Task 1", {"llm": {"model": "m"}}, root_dir=sessions_dir)
+        s1.update_meta(status="completed")
+        SessionStore.create("Task 2", {"llm": {"model": "m"}}, root_dir=sessions_dir)
+        completed = SessionStore.list(status="completed", root_dir=sessions_dir)
+        running = SessionStore.list(status="running", root_dir=sessions_dir)
 
         assert len(completed) == 1
         assert len(running) == 1
 
     def test_delete_session(self, sessions_dir: Path) -> None:
-        with patch("see_agent.session.store.SESSIONS_DIR", sessions_dir):
-            session = SessionStore.create("Delete me", {"llm": {"model": "m"}})
-            session_dir = session.dir
-            SessionStore.delete(session.id)
+        session = SessionStore.create("Delete me", {"llm": {"model": "m"}}, root_dir=sessions_dir)
+        session_dir = session.dir
+        SessionStore.delete(session.id, root_dir=sessions_dir)
 
         assert not session_dir.exists()
 
     def test_clean_empty_sessions(self, sessions_dir: Path) -> None:
-        with patch("see_agent.session.store.SESSIONS_DIR", sessions_dir):
-            s1 = SessionStore.create("Empty", {"llm": {"model": "m"}})
-            s2 = SessionStore.create("Has screenshots", {"llm": {"model": "m"}})
-            # Write a fake screenshot in s2
-            (s2.screenshots_dir / "step_000.webp").write_bytes(b"fake")
+        s1 = SessionStore.create("Empty", {"llm": {"model": "m"}}, root_dir=sessions_dir)
+        s2 = SessionStore.create("Has screenshots", {"llm": {"model": "m"}}, root_dir=sessions_dir)
+        # Write a fake screenshot in s2
+        (s2.screenshots_dir / "step_000.webp").write_bytes(b"fake")
 
-            deleted, freed = SessionStore.clean(keep_days=0, empty_only=True)
+        deleted, freed = SessionStore.clean(keep_days=0, empty_only=True, root_dir=sessions_dir)
 
         assert deleted == 1  # only the empty one
         assert not s1.dir.exists()
@@ -99,8 +94,7 @@ class TestSession:
     """Tests for Session instance methods."""
 
     def test_append_and_read_messages(self, sessions_dir: Path) -> None:
-        with patch("see_agent.session.store.SESSIONS_DIR", sessions_dir):
-            session = SessionStore.create("Test", {"llm": {"model": "m"}})
+        session = SessionStore.create("Test", {"llm": {"model": "m"}}, root_dir=sessions_dir)
 
         session.append_message({"type": "user_task", "text": "hello"})
         session.append_message({"type": "assistant", "content": "hi"})
@@ -113,8 +107,7 @@ class TestSession:
         assert messages[1]["type"] == "assistant"
 
     def test_update_meta(self, sessions_dir: Path) -> None:
-        with patch("see_agent.session.store.SESSIONS_DIR", sessions_dir):
-            session = SessionStore.create("Test", {"llm": {"model": "m"}})
+        session = SessionStore.create("Test", {"llm": {"model": "m"}}, root_dir=sessions_dir)
 
         session.update_meta(status="completed", total_steps=5, summary="Done")
 
@@ -125,23 +118,20 @@ class TestSession:
         assert meta["summary"] == "Done"
 
     def test_screenshot_path(self, sessions_dir: Path) -> None:
-        with patch("see_agent.session.store.SESSIONS_DIR", sessions_dir):
-            session = SessionStore.create("Test", {"llm": {"model": "m"}})
+        session = SessionStore.create("Test", {"llm": {"model": "m"}}, root_dir=sessions_dir)
 
         path = session.screenshot_path(3)
         assert path.name == "step_003.webp"
         assert path.parent == session.screenshots_dir
 
     def test_next_step_number_empty(self, sessions_dir: Path) -> None:
-        with patch("see_agent.session.store.SESSIONS_DIR", sessions_dir):
-            session = SessionStore.create("Test", {"llm": {"model": "m"}})
+        session = SessionStore.create("Test", {"llm": {"model": "m"}}, root_dir=sessions_dir)
         assert session.next_step_number() == 0
 
     def test_next_step_number_with_screenshots(
         self, sessions_dir: Path,
     ) -> None:
-        with patch("see_agent.session.store.SESSIONS_DIR", sessions_dir):
-            session = SessionStore.create("Test", {"llm": {"model": "m"}})
+        session = SessionStore.create("Test", {"llm": {"model": "m"}}, root_dir=sessions_dir)
         (session.screenshots_dir / "step_000.webp").write_bytes(b"a")
         (session.screenshots_dir / "step_001.webp").write_bytes(b"b")
         (session.screenshots_dir / "step_005.webp").write_bytes(b"c")
@@ -158,10 +148,9 @@ class TestRestoreContext:
         self, sessions_dir: Path,
     ) -> "SessionStore":
         """Create a session with a realistic JSONL history."""
-        with patch("see_agent.session.store.SESSIONS_DIR", sessions_dir):
-            session = SessionStore.create(
-                "Search weather", {"llm": {"model": "m"}},
-            )
+        session = SessionStore.create(
+            "Search weather", {"llm": {"model": "m"}}, root_dir=sessions_dir,
+        )
 
         # Write a fake screenshot for step_000.
         (session.screenshots_dir / "step_000.webp").write_bytes(
@@ -277,10 +266,9 @@ class TestRestoreContext:
         self, sessions_dir: Path,
     ) -> None:
         """Missing screenshot files degrade gracefully to placeholder."""
-        with patch("see_agent.session.store.SESSIONS_DIR", sessions_dir):
-            session = SessionStore.create(
-                "Test", {"llm": {"model": "m"}},
-            )
+        session = SessionStore.create(
+            "Test", {"llm": {"model": "m"}}, root_dir=sessions_dir,
+        )
         # Write JSONL referencing a screenshot that doesn't exist.
         session.append_message({"type": "system", "content": "sys"})
         session.append_message({
@@ -301,10 +289,9 @@ class TestRestoreContext:
         self, sessions_dir: Path,
     ) -> None:
         """Only the most recent N screenshots have base64 in the context."""
-        with patch("see_agent.session.store.SESSIONS_DIR", sessions_dir):
-            session = SessionStore.create(
-                "Test", {"llm": {"model": "m"}},
-            )
+        session = SessionStore.create(
+            "Test", {"llm": {"model": "m"}}, root_dir=sessions_dir,
+        )
         session.append_message({"type": "system", "content": "sys"})
         # Add 5 screenshot messages, each with a real file.
         for i in range(5):
@@ -336,10 +323,9 @@ class TestRestoreContext:
         self, sessions_dir: Path,
     ) -> None:
         """On resume, screenshot numbering picks up where it left off."""
-        with patch("see_agent.session.store.SESSIONS_DIR", sessions_dir):
-            session = SessionStore.create(
-                "Test", {"llm": {"model": "m"}},
-            )
+        session = SessionStore.create(
+            "Test", {"llm": {"model": "m"}}, root_dir=sessions_dir,
+        )
         # Simulate 3 existing screenshots from prior run.
         for i in range(3):
             (session.screenshots_dir / f"step_{i:03d}.webp").write_bytes(
@@ -352,8 +338,7 @@ class TestLogSystemPrompt:
     """Tests for Session.log_system_prompt()."""
 
     def test_log_system_prompt_writes_file(self, sessions_dir: Path) -> None:
-        with patch("see_agent.session.store.SESSIONS_DIR", sessions_dir):
-            session = SessionStore.create("Test", {"llm": {"model": "m"}})
+        session = SessionStore.create("Test", {"llm": {"model": "m"}}, root_dir=sessions_dir)
         session.log_system_prompt("You are a helpful assistant.")
         log_file = session.dir / "system_prompt_log.md"
         assert log_file.exists()
@@ -361,16 +346,14 @@ class TestLogSystemPrompt:
         assert "You are a helpful assistant." in content
 
     def test_log_system_prompt_skips_duplicate(self, sessions_dir: Path) -> None:
-        with patch("see_agent.session.store.SESSIONS_DIR", sessions_dir):
-            session = SessionStore.create("Test", {"llm": {"model": "m"}})
+        session = SessionStore.create("Test", {"llm": {"model": "m"}}, root_dir=sessions_dir)
         session.log_system_prompt("Same prompt")
         session.log_system_prompt("Same prompt")
         content = (session.dir / "system_prompt_log.md").read_text()
         assert content.count("Same prompt") == 1
 
     def test_log_system_prompt_appends_on_change(self, sessions_dir: Path) -> None:
-        with patch("see_agent.session.store.SESSIONS_DIR", sessions_dir):
-            session = SessionStore.create("Test", {"llm": {"model": "m"}})
+        session = SessionStore.create("Test", {"llm": {"model": "m"}}, root_dir=sessions_dir)
         session.log_system_prompt("Prompt A")
         session.log_system_prompt("Prompt B")
         content = (session.dir / "system_prompt_log.md").read_text()
@@ -382,8 +365,7 @@ class TestSessionLogging:
     """Tests for Session.setup_logging() / teardown_logging()."""
 
     def test_setup_logging_creates_file(self, sessions_dir: Path) -> None:
-        with patch("see_agent.session.store.SESSIONS_DIR", sessions_dir):
-            session = SessionStore.create("Test", {"llm": {"model": "m"}})
+        session = SessionStore.create("Test", {"llm": {"model": "m"}}, root_dir=sessions_dir)
         session.setup_logging()
         try:
             import logging as _logging
@@ -395,8 +377,7 @@ class TestSessionLogging:
             session.teardown_logging()
 
     def test_teardown_logging_removes_handler(self, sessions_dir: Path) -> None:
-        with patch("see_agent.session.store.SESSIONS_DIR", sessions_dir):
-            session = SessionStore.create("Test", {"llm": {"model": "m"}})
+        session = SessionStore.create("Test", {"llm": {"model": "m"}}, root_dir=sessions_dir)
         session.setup_logging()
         handler = session._log_handler
         assert handler is not None
@@ -411,8 +392,7 @@ class TestSessionMsgId:
     """Tests for msg_id on JSONL entries."""
 
     def test_append_message_includes_msg_id(self, sessions_dir: Path) -> None:
-        with patch("see_agent.session.store.SESSIONS_DIR", sessions_dir):
-            session = SessionStore.create("Test", {"llm": {"model": "m"}})
+        session = SessionStore.create("Test", {"llm": {"model": "m"}}, root_dir=sessions_dir)
         session.append_message({"type": "user_task", "text": "a"})
         session.append_message({"type": "assistant", "content": "b"})
         session.append_message({"type": "user_reply", "text": "c"})
@@ -422,8 +402,7 @@ class TestSessionMsgId:
         assert messages[2]["msg_id"] == 3
 
     def test_msg_counter_restored_on_read(self, sessions_dir: Path) -> None:
-        with patch("see_agent.session.store.SESSIONS_DIR", sessions_dir):
-            session = SessionStore.create("Test", {"llm": {"model": "m"}})
+        session = SessionStore.create("Test", {"llm": {"model": "m"}}, root_dir=sessions_dir)
         session.append_message({"type": "user_task", "text": "a"})
         session.append_message({"type": "assistant", "content": "b"})
         # Simulate reload: read restores counter
@@ -441,8 +420,7 @@ class TestSessionLoggingBug1:
     ) -> None:
         import logging as _logging
 
-        with patch("see_agent.session.store.SESSIONS_DIR", sessions_dir):
-            session = SessionStore.create("Test", {"llm": {"model": "m"}})
+        session = SessionStore.create("Test", {"llm": {"model": "m"}}, root_dir=sessions_dir)
 
         lgr = _logging.getLogger("see_agent.agent")
         lgr.setLevel(_logging.WARNING)  # simulate config.py global setting
@@ -458,8 +436,7 @@ class TestSessionLoggingBug1:
     def test_teardown_restores_logger_levels(self, sessions_dir: Path) -> None:
         import logging as _logging
 
-        with patch("see_agent.session.store.SESSIONS_DIR", sessions_dir):
-            session = SessionStore.create("Test", {"llm": {"model": "m"}})
+        session = SessionStore.create("Test", {"llm": {"model": "m"}}, root_dir=sessions_dir)
 
         lgr = _logging.getLogger("see_agent.brain")
         lgr.setLevel(_logging.WARNING)
@@ -474,8 +451,7 @@ class TestRestoreCompact:
 
     def test_restore_handles_compact_entry(self, sessions_dir: Path) -> None:
         """Sessions with compact entry should inject summary on restore."""
-        with patch("see_agent.session.store.SESSIONS_DIR", sessions_dir):
-            session = SessionStore.create("Test", {"llm": {"model": "m"}})
+        session = SessionStore.create("Test", {"llm": {"model": "m"}}, root_dir=sessions_dir)
 
         session.append_message({"type": "system", "content": "sys"})
         session.append_message({"type": "user_task", "text": "old task", "detail": "high"})
@@ -504,10 +480,9 @@ class TestSessionEdgeCases:
         bad_dir.mkdir()
         (bad_dir / "meta.json").write_text("{invalid json")
 
-        with patch("see_agent.session.store.SESSIONS_DIR", sessions_dir):
-            # Also create a valid session.
-            good = SessionStore.create("valid task", {"llm": {"model": "m"}})
-            sessions = SessionStore.list()
+        # Also create a valid session.
+        good = SessionStore.create("valid task", {"llm": {"model": "m"}}, root_dir=sessions_dir)
+        sessions = SessionStore.list(root_dir=sessions_dir)
 
         # Should not crash. The good session should be listed.
         ids = [s.id for s in sessions]
@@ -515,25 +490,22 @@ class TestSessionEdgeCases:
 
     def test_create_session_id_uniqueness(self, sessions_dir: Path) -> None:
         """Two sessions created sequentially should have different IDs."""
-        with patch("see_agent.session.store.SESSIONS_DIR", sessions_dir):
-            s1 = SessionStore.create("task1", {"llm": {"model": "m"}})
-            s2 = SessionStore.create("task2", {"llm": {"model": "m"}})
+        s1 = SessionStore.create("task1", {"llm": {"model": "m"}}, root_dir=sessions_dir)
+        s2 = SessionStore.create("task2", {"llm": {"model": "m"}}, root_dir=sessions_dir)
         assert s1.id != s2.id
 
     def test_append_message_unicode_roundtrip(
         self, sessions_dir: Path,
     ) -> None:
         """CJK + emoji content should survive write/read JSONL roundtrip."""
-        with patch("see_agent.session.store.SESSIONS_DIR", sessions_dir):
-            session = SessionStore.create("测试", {"llm": {"model": "m"}})
+        session = SessionStore.create("测试", {"llm": {"model": "m"}}, root_dir=sessions_dir)
         session.append_message({"type": "user_task", "text": "打开Safari搜索🍓"})
         messages = session.read_messages()
         assert messages[0]["text"] == "打开Safari搜索🍓"
 
     def test_restore_context_empty_session(self, sessions_dir: Path) -> None:
         """Empty JSONL session restore_context returns context with system only."""
-        with patch("see_agent.session.store.SESSIONS_DIR", sessions_dir):
-            session = SessionStore.create("empty", {"llm": {"model": "m"}})
+        session = SessionStore.create("empty", {"llm": {"model": "m"}}, root_dir=sessions_dir)
         ctx = session.restore_context("System prompt.", max_images=5)
         msgs = ctx.get_messages()
         assert len(msgs) == 1

@@ -5,7 +5,7 @@ from typing import Any
 
 import pyautogui
 
-from see_agent.hand.tool import Tool
+from see_agent.hand.tool import Tool, ToolResult
 
 pyautogui.FAILSAFE = True
 pyautogui.PAUSE = 0.1
@@ -41,7 +41,7 @@ class ClickTool(Tool):
             "required": ["x", "y"],
         }
 
-    async def execute(self, **kwargs: Any) -> str:
+    async def execute(self, **kwargs: Any) -> ToolResult:
         x: int = kwargs["x"]
         y: int = kwargs["y"]
         button: str = kwargs.get("button", "left")
@@ -52,4 +52,4 @@ class ClickTool(Tool):
         )
         pyautogui.click(x, y, button=button, clicks=clicks)
         action = "双击" if double else "点击"
-        return f"已{action} ({x}, {y})，按钮={button}"
+        return ToolResult(text=f"已{action} ({x}, {y})，按钮={button}")

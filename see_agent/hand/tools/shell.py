@@ -4,7 +4,7 @@ import asyncio
 import logging
 from typing import Any
 
-from see_agent.hand.tool import Tool
+from see_agent.hand.tool import Tool, ToolResult
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +38,7 @@ class ShellTool(Tool):
             "required": ["command"],
         }
 
-    async def execute(self, **kwargs: Any) -> str:
+    async def execute(self, **kwargs: Any) -> ToolResult:
         command: str = kwargs["command"]
         logger.info("shell: %s", command)
 
@@ -59,7 +59,7 @@ class ShellTool(Tool):
                 process.kill()  # type: ignore[union-attr]
             except ProcessLookupError:
                 pass
-            return f"命令超时（{_DEFAULT_TIMEOUT}s）: {command}"
+            return ToolResult(text=f"命令超时（{_DEFAULT_TIMEOUT}s）: {command}")
 
         stdout_text = stdout.decode("utf-8", errors="replace").strip()
         stderr_text = stderr.decode("utf-8", errors="replace").strip()
@@ -75,6 +75,6 @@ class ShellTool(Tool):
             parts.append(f"exit_code: {exit_code}")
 
         if not parts:
-            return "命令已执行（无输出）"
+            return ToolResult(text="命令已执行（无输出）")
 
-        return "\n".join(parts)
+        return ToolResult(text="\n".join(parts))

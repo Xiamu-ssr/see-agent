@@ -22,12 +22,10 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "max_images": 5,
     "screenshot_interval_ms": 800,
     "tool_delay_ms": 200,
-    "show_overlay": True,
     "scaling_enabled": True,
     "scaling_match": "aspect_ratio",
-    "soul_path": None,
     "skills_dirs": ["~/.see-agent/skills"],
-    "context_engine": "legacy",
+    "context_engine": "default",
     "memory": {
         "enabled": False,
         "provider": "file",
@@ -36,7 +34,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "llm_api_key": "",
             "llm_model": "",
             "embedding_model": "",
-            "storage_path": "~/.see-agent/memory/qdrant",
+            "storage_path": "",
         },
     },
     "compact": {
@@ -52,7 +50,6 @@ DEFAULT_CONFIG: dict[str, Any] = {
 
 WORKSPACE_DIR = Path(os.environ.get("SEE_AGENT_HOME", "~/.see-agent")).expanduser()
 CONFIG_PATH = WORKSPACE_DIR / "config.json"
-SESSIONS_DIR = WORKSPACE_DIR / "sessions"  # Used by quick mode as fallback
 LOGS_DIR = WORKSPACE_DIR / "logs"
 SKILLS_DIR = WORKSPACE_DIR / "skills"
 AGENTS_DIR = WORKSPACE_DIR / "agents"

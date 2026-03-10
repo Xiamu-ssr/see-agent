@@ -35,8 +35,8 @@ class DummyTool(Tool):
             "required": ["text"],
         }
 
-    async def execute(self, **kwargs: Any) -> str:
-        return f"echo: {kwargs.get('text', '')}"
+    async def execute(self, **kwargs: Any) -> ToolResult:
+        return ToolResult(text=f"echo: {kwargs.get('text', '')}")
 
 
 class AnotherTool(Tool):
@@ -57,8 +57,8 @@ class AnotherTool(Tool):
             "properties": {},
         }
 
-    async def execute(self, **kwargs: Any) -> str:
-        return "done"
+    async def execute(self, **kwargs: Any) -> ToolResult:
+        return ToolResult(text="done")
 
 
 # -------------------------------------------------------------------- #
@@ -198,8 +198,8 @@ class TestToolRegistry:
             await registry.execute("nonexistent", {})
 
     @pytest.mark.asyncio
-    async def test_registry_execute_wraps_str_to_tool_result(self):
-        """A tool returning str gets auto-wrapped into ToolResult."""
+    async def test_registry_execute_returns_tool_result(self):
+        """A tool returning ToolResult is returned as-is."""
         registry = ToolRegistry()
         registry.register(DummyTool())
 
@@ -269,7 +269,7 @@ class TestHotkeyAliases:
             result = await tool.execute(keys=["control", "c"])
 
         mock_pag.hotkey.assert_called_once_with("ctrl", "c")
-        assert "ctrl+c" in result
+        assert "ctrl+c" in result.text
 
     @pytest.mark.asyncio
     async def test_already_correct_keys_unchanged(self):

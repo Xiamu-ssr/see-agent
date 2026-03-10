@@ -14,19 +14,15 @@ from fastapi.staticfiles import StaticFiles
 from see_agent.config import load_config
 from see_agent.server.routes import (
     agents,
-    chat,
     config_routes,
     dashboard,
     health,
     logs,
     mcp,
     screen,
-    sessions,
     skills,
-    task,
     team,
     tools,
-    ws,
 )
 
 logger = logging.getLogger(__name__)
@@ -49,8 +45,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.config = config
 
     # Shared mutable state accessible from route handlers via ``request.app.state``.
-    app.state.tasks = {}
-    app.state.ws_subscribers = {}
     app.state.team_managers = {}
 
     logger.info(
@@ -99,10 +93,6 @@ app.add_middleware(
 
 # ── Register route routers ─────────────────────────────────────────────
 app.include_router(health.router)
-app.include_router(chat.router)
-app.include_router(task.router)
-app.include_router(ws.router)
-app.include_router(sessions.router)
 app.include_router(team.router)
 app.include_router(agents.router)
 app.include_router(tools.router)

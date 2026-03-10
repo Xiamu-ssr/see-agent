@@ -20,8 +20,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
-from see_agent.config import SESSIONS_DIR
-
 if TYPE_CHECKING:
     from see_agent.agent.context import ConversationContext
 
@@ -336,10 +334,10 @@ class SessionStore:
     def create(
         task: str,
         config: dict[str, Any],
-        root_dir: Path | None = None,
+        root_dir: Path,
     ) -> Session:
         """Create a new session directory and return the :class:`Session`."""
-        base = root_dir if root_dir is not None else SESSIONS_DIR
+        base = root_dir
         session_id = datetime.now().strftime("%Y%m%d_%H%M%S") + "_" + _short_id()
         session_dir = base / session_id
         session_dir.mkdir(parents=True, exist_ok=True)
@@ -370,13 +368,13 @@ class SessionStore:
         return Session(id=session_id, task=task, status="running", dir=session_dir, meta=meta)
 
     @staticmethod
-    def load(session_id: str, root_dir: Path | None = None) -> Session:
+    def load(session_id: str, root_dir: Path) -> Session:
         """Load an existing session from disk.
 
         Raises:
             FileNotFoundError: If the session directory or meta.json is missing.
         """
-        base = root_dir if root_dir is not None else SESSIONS_DIR
+        base = root_dir
         session_dir = base / session_id
         meta_path = session_dir / "meta.json"
         if not meta_path.exists():
@@ -395,10 +393,10 @@ class SessionStore:
         *,
         status: str | None = None,
         limit: int = 20,
-        root_dir: Path | None = None,
+        root_dir: Path,
     ) -> list[SessionSummary]:
         """List sessions sorted by creation time (newest first)."""
-        base = root_dir if root_dir is not None else SESSIONS_DIR
+        base = root_dir
         if not base.exists():
             return []
         summaries: list[SessionSummary] = []
@@ -428,9 +426,9 @@ class SessionStore:
         return summaries
 
     @staticmethod
-    def delete(session_id: str, root_dir: Path | None = None) -> None:
+    def delete(session_id: str, root_dir: Path) -> None:
         """Delete a session directory entirely."""
-        base = root_dir if root_dir is not None else SESSIONS_DIR
+        base = root_dir
         session_dir = base / session_id
         if session_dir.exists():
             shutil.rmtree(session_dir)
@@ -441,14 +439,14 @@ class SessionStore:
         *,
         keep_days: int = 7,
         empty_only: bool = False,
-        root_dir: Path | None = None,
+        root_dir: Path,
     ) -> tuple[int, int]:
         """Clean old or empty sessions.
 
         Returns:
             ``(deleted_count, freed_bytes)``
         """
-        base = root_dir if root_dir is not None else SESSIONS_DIR
+        base = root_dir
         if not base.exists():
             return 0, 0
         cutoff = time.time() - keep_days * 86400

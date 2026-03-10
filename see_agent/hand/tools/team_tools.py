@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from see_agent.hand.tool import Tool
+from see_agent.hand.tool import Tool, ToolResult
 
 # -------------------------------------------------------------------- #
 # Messaging
@@ -51,7 +51,7 @@ class SendMessageTool(Tool):
             "required": ["to", "content"],
         }
 
-    async def execute(self, **kwargs: Any) -> str:
+    async def execute(self, **kwargs: Any) -> ToolResult:
         from see_agent.team.bus import BusMessage
 
         to = kwargs["to"]
@@ -63,8 +63,8 @@ class SendMessageTool(Tool):
             and self._sender_id != self._leader_id
             and not self._bus.has_prior_message("owner", self._sender_id)
         ):
-            return (
-                "Permission denied: only the leader or agents who have "
+            return ToolResult(
+                text="Permission denied: only the leader or agents who have "
                 "received a message from the owner can message the owner."
             )
 
@@ -75,7 +75,7 @@ class SendMessageTool(Tool):
                 content=content,
             )
         )
-        return f"Message sent to {to}."
+        return ToolResult(text=f"Message sent to {to}.")
 
 
 # -------------------------------------------------------------------- #
@@ -109,18 +109,18 @@ class ListTasksTool(Tool):
             },
         }
 
-    async def execute(self, **kwargs: Any) -> str:
+    async def execute(self, **kwargs: Any) -> ToolResult:
         status = kwargs.get("status")
         tasks = self._board.list_tasks(status=status)
         if not tasks:
-            return "No tasks found."
+            return ToolResult(text="No tasks found.")
         lines = []
         for t in tasks:
             assignee = t.assigned_to or "unassigned"
             lines.append(
                 f"- [{t.id}] {t.title} ({t.status}, {assignee})"
             )
-        return "\n".join(lines)
+        return ToolResult(text="\n".join(lines))
 
 
 class CreateTaskTool(Tool):
@@ -157,13 +157,13 @@ class CreateTaskTool(Tool):
             "required": ["title"],
         }
 
-    async def execute(self, **kwargs: Any) -> str:
+    async def execute(self, **kwargs: Any) -> ToolResult:
         task = self._board.create_task(
             title=kwargs["title"],
             description=kwargs.get("description", ""),
             created_by=self._creator_id,
         )
-        return f"Task created: {task.id} — {task.title}"
+        return ToolResult(text=f"Task created: {task.id} — {task.title}")
 
 
 class ClaimTaskTool(Tool):
@@ -196,11 +196,11 @@ class ClaimTaskTool(Tool):
             "required": ["task_id"],
         }
 
-    async def execute(self, **kwargs: Any) -> str:
+    async def execute(self, **kwargs: Any) -> ToolResult:
         task = self._board.claim_task(
             kwargs["task_id"], self._agent_id,
         )
-        return f"Claimed task {task.id}: {task.title}"
+        return ToolResult(text=f"Claimed task {task.id}: {task.title}")
 
 
 class CompleteTaskTool(Tool):
@@ -237,13 +237,13 @@ class CompleteTaskTool(Tool):
             "required": ["task_id"],
         }
 
-    async def execute(self, **kwargs: Any) -> str:
+    async def execute(self, **kwargs: Any) -> ToolResult:
         task = self._board.complete_task(
             kwargs["task_id"],
             self._agent_id,
             result=kwargs.get("result", ""),
         )
-        return f"Completed task {task.id}: {task.title}"
+        return ToolResult(text=f"Completed task {task.id}: {task.title}")
 
 
 class UpdateTaskTool(Tool):
@@ -277,11 +277,11 @@ class UpdateTaskTool(Tool):
             "required": ["task_id", "status"],
         }
 
-    async def execute(self, **kwargs: Any) -> str:
+    async def execute(self, **kwargs: Any) -> ToolResult:
         task = self._board.update_task(
             kwargs["task_id"], status=kwargs["status"],
         )
-        return f"Updated task {task.id} status to {task.status}"
+        return ToolResult(text=f"Updated task {task.id} status to {task.status}")
 
 
 class AssignTaskTool(Tool):
@@ -315,8 +315,8 @@ class AssignTaskTool(Tool):
             "required": ["task_id", "agent_id"],
         }
 
-    async def execute(self, **kwargs: Any) -> str:
+    async def execute(self, **kwargs: Any) -> ToolResult:
         task = self._board.assign_task(
             kwargs["task_id"], kwargs["agent_id"],
         )
-        return f"Assigned task {task.id} to {task.assigned_to}"
+        return ToolResult(text=f"Assigned task {task.id} to {task.assigned_to}")

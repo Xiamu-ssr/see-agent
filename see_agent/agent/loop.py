@@ -24,7 +24,6 @@ from see_agent.brain.base import BaseBrain, BrainResponse
 from see_agent.eye.base import BaseEye
 from see_agent.eye.scaling import find_target_resolution, scale_screenshot, scale_tool_args
 from see_agent.hand.tool import ToolRegistry, ToolResult
-from see_agent.overlay.base import OverlayRenderer
 from see_agent.session.store import Session, SessionStore
 
 if TYPE_CHECKING:
@@ -100,7 +99,6 @@ class AgentLoop:
         config: Application configuration dict (see ``src/config.py``).
         on_step: Optional async callback fired after each tool-execution step.
         on_user_input: Optional async callback for ``call_user`` interactions.
-        overlay: Optional screen overlay renderer for visual feedback.
         memory: Optional memory backend for cross-session knowledge.
         mcp_manager: Optional MCP manager for external tool servers.
     """
@@ -113,14 +111,12 @@ class AgentLoop:
         config: dict[str, Any],
         on_step: StepCallback | None = None,
         on_user_input: UserInputCallback | None = None,
-        overlay: OverlayRenderer | None = None,
         memory: Any | None = None,
         mcp_manager: Any | None = None,
         user_queue: asyncio.Queue[str] | None = None,
         agent_id: str | None = None,
         session_root: "Path | None" = None,
         team_bus: Any | None = None,
-        screen_lock: asyncio.Lock | None = None,
         owner_display: str | None = None,
         task_board: Any | None = None,
     ) -> None:
@@ -130,7 +126,6 @@ class AgentLoop:
         self._config = config
         self._on_step = on_step
         self._on_user_input = on_user_input
-        self._overlay = overlay
         self._memory = memory
         self._mcp_manager = mcp_manager
         self._mcp_connected = False
@@ -138,7 +133,6 @@ class AgentLoop:
         self._agent_id = agent_id
         self._session_root = session_root
         self._team_bus = team_bus
-        self._screen_lock = screen_lock
         self._owner_display = owner_display
         self._task_board = task_board
 
@@ -228,10 +222,7 @@ class AgentLoop:
     async def _execute_with_lock(
         self, name: str, args: dict[str, Any],
     ) -> ToolResult:
-        """Execute a tool, acquiring screen_lock for screen-related tools."""
-        if self._screen_lock is not None and name in self._SCREEN_TOOLS:
-            async with self._screen_lock:
-                return await self._registry.execute(name, args)
+        """Execute a tool."""
         return await self._registry.execute(name, args)
 
     @staticmethod
@@ -360,6 +351,9 @@ class AgentLoop:
                 logger.warning("MCP connection failed", exc_info=True)
 
         # ── 1. Create or load session ─────────────────────────────────
+        if self._session_root is None:
+            raise ValueError("session_root is required to run AgentLoop")
+
         if session_id:
             session = SessionStore.load(
                 session_id, root_dir=self._session_root,
@@ -576,8 +570,6 @@ class AgentLoop:
 
                 # ── Handle "finished" ────────────────────────────────
                 if tc.name == "finished":
-                    if self._overlay:
-                        _show_overlay(self._overlay, "finished", tc.arguments)
                     summary = tc.arguments.get("summary", "Task completed.")
                     ctx.add_tool_result(tc.id, summary)
                     logger.info("Task finished: %s", summary)
@@ -601,9 +593,6 @@ class AgentLoop:
                 if tc.name == "call_user":
                     question = tc.arguments.get("question", "")
                     logger.info("call_user: %s", question)
-
-                    if self._overlay:
-                        _show_overlay(self._overlay, "call_user", tc.arguments)
 
                     if self._team_bus is not None and self._agent_id is not None:
                         # Team mode: send question to owner via bus.
@@ -668,9 +657,6 @@ class AgentLoop:
                         logger.info(
                             "Scaled args: %s -> %s", tc.arguments, exec_args,
                         )
-
-                if self._overlay:
-                    _show_overlay(self._overlay, tc.name, exec_args)
 
                 try:
                     result: ToolResult = await self._execute_with_lock(
@@ -869,36 +855,3 @@ def _action_key(tool_name: str, args: dict[str, Any]) -> str:
         normalised[k] = v
     return f"{tool_name}:{normalised}"
 
-
-def _show_overlay(overlay: OverlayRenderer, tool_name: str, args: dict[str, Any]) -> None:
-    """Dispatch a visual overlay for the given tool call."""
-    try:
-        match tool_name:
-            case "click":
-                overlay.show_click(args["x"], args["y"], args.get("double", False))
-            case "type_text":
-                overlay.show_type(args["text"])
-            case "drag":
-                overlay.show_drag(
-                    args["start_x"], args["start_y"],
-                    args["end_x"], args["end_y"],
-                )
-            case "scroll":
-                overlay.show_scroll(
-                    args["x"], args["y"],
-                    args["direction"], args.get("amount", 3),
-                )
-            case "hotkey":
-                overlay.show_hotkey(args["keys"])
-            case "shell":
-                overlay.show_shell(args["command"])
-            case "wait":
-                overlay.show_wait(args.get("seconds", 2))
-            case "screenshot":
-                overlay.show_screenshot()
-            case "call_user":
-                overlay.show_call_user(args.get("question", ""))
-            case "finished":
-                overlay.show_finished(args.get("summary", ""))
-    except Exception:
-        logger.exception("Overlay error (non-fatal)")

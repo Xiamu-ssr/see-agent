@@ -5,7 +5,7 @@ from typing import Any
 
 import pyautogui
 
-from see_agent.hand.tool import Tool
+from see_agent.hand.tool import Tool, ToolResult
 
 pyautogui.FAILSAFE = True
 pyautogui.PAUSE = 0.1
@@ -55,7 +55,7 @@ class HotkeyTool(Tool):
             "required": ["keys"],
         }
 
-    async def execute(self, **kwargs: Any) -> str:
+    async def execute(self, **kwargs: Any) -> ToolResult:
         keys: list[str] = kwargs["keys"]
         normalised = [KEY_ALIASES.get(k.lower(), k) for k in keys]
         if normalised != keys:
@@ -64,4 +64,4 @@ class HotkeyTool(Tool):
             logger.info("hotkey: %s", keys)
         pyautogui.hotkey(*normalised)
         combo = "+".join(normalised)
-        return f"已按下快捷键: {combo}"
+        return ToolResult(text=f"已按下快捷键: {combo}")

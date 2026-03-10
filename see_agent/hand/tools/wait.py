@@ -4,7 +4,7 @@ import asyncio
 import logging
 from typing import Any
 
-from see_agent.hand.tool import Tool
+from see_agent.hand.tool import Tool, ToolResult
 
 logger = logging.getLogger(__name__)
 
@@ -29,8 +29,8 @@ class WaitTool(Tool):
             },
         }
 
-    async def execute(self, **kwargs: Any) -> str:
+    async def execute(self, **kwargs: Any) -> ToolResult:
         seconds: float = kwargs.get("seconds", 2)
         logger.info("wait: %.1fs", seconds)
         await asyncio.sleep(seconds)
-        return f"已等待 {seconds} 秒"
+        return ToolResult(text=f"已等待 {seconds} 秒")

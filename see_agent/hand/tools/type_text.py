@@ -6,7 +6,7 @@ from typing import Any
 
 import pyautogui
 
-from see_agent.hand.tool import Tool
+from see_agent.hand.tool import Tool, ToolResult
 
 pyautogui.FAILSAFE = True
 pyautogui.PAUSE = 0.1
@@ -43,7 +43,7 @@ class TypeTextTool(Tool):
             "required": ["text"],
         }
 
-    async def execute(self, **kwargs: Any) -> str:
+    async def execute(self, **kwargs: Any) -> ToolResult:
         text: str = kwargs["text"]
         logger.info("type_text: %r", text)
 
@@ -66,4 +66,4 @@ class TypeTextTool(Tool):
             pyautogui.press("enter")
 
         suffix = "（并按下回车）" if press_enter else ""
-        return f"已输入文字: {paste_text}{suffix}"
+        return ToolResult(text=f"已输入文字: {paste_text}{suffix}")

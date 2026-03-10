@@ -26,7 +26,6 @@ def isolate_workspace(tmp_path: Path) -> None:  # noqa: PT004
     patches = {
         "see_agent.config.WORKSPACE_DIR": ws,
         "see_agent.config.CONFIG_PATH": ws / "config.json",
-        "see_agent.config.SESSIONS_DIR": ws / "sessions",
         "see_agent.config.LOGS_DIR": ws / "logs",
         "see_agent.config.SKILLS_DIR": ws / "skills",
         "see_agent.config.AGENTS_DIR": ws / "agents",

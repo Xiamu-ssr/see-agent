@@ -5,7 +5,7 @@ from typing import Any
 
 import pyautogui
 
-from see_agent.hand.tool import Tool
+from see_agent.hand.tool import Tool, ToolResult
 
 pyautogui.FAILSAFE = True
 pyautogui.PAUSE = 0.1
@@ -37,7 +37,7 @@ class DragTool(Tool):
             "required": ["start_x", "start_y", "end_x", "end_y"],
         }
 
-    async def execute(self, **kwargs: Any) -> str:
+    async def execute(self, **kwargs: Any) -> ToolResult:
         start_x: int = kwargs["start_x"]
         start_y: int = kwargs["start_y"]
         end_x: int = kwargs["end_x"]
@@ -54,6 +54,6 @@ class DragTool(Tool):
         pyautogui.moveTo(end_x, end_y, duration=0.5)
         pyautogui.mouseUp(button="left")
 
-        return (
-            f"已从 ({start_x}, {start_y}) 拖拽到 ({end_x}, {end_y})"
+        return ToolResult(
+            text=f"已从 ({start_x}, {start_y}) 拖拽到 ({end_x}, {end_y})"
         )

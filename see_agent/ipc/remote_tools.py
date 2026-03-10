@@ -297,7 +297,7 @@ class RemoteClickTool(Tool):
             "required": ["x", "y"],
         }
 
-    async def execute(self, **kwargs: Any) -> str:
+    async def execute(self, **kwargs: Any) -> ToolResult:
         result = await self._client.call(
             SCREEN_CLICK,
             agent_id=self._agent_id,
@@ -306,10 +306,10 @@ class RemoteClickTool(Tool):
             double=kwargs.get("double", False),
         )
         if result.get("status") == "busy":
-            return result["message"]
+            return ToolResult(text=result["message"])
         x, y = kwargs["x"], kwargs["y"]
         action = "双击" if kwargs.get("double") else "点击"
-        return f"已{action} ({x}, {y})"
+        return ToolResult(text=f"已{action} ({x}, {y})")
 
 
 class RemoteTypeTextTool(Tool):
@@ -340,15 +340,15 @@ class RemoteTypeTextTool(Tool):
             "required": ["text"],
         }
 
-    async def execute(self, **kwargs: Any) -> str:
+    async def execute(self, **kwargs: Any) -> ToolResult:
         result = await self._client.call(
             SCREEN_TYPE_TEXT,
             agent_id=self._agent_id,
             text=kwargs["text"],
         )
         if result.get("status") == "busy":
-            return result["message"]
-        return f"已输入文字: {kwargs['text']}"
+            return ToolResult(text=result["message"])
+        return ToolResult(text=f"已输入文字: {kwargs['text']}")
 
 
 class RemoteScrollTool(Tool):
@@ -385,7 +385,7 @@ class RemoteScrollTool(Tool):
             "required": ["x", "y", "direction"],
         }
 
-    async def execute(self, **kwargs: Any) -> str:
+    async def execute(self, **kwargs: Any) -> ToolResult:
         result = await self._client.call(
             SCREEN_SCROLL,
             agent_id=self._agent_id,
@@ -394,8 +394,8 @@ class RemoteScrollTool(Tool):
             amount=kwargs.get("amount", 3),
         )
         if result.get("status") == "busy":
-            return result["message"]
-        return f"已在 ({kwargs['x']}, {kwargs['y']}) 向{kwargs['direction']}滚动"
+            return ToolResult(text=result["message"])
+        return ToolResult(text=f"已在 ({kwargs['x']}, {kwargs['y']}) 向{kwargs['direction']}滚动")
 
 
 class RemoteDragTool(Tool):
@@ -426,7 +426,7 @@ class RemoteDragTool(Tool):
             "required": ["start_x", "start_y", "end_x", "end_y"],
         }
 
-    async def execute(self, **kwargs: Any) -> str:
+    async def execute(self, **kwargs: Any) -> ToolResult:
         result = await self._client.call(
             SCREEN_DRAG,
             agent_id=self._agent_id,
@@ -434,9 +434,9 @@ class RemoteDragTool(Tool):
             end_x=kwargs["end_x"], end_y=kwargs["end_y"],
         )
         if result.get("status") == "busy":
-            return result["message"]
-        return (
-            f"已从 ({kwargs['start_x']}, {kwargs['start_y']}) "
+            return ToolResult(text=result["message"])
+        return ToolResult(
+            text=f"已从 ({kwargs['start_x']}, {kwargs['start_y']}) "
             f"拖拽到 ({kwargs['end_x']}, {kwargs['end_y']})"
         )
 
@@ -474,16 +474,16 @@ class RemoteHotkeyTool(Tool):
             "required": ["keys"],
         }
 
-    async def execute(self, **kwargs: Any) -> str:
+    async def execute(self, **kwargs: Any) -> ToolResult:
         result = await self._client.call(
             SCREEN_HOTKEY,
             agent_id=self._agent_id,
             keys=kwargs["keys"],
         )
         if result.get("status") == "busy":
-            return result["message"]
+            return ToolResult(text=result["message"])
         combo = "+".join(kwargs["keys"])
-        return f"已按下快捷键: {combo}"
+        return ToolResult(text=f"已按下快捷键: {combo}")
 
 
 class RemoteScreenAcquireTool(Tool):
@@ -513,15 +513,15 @@ class RemoteScreenAcquireTool(Tool):
             },
         }
 
-    async def execute(self, **kwargs: Any) -> str:
+    async def execute(self, **kwargs: Any) -> ToolResult:
         result = await self._client.call(
             SCREEN_ACQUIRE,
             agent_id=self._agent_id,
             duration=kwargs.get("duration", 600),
         )
         if result.get("granted"):
-            return "屏幕租约已获得，可以开始使用屏幕工具。"
-        return "屏幕当前被占用，已加入等待队列。请先做其他工作。"
+            return ToolResult(text="屏幕租约已获得，可以开始使用屏幕工具。")
+        return ToolResult(text="屏幕当前被占用，已加入等待队列。请先做其他工作。")
 
 
 class RemoteScreenReleaseTool(Tool):
@@ -543,8 +543,8 @@ class RemoteScreenReleaseTool(Tool):
     def parameters(self) -> dict[str, Any]:
         return {"type": "object", "properties": {}}
 
-    async def execute(self, **kwargs: Any) -> str:
+    async def execute(self, **kwargs: Any) -> ToolResult:
         await self._client.call(
             SCREEN_RELEASE, agent_id=self._agent_id,
         )
-        return "屏幕租约已释放。"
+        return ToolResult(text="屏幕租约已释放。")

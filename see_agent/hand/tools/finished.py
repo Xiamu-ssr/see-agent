@@ -8,7 +8,7 @@ is provided for completeness and simply returns the summary string.
 import logging
 from typing import Any
 
-from see_agent.hand.tool import Tool
+from see_agent.hand.tool import Tool, ToolResult
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +37,7 @@ class FinishedTool(Tool):
             "required": ["summary"],
         }
 
-    async def execute(self, **kwargs: Any) -> str:
+    async def execute(self, **kwargs: Any) -> ToolResult:
         summary: str = kwargs["summary"]
         logger.info("finished: %s", summary)
-        return summary
+        return ToolResult(text=summary)
