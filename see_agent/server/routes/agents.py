@@ -5,12 +5,24 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
+
+
+# -------------------------------------------------------------------- #
+# Request models
+# -------------------------------------------------------------------- #
+
+
+class CreateAgentRequest(BaseModel):
+    id: str
+    name: str
+    role: str = "general assistant"
+    soul: str | None = None
 
 
 class UpdateAgentRequest(BaseModel):
@@ -20,6 +32,103 @@ class UpdateAgentRequest(BaseModel):
     tools_config: dict[str, Any] | None = None
     skills_config: dict[str, Any] | None = None
     mcp_config: dict[str, Any] | None = None
+
+
+# -------------------------------------------------------------------- #
+# Routes — list / detail must be registered before /{agent_id}
+# -------------------------------------------------------------------- #
+
+
+@router.get("/")
+async def list_agents(request: Request) -> list[dict[str, Any]]:
+    """List all agents (global + team-scoped) with status."""
+    from see_agent.agent.definition import AgentDefinition
+    from see_agent.team.definition import TeamDefinition
+
+    all_agents = AgentDefinition.list_all_global()
+    managers: dict[str, Any] = getattr(request.app.state, "team_managers", {})
+
+    results: list[dict[str, Any]] = []
+    for defn, team_id in all_agents:
+        team_name: str | None = None
+        status = "idle"
+        if team_id is not None:
+            try:
+                td = TeamDefinition.load(team_id)
+                team_name = td.name
+            except FileNotFoundError:
+                team_name = team_id
+            if team_id in managers:
+                status = "busy"
+        results.append({
+            "id": defn.id,
+            "name": defn.name,
+            "role": defn.role,
+            "team_id": team_id,
+            "team_name": team_name,
+            "status": status,
+        })
+    return results
+
+
+@router.get("/{agent_id}")
+async def get_agent(agent_id: str) -> dict[str, Any]:
+    """Get detailed information about a single agent."""
+    from see_agent.agent.definition import AgentDefinition
+
+    try:
+        defn, agent_dir, team_id = AgentDefinition.find(agent_id)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    team_name: str | None = None
+    if team_id is not None:
+        from see_agent.team.definition import TeamDefinition
+
+        try:
+            td = TeamDefinition.load(team_id)
+            team_name = td.name
+        except FileNotFoundError:
+            team_name = team_id
+
+    has_soul = (agent_dir / "SOUL.md").exists()
+
+    return {
+        "id": defn.id,
+        "name": defn.name,
+        "role": defn.role,
+        "config_overrides": defn.config_overrides,
+        "tools_config": defn.tools_config,
+        "skills_config": defn.skills_config,
+        "mcp_config": defn.mcp_config,
+        "team_id": team_id,
+        "team_name": team_name,
+        "has_soul": has_soul,
+        "location": str(agent_dir),
+    }
+
+
+@router.post("/")
+async def create_agent(body: CreateAgentRequest) -> dict[str, Any]:
+    """Create a new agent definition."""
+    from see_agent.agent.definition import AgentDefinition
+    from see_agent.config import AGENTS_DIR
+
+    agent_json = AGENTS_DIR / body.id / "agent.json"
+    if agent_json.exists():
+        raise HTTPException(status_code=409, detail="Agent already exists")
+
+    defn = AgentDefinition.create(body.id, name=body.name, role=body.role)
+
+    if body.soul:
+        soul_path = AGENTS_DIR / body.id / "SOUL.md"
+        soul_path.write_text(body.soul, encoding="utf-8")
+
+    return {
+        "id": defn.id,
+        "name": defn.name,
+        "role": defn.role,
+    }
 
 
 @router.put("/{agent_id}")
