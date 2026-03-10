@@ -139,7 +139,7 @@ async def update_agent(
     from see_agent.agent.definition import AgentDefinition
 
     try:
-        defn = AgentDefinition.load(agent_id)
+        defn, agent_dir, _team_id = AgentDefinition.find(agent_id)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Agent not found")
 
@@ -156,7 +156,8 @@ async def update_agent(
     if body.mcp_config is not None:
         defn.mcp_config = body.mcp_config
 
-    defn.save()
+    # Save back to the directory where the agent was found.
+    defn.save_to(agent_dir.parent)
     return {
         "id": defn.id,
         "name": defn.name,
