@@ -557,16 +557,340 @@ web/
 
 ---
 
-## 7. 后端配合项
+## 7. CLI 精简
 
-### 7.1 新增 WebSocket 端点
+有了 Web UI 后，CLI 只保留安装配置类命令，交互/管理类命令全部由前端承担。
+
+### 7.1 保留的命令
+
+| 命令 | 说明 |
+|------|------|
+| `see-agent start` | **启动前后端 + 自动打开浏览器**（原 `serve` 改名） |
+| `see-agent stop` | 停止服务（新增） |
+| `see-agent config init` | 首次配置向导（交互式设置 API key 等） |
+| `see-agent config show` | 查看当前配置（API key 脱敏） |
+| `see-agent setup install` | 安装可选依赖（`--full` / `--memory` / `--mcp` / `--dev`） |
+| `see-agent setup check` | 检查环境和依赖状态 |
+| `see-agent version` | 显示版本号（新增） |
+
+### 7.2 删除的命令
+
+| 命令 | 原因 |
+|------|------|
+| `see-agent chat` / `quick chat` / `quick run` | 前端做 |
+| `see-agent resume` | 前端做 |
+| `see-agent agent create/list/show` | 前端做 |
+| `see-agent team create/list/status/run/stop` | 前端做 |
+| `see-agent sessions list/show/clean` | 前端做 |
+| `see-agent mcp add/remove/list` | 前端做 |
+
+### 7.3 `see-agent start` 实现
+
+```python
+@app.command()
+def start(
+    port: int = typer.Option(8000, "--port", "-p"),
+    no_browser: bool = typer.Option(False, "--no-browser"),
+):
+    """启动 see-agent 服务并在浏览器中打开"""
+    ensure_workspace()
+    setup_logging()
+    config = load_config()
+    _validate_api_key(config)
+
+    url = f"http://localhost:{port}"
+    typer.echo(f"🚀 Starting see-agent on {url}")
+
+    if not no_browser:
+        # 延迟 1.5 秒后打开浏览器（等服务启动）
+        import threading, webbrowser
+        threading.Timer(1.5, lambda: webbrowser.open(url)).start()
+
+    import uvicorn
+    uvicorn.run("see_agent.server.app:app", host="0.0.0.0", port=port, reload=False)
+```
+
+---
+
+## 8. 内置 Skill 与 ClawHub 生态
+
+### 8.1 内置 Skill 机制
+
+see-agent 包内自带一组内置 skill，首次启动（`ensure_workspace()`）时自动复制到用户目录：
+
+```
+see_agent/                      ← Python 包内（随 pip 安装）
+├── builtin_skills/
+│   └── clawhub/
+│       └── SKILL.md
+
+~/.see-agent/                   ← 用户目录
+├── skills/                     ← 首次启动时从 builtin_skills 同步
+│   ├── clawhub/                ← 内置，教 agent 使用 clawhub
+│   │   └── SKILL.md
+│   ├── some-community-skill/   ← 用户后续安装的
+│   │   └── SKILL.md
+│   └── ...
+```
+
+**同步逻辑**（在 `ensure_workspace()` 中）：
+
+```python
+def _sync_builtin_skills():
+    """将包内 builtin_skills 同步到用户 skills 目录。
+    只在目标不存在时复制（不覆盖用户修改）。
+    """
+    builtin_dir = Path(__file__).parent / "builtin_skills"
+    if not builtin_dir.exists():
+        return
+    user_skills = SKILLS_DIR
+    user_skills.mkdir(parents=True, exist_ok=True)
+    for skill_dir in builtin_dir.iterdir():
+        if skill_dir.is_dir():
+            target = user_skills / skill_dir.name
+            if not target.exists():
+                shutil.copytree(skill_dir, target)
+                logger.info("Installed builtin skill: %s", skill_dir.name)
+```
+
+### 8.2 ClawHub Skill 内容
+
+内置的 `clawhub` skill 教 agent 如何从 ClawHub 搜索和安装 skill：
+
+```markdown
+---
+name: clawhub
+description: 从 ClawHub 搜索和安装 skill 到 see-agent。
+---
+
+## 搜索 Skill
+
+在终端执行：
+  clawhub search <keyword>
+
+或浏览 https://clawhub.com 查找。
+
+## 安装 Skill
+
+  clawhub install <skill-name> --target ~/.see-agent/skills
+
+安装完成后 skill 立即生效（下次 agent 对话时自动加载）。
+
+## 查看已安装
+
+  ls ~/.see-agent/skills/
+
+每个子目录就是一个 skill，包含 SKILL.md。
+```
+
+### 8.3 前端 Skills 页面补充
+
+Skills 页面除了展示已安装 skill，还提供安装入口：
+
+```
+┌──────────────────────────────────────────────┐
+│ Skills                          [+ 安装 Skill] │
+├──────────────────────────────────────────────┤
+│ ┌──────────┐  ┌──────────┐  ┌──────────┐    │
+│ │ clawhub  │  │ browser  │  │ terminal │    │
+│ │ 内置      │  │ ClawHub  │  │ ClawHub  │    │
+│ │ ✅ active │  │ ✅ active │  │ ❌ blocked│    │
+│ └──────────┘  └──────────┘  └──────────┘    │
+└──────────────────────────────────────────────┘
+```
+
+点击 「+ 安装 Skill」弹出 Modal：
+
+```
+┌────────────────────────────────────────┐
+│ 安装 Skill                             │
+│                                        │
+│ 安装方式:                               │
+│   ○ 从 ClawHub 安装（推荐）              │
+│   ○ 手动添加                            │
+│                                        │
+│ ── ClawHub 安装 ──                      │
+│ Skill 名称: [open-browser         ]    │
+│                                        │
+│              [安装]                     │
+│                                        │
+│ ── 手动添加 ──                          │
+│ 将 SKILL.md 所在目录放到:               │
+│ ~/.see-agent/skills/ 即可               │
+└────────────────────────────────────────┘
+```
+
+**ClawHub 安装**后端实现：
+
+```python
+# 新增 API: POST /api/skills/install
+@router.post("/api/skills/install")
+async def install_skill(request: InstallSkillRequest):
+    """从 ClawHub 安装 skill"""
+    # 执行: clawhub install <name> --target ~/.see-agent/skills
+    result = subprocess.run(
+        ["clawhub", "install", request.name, "--target", str(SKILLS_DIR)],
+        capture_output=True, text=True, timeout=60,
+    )
+    if result.returncode != 0:
+        raise HTTPException(400, f"安装失败: {result.stderr}")
+    return {"status": "ok", "name": request.name}
+```
+
+---
+
+## 9. MCP 安装方案
+
+### 9.1 前端 MCP 页面：添加 MCP Server
+
+点击「+ 添加 MCP Server」弹出 Modal：
+
+```
+┌────────────────────────────────────────┐
+│ 添加 MCP Server                        │
+│                                        │
+│ 安装方式:                               │
+│   ◉ npm 包      ○ pip 包     ○ 手动    │
+│                                        │
+│ ── npm 包 ──                            │
+│ 包名: [@modelcontextprotocol/server-fs ]│
+│ 参数: [/Users/lanxuan/Documents     ]  │
+│ 名称: [filesystem                    ] │
+│ (名称自动从包名推断，可修改)              │
+│                                        │
+│              [安装并添加]                │
+│                                        │
+│ ── pip 包 ──                            │
+│ 包名: [mcp-server-sqlite             ] │
+│ 参数: [--db /path/to/db.sqlite       ] │
+│                                        │
+│ ── 手动配置 ──                          │
+│ 名称: [                              ] │
+│ Command: [                            ] │
+│ Args: [                               ] │
+│ 环境变量:                               │
+│   KEY: [          ]  VALUE: [        ] │
+│   [+ 添加变量]                          │
+│                                        │
+│              [添加]                     │
+└────────────────────────────────────────┘
+```
+
+### 9.2 三种安装方式的后端处理
+
+**npm 包**：
+- 不需要真正安装，npx 自动拉取
+- 生成配置写入 config.json：
+
+```json
+{
+  "mcp_servers": {
+    "filesystem": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/Users/lanxuan/Documents"]
+    }
+  }
+}
+```
+
+**pip 包**：
+- 后端执行 `pip install <package>`（在 see-agent 的 venv 中）
+- 生成配置：
+
+```json
+{
+  "mcp_servers": {
+    "sqlite": {
+      "type": "stdio",
+      "command": "python",
+      "args": ["-m", "mcp_server_sqlite", "--db", "/path/to/db.sqlite"]
+    }
+  }
+}
+```
+
+**手动**：
+- 用户直接填 command / args / env
+- 写入 config.json
+
+### 9.3 新增 API
+
+```python
+# POST /api/mcp/install
+class InstallMcpRequest(BaseModel):
+    name: str                          # MCP server 名称
+    install_type: str                  # "npm" | "pip" | "manual"
+    package: str | None = None         # npm/pip 包名
+    params: str | None = None          # 额外参数（如路径）
+    command: str | None = None         # 手动模式: command
+    args: list[str] | None = None      # 手动模式: args
+    env: dict[str, str] | None = None  # 手动模式: env vars
+
+@router.post("/api/mcp/install")
+async def install_mcp(request: InstallMcpRequest):
+    config = load_config()
+    if "mcp_servers" not in config:
+        config["mcp_servers"] = {}
+
+    if request.install_type == "npm":
+        # npm 包用 npx，不需要安装
+        server_cfg = {
+            "type": "stdio",
+            "command": "npx",
+            "args": ["-y", request.package] + (request.params.split() if request.params else []),
+        }
+    elif request.install_type == "pip":
+        # pip 包需要先安装
+        result = subprocess.run(
+            [sys.executable, "-m", "pip", "install", request.package],
+            capture_output=True, text=True, timeout=120,
+        )
+        if result.returncode != 0:
+            raise HTTPException(400, f"pip install 失败: {result.stderr}")
+        # 推断 module name（mcp-server-xxx → mcp_server_xxx）
+        module_name = request.package.replace("-", "_")
+        server_cfg = {
+            "type": "stdio",
+            "command": "python",
+            "args": ["-m", module_name] + (request.params.split() if request.params else []),
+        }
+    elif request.install_type == "manual":
+        server_cfg = {
+            "type": "stdio",
+            "command": request.command,
+            "args": request.args or [],
+        }
+        if request.env:
+            server_cfg["env"] = request.env
+    else:
+        raise HTTPException(400, f"未知安装类型: {request.install_type}")
+
+    config["mcp_servers"][request.name] = server_cfg
+    save_config(config)
+    return {"status": "ok", "name": request.name, "config": server_cfg}
+```
+
+### 9.4 MCP 搜索（v3.1+ 路线图）
+
+v3.0 不做搜索，用户需要知道包名。v3.1+ 可选方案：
+
+- **方案 A**：内置 MCP 注册表（`see_agent/data/mcp_registry.json`），包含常用 MCP server 列表，前端本地搜索
+- **方案 B**：对接 Smithery.ai API（MCP 的包注册中心，正在发展中）
+- **方案 C**：直接搜 npmjs.com / pypi.org API（按前缀过滤）
+
+---
+
+## 10. 后端配合项
+
+### 10.1 新增 WebSocket 端点
 
 | 端点 | 说明 |
 |------|------|
 | `WS /api/ws/team/{team_id}/messages` | 实时推送 owner 相关消息 |
 | `WS /api/ws/team/{team_id}/tasks` | 实时推送任务状态变更 |
 
-### 7.2 CORS 配置
+### 10.2 CORS 配置
 
 后端 FastAPI 需要配置 CORS，允许前端开发服务器访问：
 
@@ -580,7 +904,7 @@ app.add_middleware(
 )
 ```
 
-### 7.3 静态文件服务
+### 10.3 静态文件服务
 
 生产环境下，后端 serve 前端 build 产物：
 
@@ -589,13 +913,20 @@ app.add_middleware(
 app.mount("/", StaticFiles(directory="web/dist", html=True), name="frontend")
 ```
 
-### 7.4 API 依赖
+### 10.4 API 依赖
 
 本 PRD 依赖 `v2.5-frontend-backend-report.md` 中定义的所有 P0/P1 API。
 
+此外还需新增：
+
+| API | 方法 | 说明 |
+|-----|------|------|
+| `POST /api/skills/install` | POST | 从 ClawHub 安装 skill |
+| `POST /api/mcp/install` | POST | 安装 MCP server（npm/pip/手动） |
+
 ---
 
-## 8. 实施计划
+## 11. 实施计划
 
 ### Phase 1 — 骨架 + 核心页面（3~4 天）
 
@@ -603,13 +934,13 @@ app.mount("/", StaticFiles(directory="web/dist", html=True), name="frontend")
 |---|------|------|
 | 1 | Vite + React + TypeScript + Tailwind + shadcn/ui 项目初始化 | 1h |
 | 2 | 全局布局（Sidebar + Topbar + Layout + 路由） | 2h |
-| 3 | 主题切换（暗/亮/系统） | 1h |
+| 3 | 主题切换（暗/亮/系统）+ 完整配色变量 | 1h |
 | 4 | 移动端响应式（Sidebar 折叠） | 1h |
-| 5 | API 封装层 + WebSocket hook | 2h |
+| 5 | API 封装层 + WebSocket hook + usePolling hook | 2h |
 | 6 | Teams 列表页 | 2h |
 | 7 | Dashboard 页（数字卡片） | 1h |
 | 8 | Agents 页（表格 + CRUD） | 3h |
-| 9 | Config 页（rjsf 表单 + JSON 预览） | 2h |
+| 9 | Config 页（rjsf 表单 + JSON 预览 + i18n） | 2h |
 | 10 | Logs 页（日志查看器） | 2h |
 
 ### Phase 2 — 像素办公室 + Team 详情（3~4 天）
@@ -619,26 +950,35 @@ app.mount("/", StaticFiles(directory="web/dist", html=True), name="frontend")
 | 11 | 像素资源准备（办公室背景 + sprite） | 4h |
 | 12 | Phaser 3 集成到 React | 2h |
 | 13 | PixelOffice 组件（背景 + 座位点 + agent 加载） | 4h |
-| 14 | Agent sprite 状态动画（idle/working） | 2h |
-| 15 | 点击 agent → 信息卡片弹出 | 2h |
+| 14 | Agent sprite idle 动画 | 1h |
+| 15 | 点击 agent → 信息卡片 + 快速消息 | 2h |
 | 16 | TaskBoard 看板组件 | 3h |
-| 17 | MessageBox 消息框（对象选择 + 实时消息） | 3h |
+| 17 | MessageBox 消息框（对象选择 + 未读红点 + 实时消息） | 3h |
 | 18 | Team 设置抽屉 | 2h |
 
-### Phase 3 — 补全 + 打磨（2~3 天）
+### Phase 3 — 补全 + 生态（2~3 天）
 
 | # | 任务 | 预估 |
 |---|------|------|
-| 19 | Skills 页 | 2h |
-| 20 | MCP 页 | 2h |
+| 19 | Skills 页 + ClawHub 安装 Modal | 3h |
+| 20 | MCP 页 + 三种安装方式 Modal | 3h |
 | 21 | Agent 详情页（Tab: SOUL + 配置 + Session 历史） | 3h |
 | 22 | 生产构建 + 后端静态文件 serve | 1h |
 | 23 | 移动端测试 + 微调 | 2h |
 | 24 | 全局 loading/error/empty 状态处理 | 2h |
 
+### Phase 4 — CLI 精简 + 内置 Skill（1 天）
+
+| # | 任务 | 预估 |
+|---|------|------|
+| 25 | CLI 删除多余命令，`serve` → `start`，新增 `stop` + `version` | 2h |
+| 26 | 创建 `builtin_skills/clawhub/SKILL.md` | 30min |
+| 27 | `ensure_workspace()` 增加内置 skill 同步逻辑 | 30min |
+| 28 | `POST /api/skills/install` + `POST /api/mcp/install` 后端实现 | 2h |
+
 ---
 
-## 9. 设计约束
+## 12. 设计约束
 
 1. **team 是唯一运行单元**：所有操作（运行、消息、任务）都在 team 粒度
 2. **Agent 状态不存储**：v3.0 暂不实现状态区分，后续后端支持后再加
@@ -649,7 +989,7 @@ app.mount("/", StaticFiles(directory="web/dist", html=True), name="frontend")
 7. **Schema 从后端获取**：`GET /api/schemas/{type}`，前端不硬编码字段
 8. **未读状态按 team/agent 分列**：每个 team 的 `read_state.json` 按 agent 记录 last_read_ts
 
-### 9.1 Schema 多语言策略
+### 12.1 Schema 多语言策略
 
 **原则：Schema 只做数据约束，不做 UI 文案。多语言由前端处理。**
 
