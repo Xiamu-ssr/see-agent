@@ -123,3 +123,34 @@ class TestOwnerAPIs:
             json={"to": "alice", "content": "hi"},
         )
         assert resp.status_code == 404
+
+
+class TestUpdateTeam:
+
+    def test_update_name(self, client, workspace):
+        team_id = _create_team(client)
+        resp = client.put(
+            f"/api/teams/{team_id}",
+            json={"name": "Updated"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["name"] == "Updated"
+
+    def test_update_seating(self, client, workspace):
+        team_id = _create_team(client)
+        resp = client.put(
+            f"/api/teams/{team_id}",
+            json={"seating": {"alice": 1}},
+        )
+        assert resp.status_code == 200
+        from see_agent.team.definition import TeamDefinition
+
+        loaded = TeamDefinition.load(team_id)
+        assert loaded.seating == {"alice": 1}
+
+    def test_update_not_found(self, client):
+        resp = client.put(
+            "/api/teams/nonexistent",
+            json={"name": "X"},
+        )
+        assert resp.status_code == 404

@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import json
 import logging
+from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
@@ -42,3 +44,15 @@ async def update_config(
     save_config(merged)
     request.app.state.config = merged
     return {"status": "updated"}
+
+
+_SCHEMA_DIR = Path(__file__).parent.parent.parent / "schemas"
+
+
+@router.get("/schemas/{schema_type}")
+async def get_schema(schema_type: str) -> dict[str, Any]:
+    """Return a JSON schema by type (config, agent, team)."""
+    schema_path = _SCHEMA_DIR / f"{schema_type}.schema.json"
+    if not schema_path.exists():
+        raise HTTPException(status_code=404, detail=f"Schema not found: {schema_type}")
+    return json.loads(schema_path.read_text(encoding="utf-8"))

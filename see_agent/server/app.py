@@ -13,7 +13,9 @@ from see_agent.server.routes import (
     agents,
     chat,
     config_routes,
+    dashboard,
     health,
+    logs,
     sessions,
     skills,
     task,
@@ -75,3 +77,5 @@ app.include_router(agents.router)
 app.include_router(tools.router)
 app.include_router(skills.router)
 app.include_router(config_routes.router)
+app.include_router(dashboard.router)
+app.include_router(logs.router)

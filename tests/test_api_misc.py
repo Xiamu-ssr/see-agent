@@ -86,3 +86,20 @@ class TestConfigAPI:
         # Verify updated in app state.
         resp2 = client.get("/api/config")
         assert resp2.json()["max_steps"] == 99
+
+
+class TestSchemaAPI:
+
+    def test_get_config_schema(self, client):
+        resp = client.get("/api/schemas/config")
+        assert resp.status_code == 200
+        assert resp.json()["title"] == "config"
+
+    def test_get_agent_schema(self, client):
+        resp = client.get("/api/schemas/agent")
+        assert resp.status_code == 200
+        assert resp.json()["title"] == "agent"
+
+    def test_get_unknown_schema(self, client):
+        resp = client.get("/api/schemas/unknown")
+        assert resp.status_code == 404

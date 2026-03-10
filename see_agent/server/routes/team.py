@@ -30,6 +30,16 @@ class RunTeamRequest(BaseModel):
     task: str
 
 
+class UpdateTeamRequest(BaseModel):
+    name: str | None = None
+    members: list[str] | None = None
+    leader: str | None = None
+    screen_mode: str | None = None
+    seating: dict[str, int] | None = None
+    overrides: dict[str, Any] | None = None
+    owner: dict[str, str] | None = None
+
+
 class OwnerMessageRequest(BaseModel):
     to: str
     content: str
@@ -66,6 +76,46 @@ async def list_teams() -> list[dict[str, Any]]:
         }
         for t in teams
     ]
+
+
+@router.put("/{team_id}")
+async def update_team(
+    team_id: str, body: UpdateTeamRequest,
+) -> dict[str, Any]:
+    """Update an existing team definition."""
+    from see_agent.config import _deep_merge
+    from see_agent.team.definition import TeamDefinition
+
+    try:
+        team = TeamDefinition.load(team_id)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Team not found")
+
+    if body.name is not None:
+        team.name = body.name
+    if body.members is not None:
+        team.members = body.members
+    if body.leader is not None:
+        team.leader = body.leader
+    if body.screen_mode is not None:
+        team.screen_mode = body.screen_mode
+    if body.seating is not None:
+        team.seating = body.seating
+    if body.owner is not None:
+        team.owner = body.owner
+    if body.overrides is not None:
+        if team.overrides:
+            team.overrides = _deep_merge(team.overrides, body.overrides)
+        else:
+            team.overrides = body.overrides
+
+    team.save()
+    return {
+        "id": team.id,
+        "name": team.name,
+        "members": team.members,
+        "status": team.status,
+    }
 
 
 @router.post("/{team_id}/run")
