@@ -4,7 +4,6 @@ import json
 import logging
 import logging.handlers
 import os
-import shutil
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -52,7 +51,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
 
 WORKSPACE_DIR = Path.home() / ".see-agent"
 CONFIG_PATH = WORKSPACE_DIR / "config.json"
-SESSIONS_DIR = WORKSPACE_DIR / "sessions"
+SESSIONS_DIR = WORKSPACE_DIR / "sessions"  # Used by quick mode as fallback
 LOGS_DIR = WORKSPACE_DIR / "logs"
 SKILLS_DIR = WORKSPACE_DIR / "skills"
 AGENTS_DIR = WORKSPACE_DIR / "agents"
@@ -65,7 +64,6 @@ _TEMPLATE_DIR = Path(__file__).parent.parent / "workspace"
 def ensure_workspace() -> None:
     """Ensure ~/.see-agent/ exists with default files."""
     WORKSPACE_DIR.mkdir(parents=True, exist_ok=True)
-    SESSIONS_DIR.mkdir(exist_ok=True)
     LOGS_DIR.mkdir(exist_ok=True)
     SKILLS_DIR.mkdir(exist_ok=True)
     AGENTS_DIR.mkdir(exist_ok=True)
@@ -73,12 +71,6 @@ def ensure_workspace() -> None:
 
     if not CONFIG_PATH.exists():
         CONFIG_PATH.write_text(json.dumps(DEFAULT_CONFIG, indent=4, ensure_ascii=False))
-
-    soul_path = WORKSPACE_DIR / "SOUL.md"
-    if not soul_path.exists():
-        template_soul = _TEMPLATE_DIR / "SOUL.md"
-        if template_soul.exists():
-            shutil.copy(template_soul, soul_path)
 
 
 def _deep_merge(base: dict[str, Any], overlay: dict[str, Any]) -> dict[str, Any]:
