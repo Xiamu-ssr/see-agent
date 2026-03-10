@@ -1,39 +1,36 @@
 <div align="center">
 
-<!-- Replace with your own banner image -->
-<!-- <img src="assets/banner.png" width="800" /> -->
-
 <br/>
 
 <img src="https://badgen.net/static/%F0%9F%91%81%EF%B8%8F%20see-agent/Your%20Mac%2C%20on%20Autopilot/purple?scale=2" alt="see-agent" />
 
 <br/><br/>
 
-**An AI agent that sees your screen, remembers your workflow, and operates your Mac.**
+**An AI agent that sees your screen, remembers your workflow, and operates your Mac — with a pixel-art office to manage your agent team.**
 
 <br/>
 
-<!-- Highlight badges -->
 <img src="https://badgen.net/static/%F0%9F%8F%86%20Open%20Source/Mac%20AI%20Agent/FFB020" alt="Mac AI Agent"/>
 &nbsp;&nbsp;
-<img src="https://badgen.net/static/%F0%9F%A7%A0%20Memory/Persistent%20%C2%B7%20Cross-Session/8B5CF6" alt="Persistent Memory"/>
+<img src="https://badgen.net/static/%F0%9F%96%A5%EF%B8%8F%20Web%20UI/Pixel%20Office/E91E63" alt="Web UI"/>
 &nbsp;&nbsp;
 <img src="https://badgen.net/static/%F0%9F%A4%9D%20Multi-Agent/Team%20Collaboration/F97316" alt="Multi-Agent Team"/>
 &nbsp;&nbsp;
-<img src="https://badgen.net/static/%F0%9F%94%8C%20Extensible/MCP%20%2B%20Plugins/06B6D4" alt="MCP + Plugins"/>
+<img src="https://badgen.net/static/%F0%9F%A7%A0%20Memory/Persistent%20%C2%B7%20Cross-Session/8B5CF6" alt="Persistent Memory"/>
+&nbsp;&nbsp;
+<img src="https://badgen.net/static/%F0%9F%94%8C%20Extensible/MCP%20%2B%20Skills/06B6D4" alt="MCP + Skills"/>
 
 <br/><br/>
 
-<!-- Project stats -->
 [![Python](https://badgen.net/static/python/3.11+/3776AB)](https://python.org)
 [![License](https://badgen.net/github/license/Xiamu-ssr/see-agent)](LICENSE)
 [![Stars](https://badgen.net/github/stars/Xiamu-ssr/see-agent)](https://github.com/Xiamu-ssr/see-agent)
-[![Tests](https://badgen.net/static/tests/333%20passed/green)](https://github.com/Xiamu-ssr/see-agent)
+[![Tests](https://badgen.net/static/tests/379%20passed/green)](https://github.com/Xiamu-ssr/see-agent)
 [![Built with uv](https://badgen.net/static/built%20with/uv/7C4DFF)](https://docs.astral.sh/uv/)
 
 <br/>
 
-[Quick Start](#-quick-start) · [Features](#-features) · [Agent Teams](#-agent-teams) · [Architecture](#%EF%B8%8F-architecture) · [Docs](docs/)
+[Quick Start](#-quick-start) · [Features](#-features) · [Web UI](#-web-ui) · [Agent Teams](#-agent-teams) · [Architecture](#%EF%B8%8F-architecture) · [Docs](docs/)
 
 </div>
 
@@ -51,8 +48,8 @@
 **🧠 Persistent Memory**
 > Remembers across sessions. File-based (zero deps) or Mem0 vector search. Context compaction keeps conversations infinite.
 
-**🔌 Plugin System**
-> Extensible memory backends, context engines, lifecycle hooks, and tool registration. Build your own or use built-in.
+**🏢 Pixel Office**
+> Manage your agent team through an interactive pixel-art office. See who's working, send messages, track tasks — all in one place.
 
 </td>
 <td width="50%">
@@ -78,58 +75,70 @@ git clone https://github.com/Xiamu-ssr/see-agent.git
 cd see-agent
 uv sync
 
-# Configure
+# Configure your LLM
 uv run see-agent config init
 
-# Run
-uv run see-agent quick chat
+# Build the web UI
+cd web && npm install && npm run build && cd ..
+
+# Launch — opens browser automatically
+uv run see-agent start
 ```
 
-```
-🤖 see-agent v0.1 已启动
-  Memory: active
-  MCP: active (1 servers)
-  Skills: 4 loaded
-📋 Session: 20260309_143000_abc123
+This starts the server and opens `http://localhost:8000` with the full management UI.
 
-> 打开钉钉，给张三发消息说明天开会
+## 🏢 Web UI
 
-⏳ [Step 1] screenshot → 分析桌面...
-⏳ [Step 2] shell → open -a DingTalk
-⏳ [Step 3] click → 搜索框 (234, 89)
-⏳ [Step 4] type_text → 张三
-...
-✅ [Step 8] finished: 已在钉钉给张三发送消息"明天开会"
+see-agent ships with a built-in web management interface:
+
 ```
+┌──────────────────────────────────────────────┐
+│ 📮 Teams      │                              │
+│ 📊 Dashboard  │   🏢 Pixel Office            │
+│ 🤖 Agents     │                              │
+│ 🔧 Skills     │   🧑‍💻 leader  👩‍💻 alice  👨‍💻 bob │
+│ 🔌 MCP        │                              │
+│ ⚙️ Config     │   [Task Board] [💬 Messages] │
+│ 📋 Logs       │                              │
+└──────────────────────────────────────────────┘
+```
+
+- **Teams** — Create and manage agent teams, pixel office view, task board, owner messaging
+- **Dashboard** — Global stats at a glance
+- **Agents** — CRUD agents, edit SOUL personality, configure tools/skills/MCP per agent
+- **Skills & MCP** — Install from ClawhHub or add MCP servers (npm/pip/manual)
+- **Config** — JSON Schema-driven form + live JSON preview
+- **Logs** — Filterable log viewer with date/level selection
 
 ## 🤝 Agent Teams
 
 Define agents with different roles, form teams, and let them collaborate:
 
-```bash
-# Create agents
-see-agent agent create leader --name "Tech Lead" --role "分解任务、协调进度"
-see-agent agent create alice  --name "Alice"     --role "前端操作、UI 交互"
-see-agent agent create bob    --name "Bob"        --role "后端操作、数据处理"
-
-# Create a team and run
-see-agent team create --name "周报" --members leader,alice,bob --leader leader
-see-agent team run <team_id> "帮我写本周周报，从 git log 和邮件中整理"
-```
-
 ```
 ┌─────────────────────────────────────────────┐
-│  Leader: 分解任务 → 分配给 Alice & Bob        │
-│  Alice:  打开邮箱，整理本周邮件摘要             │
-│  Bob:    执行 git log，提取提交记录             │
-│  Leader: 汇总结果 → 生成周报 → 完成            │
+│  Leader: Decomposes task → assigns to team   │
+│  Alice:  Opens browser, gathers information  │
+│  Bob:    Runs git log, extracts commit data  │
+│  Leader: Aggregates results → done           │
 └─────────────────────────────────────────────┘
 ```
+
+Teams are created and managed through the Web UI:
+- Drag agents into teams, assign seats in the pixel office
+- Leader auto-decomposes tasks, workers claim from the shared task board
+- Owner (you) can message any agent or broadcast to the team
+- All communication flows through an async message bus with full audit log
 
 ## 🏗️ Architecture
 
 ```
 ┌─────────────────────────────────────┐
+│  🖥️ Web UI (React + Phaser)         │
+│  Pixel Office / Management Panel    │
+├─────────────────────────────────────┤
+│  🌐 API Layer (FastAPI)             │
+│  REST + WebSocket + OpenAPI         │
+├─────────────────────────────────────┤
 │  🔌 Plugin Layer                     │
 │  Memory / ContextEngine / Hooks     │
 ├─────────────────────────────────────┤
@@ -143,6 +152,8 @@ see-agent team run <team_id> "帮我写本周周报，从 git log 和邮件中�
 
 | Layer | Components |
 |-------|-----------|
+| **Web UI** | React 19, TypeScript, Tailwind, shadcn/ui, Phaser 3 (pixel office) |
+| **API** | FastAPI, Pydantic response models, OpenAPI spec, WebSocket |
 | **Agent** | `AgentLoop` (ReAct), `Brain` (LLM), `Eye` (screenshot), `Hand` (tools), `Session`, `Overlay` |
 | **Team** | `TeamManager`, `TeamBus` (async messaging), `TaskBoard` (shared tasks), Screen Lock |
 | **Plugin** | `BaseMemory` (File/Mem0), `BaseContextEngine`, `HookBus`, `ToolRegistry` |
@@ -159,16 +170,18 @@ see-agent team run <team_id> "帮我写本周周报，从 git log 和邮件中�
 }
 ```
 
-Agents inherit global config and override per-agent:
+Agents inherit global config and can override per-agent:
 
 ```jsonc
 // ~/.see-agent/agents/alice/agent.json
 {
   "name": "Alice", "role": "前端操作员",
   "config_overrides": { "llm": { "model": "claude-sonnet-4-5" }, "max_steps": 30 },
-  "tools": { "denied": ["shell"] }
+  "tools_config": { "denied": ["shell"] }
 }
 ```
+
+All configuration is editable through the Web UI (Config page → JSON Schema form).
 
 ## 📦 Optional Dependencies
 
@@ -176,21 +189,37 @@ Agents inherit global config and override per-agent:
 see-agent setup install              # All optional deps
 see-agent setup install --memory     # Mem0 vector memory
 see-agent setup install --mcp        # MCP protocol support
+see-agent setup check                # Verify environment
 ```
 
 ## 📖 CLI Reference
 
+v3 ships with a minimal CLI — all management is done through the Web UI.
+
 | Command | Description |
 |---------|-------------|
-| `see-agent quick chat` | Interactive single-agent mode |
-| `see-agent quick run "task"` | Single-agent one-shot task |
-| `see-agent agent create <id>` | Define a new agent |
-| `see-agent agent list` | List all agents |
-| `see-agent team create` | Create an agent team |
-| `see-agent team run <id> "task"` | Run a team task |
-| `see-agent team status <id>` | Check team progress |
-| `see-agent config show` | View configuration |
-| `see-agent setup check` | Verify dependencies |
+| `see-agent start` | Start the server and open the browser |
+| `see-agent stop` | Stop the running server |
+| `see-agent version` | Show version |
+| `see-agent config init` | Interactive first-time configuration |
+| `see-agent config show` | View current config (API key masked) |
+| `see-agent setup install` | Install optional dependencies |
+| `see-agent setup check` | Verify environment and dependencies |
+
+## 🛡️ Quality Gates
+
+Every code change must pass `scripts/check.sh`:
+
+```
+1. pyright       → Backend type checking
+2. ruff          → Backend linting
+3. tsc           → Frontend type checking
+4. pytest        → 379 backend tests
+5. vite build    → Frontend build
+6. API contract  → Pydantic ↔ TypeScript type sync
+7. API smoke     → Server starts + core endpoints respond
+8. CLI smoke     → Basic commands work
+```
 
 ## 🛡️ Safety
 
@@ -203,7 +232,7 @@ see-agent setup install --mcp        # MCP protocol support
 
 <div align="center">
 
-**Built with** 🐍 Python · 🧠 Claude · 🔍 Anthropic Vision · ⚡ uv
+**Built with** 🐍 Python · ⚛️ React · 🧠 Claude · 🔍 Anthropic Vision · ⚡ uv
 
 <sub>If you find this useful, a ⭐ on GitHub would be awesome!</sub>
 
