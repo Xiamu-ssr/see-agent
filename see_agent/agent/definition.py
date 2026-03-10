@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from see_agent.config import AGENTS_DIR, load_agent_config
+from see_agent.config import AGENTS_DIR, TEAMS_DIR, load_agent_config
 
 logger = logging.getLogger(__name__)
 
@@ -34,9 +34,9 @@ class AgentDefinition:
     # Persistence
     # ------------------------------------------------------------------ #
 
-    def save(self) -> None:
-        """Write ``agent.json`` (and optional SOUL.md) to disk."""
-        agent_dir = AGENTS_DIR / self.id
+    def save_to(self, base_dir: Path) -> None:
+        """Write ``agent.json`` to *base_dir/{self.id}/*."""
+        agent_dir = base_dir / self.id
         agent_dir.mkdir(parents=True, exist_ok=True)
 
         data: dict[str, Any] = {
@@ -60,13 +60,17 @@ class AgentDefinition:
             encoding="utf-8",
         )
 
+    def save(self) -> None:
+        """Write ``agent.json`` to the global agents directory."""
+        self.save_to(AGENTS_DIR)
+
     @staticmethod
-    def load(agent_id: str) -> AgentDefinition:
-        """Load an agent definition from ``AGENTS_DIR/{agent_id}/agent.json``.
+    def load_from(base_dir: Path, agent_id: str) -> AgentDefinition:
+        """Load an agent definition from *base_dir/{agent_id}/agent.json*.
 
         Raises ``FileNotFoundError`` when the agent does not exist.
         """
-        agent_json = AGENTS_DIR / agent_id / "agent.json"
+        agent_json = base_dir / agent_id / "agent.json"
         if not agent_json.exists():
             raise FileNotFoundError(
                 f"Agent not found: {agent_id}"
@@ -83,6 +87,11 @@ class AgentDefinition:
             mcp_config=data.get("mcp_config", {}),
             soul_path=Path(soul_path_raw) if soul_path_raw else None,
         )
+
+    @staticmethod
+    def load(agent_id: str) -> AgentDefinition:
+        """Load an agent definition from ``AGENTS_DIR/{agent_id}/agent.json``."""
+        return AgentDefinition.load_from(AGENTS_DIR, agent_id)
 
     @staticmethod
     def create(agent_id: str, **kwargs: Any) -> AgentDefinition:
@@ -107,6 +116,66 @@ class AgentDefinition:
                         "Failed to load agent %s", d.name,
                     )
         return results
+
+    @staticmethod
+    def list_all_global() -> list[tuple[AgentDefinition, str | None]]:
+        """Return all agents from global dir and team dirs.
+
+        Each entry is ``(definition, team_id_or_None)``.
+        """
+        results: list[tuple[AgentDefinition, str | None]] = []
+
+        # Global agents
+        if AGENTS_DIR.exists():
+            for d in sorted(AGENTS_DIR.iterdir()):
+                if (d / "agent.json").exists():
+                    try:
+                        results.append((AgentDefinition.load_from(AGENTS_DIR, d.name), None))
+                    except Exception:
+                        logger.warning("Failed to load agent %s", d.name)
+
+        # Team-scoped agents
+        if TEAMS_DIR.exists():
+            for team_dir in sorted(TEAMS_DIR.iterdir()):
+                agents_dir = team_dir / "agents"
+                if not agents_dir.exists():
+                    continue
+                for agent_dir in sorted(agents_dir.iterdir()):
+                    if (agent_dir / "agent.json").exists():
+                        try:
+                            defn = AgentDefinition.load_from(agents_dir, agent_dir.name)
+                            results.append((defn, team_dir.name))
+                        except Exception:
+                            logger.warning(
+                                "Failed to load team agent %s/%s",
+                                team_dir.name, agent_dir.name,
+                            )
+
+        return results
+
+    @staticmethod
+    def find(agent_id: str) -> tuple[AgentDefinition, Path, str | None]:
+        """Find an agent by *agent_id* in global or team directories.
+
+        Returns ``(definition, agent_dir_path, team_id_or_None)``.
+        Raises ``FileNotFoundError`` if not found anywhere.
+        """
+        # Try global first
+        global_path = AGENTS_DIR / agent_id / "agent.json"
+        if global_path.exists():
+            defn = AgentDefinition.load_from(AGENTS_DIR, agent_id)
+            return defn, AGENTS_DIR / agent_id, None
+
+        # Try team dirs
+        if TEAMS_DIR.exists():
+            for team_dir in sorted(TEAMS_DIR.iterdir()):
+                agents_dir = team_dir / "agents"
+                agent_json = agents_dir / agent_id / "agent.json"
+                if agent_json.exists():
+                    defn = AgentDefinition.load_from(agents_dir, agent_id)
+                    return defn, agents_dir / agent_id, team_dir.name
+
+        raise FileNotFoundError(f"Agent not found: {agent_id}")
 
     # ------------------------------------------------------------------ #
     # Config helpers

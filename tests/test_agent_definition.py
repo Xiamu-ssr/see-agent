@@ -12,8 +12,19 @@ from see_agent.agent.definition import AgentDefinition
 def agents_dir(tmp_path):
     d = tmp_path / "agents"
     d.mkdir()
-    with patch("see_agent.agent.definition.AGENTS_DIR", d):
+    teams = tmp_path / "teams"
+    teams.mkdir()
+    with (
+        patch("see_agent.agent.definition.AGENTS_DIR", d),
+        patch("see_agent.agent.definition.TEAMS_DIR", teams),
+    ):
         yield d
+
+
+@pytest.fixture
+def teams_dir(tmp_path):
+    """Return the teams dir (sibling of agents_dir)."""
+    return tmp_path / "teams"
 
 
 class TestAgentDefinition:
@@ -113,3 +124,70 @@ class TestAgentDefinition:
         agents = AgentDefinition.list_all()
         assert len(agents) == 1
         assert agents[0].id == "good"
+
+
+class TestLoadFromSaveTo:
+    """Tests for load_from / save_to."""
+
+    def test_save_to_and_load_from(self, tmp_path):
+        base = tmp_path / "custom"
+        base.mkdir()
+        defn = AgentDefinition(id="x", name="X", role="tester")
+        defn.save_to(base)
+        assert (base / "x" / "agent.json").exists()
+
+        loaded = AgentDefinition.load_from(base, "x")
+        assert loaded.id == "x"
+        assert loaded.name == "X"
+
+    def test_load_from_not_found(self, tmp_path):
+        with pytest.raises(FileNotFoundError):
+            AgentDefinition.load_from(tmp_path, "nope")
+
+
+class TestListAllGlobal:
+    """Tests for list_all_global."""
+
+    def test_mixed(self, agents_dir, teams_dir):
+        # Global agent
+        AgentDefinition.create("g1", name="Global1")
+
+        # Team-scoped agent
+        team_agents = teams_dir / "team-abc" / "agents"
+        team_agents.mkdir(parents=True)
+        t_defn = AgentDefinition(id="t1", name="TeamAgent1")
+        t_defn.save_to(team_agents)
+
+        result = AgentDefinition.list_all_global()
+        assert len(result) == 2
+        ids = [(d.id, tid) for d, tid in result]
+        assert ("g1", None) in ids
+        assert ("t1", "team-abc") in ids
+
+    def test_empty(self, agents_dir, teams_dir):
+        result = AgentDefinition.list_all_global()
+        assert result == []
+
+
+class TestFind:
+    """Tests for find."""
+
+    def test_find_global(self, agents_dir, teams_dir):
+        AgentDefinition.create("alice", name="Alice")
+        defn, path, team_id = AgentDefinition.find("alice")
+        assert defn.id == "alice"
+        assert team_id is None
+        assert path == agents_dir / "alice"
+
+    def test_find_team(self, agents_dir, teams_dir):
+        team_agents = teams_dir / "team-x" / "agents"
+        team_agents.mkdir(parents=True)
+        AgentDefinition(id="bob", name="Bob").save_to(team_agents)
+
+        defn, path, team_id = AgentDefinition.find("bob")
+        assert defn.id == "bob"
+        assert team_id == "team-x"
+
+    def test_find_not_found(self, agents_dir, teams_dir):
+        with pytest.raises(FileNotFoundError, match="Agent not found"):
+            AgentDefinition.find("ghost")

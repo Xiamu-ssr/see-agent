@@ -24,6 +24,7 @@ class TeamDefinition:
     leader: str | None = None
     owner: dict[str, str] | None = None
     overrides: dict[str, Any] | None = None
+    seating: dict[str, int] = field(default_factory=dict)
     screen_mode: str = "serial"
     status: str = "created"
     created_at: str = ""
@@ -41,6 +42,7 @@ class TeamDefinition:
             "name": self.name,
             "members": self.members,
             "leader": self.leader,
+            "seating": self.seating,
             "screen_mode": self.screen_mode,
             "status": self.status,
             "created_at": self.created_at,
@@ -59,6 +61,7 @@ class TeamDefinition:
         leader: str | None = None,
         owner: dict[str, str] | None = None,
         overrides: dict[str, Any] | None = None,
+        seating: dict[str, int] | None = None,
     ) -> TeamDefinition:
         """Create and persist a new team."""
         team_id = secrets.token_hex(4)
@@ -70,6 +73,7 @@ class TeamDefinition:
             leader=leader,
             owner=owner,
             overrides=overrides,
+            seating=seating or {},
             created_at=now,
         )
         defn.save()
@@ -92,6 +96,7 @@ class TeamDefinition:
             leader=data.get("leader"),
             owner=data.get("owner"),
             overrides=data.get("overrides"),
+            seating=data.get("seating", {}),
             screen_mode=data.get("screen_mode", "serial"),
             status=data.get("status", "created"),
             created_at=data.get("created_at", ""),

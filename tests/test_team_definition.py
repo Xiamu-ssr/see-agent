@@ -67,3 +67,14 @@ class TestTeamDefinition:
         loaded = TeamDefinition.load(team.id)
         assert loaded.overrides == overrides
         assert loaded.overrides["alice"]["tools"]["denied"] == ["shell"]
+
+    def test_seating_default_empty(self, teams_dir):
+        team = TeamDefinition.create("T", ["a"])
+        loaded = TeamDefinition.load(team.id)
+        assert loaded.seating == {}
+
+    def test_seating_round_trip(self, teams_dir):
+        seating = {"alice": 1, "bob": 2}
+        team = TeamDefinition.create("T", ["alice", "bob"], seating=seating)
+        loaded = TeamDefinition.load(team.id)
+        assert loaded.seating == seating
