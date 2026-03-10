@@ -1,7 +1,7 @@
 import { useCallback } from 'react'
 import { usePolling } from '@/hooks/usePolling'
 import { getDashboard } from '@/api/dashboard'
-import type { DashboardData } from '@/api/dashboard'
+import type { DashboardResponse } from '@/types'
 import { BarChart3, Bot, Users, ClipboardList } from 'lucide-react'
 
 function StatCard({
@@ -49,7 +49,7 @@ function formatStatus(obj: Record<string, number>): string {
 
 export default function DashboardPage() {
   const fetchDashboard = useCallback(() => getDashboard(), [])
-  const { data, loading } = usePolling<DashboardData>(fetchDashboard, 10000)
+  const { data, loading } = usePolling<DashboardResponse>(fetchDashboard, 10000)
 
   if (loading && !data) {
     return <div style={{ color: 'var(--muted)' }}>Loading...</div>

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from unittest.mock import patch
 
@@ -16,6 +17,11 @@ def isolate_workspace(tmp_path: Path) -> None:  # noqa: PT004
     """
     ws = tmp_path / ".see-agent"
     ws.mkdir()
+
+    # Minimal config so load_config() doesn't crash.
+    (ws / "config.json").write_text(
+        json.dumps({"llm": {"api_key": "test", "model": "test"}}),
+    )
 
     patches = {
         "see_agent.config.WORKSPACE_DIR": ws,

@@ -1,17 +1,15 @@
 import React, { useState, useEffect, useCallback } from "react";
 
-interface Team {
-  id: string;
-  name: string;
-  members: string[];
-  leader: string | null;
-  status: string;
-}
-
 interface TeamSettingsProps {
   open: boolean;
   onClose: () => void;
-  team: Team;
+  team: {
+    id: string;
+    name: string;
+    members: string[];
+    leader?: string | null;
+    status: string;
+  };
   onSave: (updates: { name?: string; members?: string[]; leader?: string }) => void;
 }
 

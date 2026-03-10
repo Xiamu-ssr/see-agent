@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { getLogs } from '@/api/logs'
-import type { LogEntry } from '@/api/logs'
+import type { LogEntry } from '@/types'
 import { Search } from 'lucide-react'
 
 const levelColors: Record<string, string> = {

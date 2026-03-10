@@ -1,8 +1,8 @@
-import type { Agent, AgentDetail, CreateAgentPayload } from '@/types/agent'
+import type { AgentSummary, AgentDetail, AgentCreateResponse, CreateAgentRequest } from '@/types'
 import client from './client'
 
-export async function listAgents(): Promise<Agent[]> {
-  const res = await client.get<Agent[]>('/api/agents/')
+export async function listAgents(): Promise<AgentSummary[]> {
+  const res = await client.get<AgentSummary[]>('/api/agents/')
   return res.data
 }
 
@@ -11,12 +11,12 @@ export async function getAgent(id: string): Promise<AgentDetail> {
   return res.data
 }
 
-export async function createAgent(payload: CreateAgentPayload): Promise<AgentDetail> {
-  const res = await client.post<AgentDetail>('/api/agents/', payload)
+export async function createAgent(payload: CreateAgentRequest): Promise<AgentCreateResponse> {
+  const res = await client.post<AgentCreateResponse>('/api/agents/', payload)
   return res.data
 }
 
-export async function updateAgent(id: string, payload: Partial<CreateAgentPayload>): Promise<AgentDetail> {
-  const res = await client.put<AgentDetail>(`/api/agents/${id}`, payload)
+export async function updateAgent(id: string, payload: Partial<CreateAgentRequest>): Promise<AgentCreateResponse> {
+  const res = await client.put<AgentCreateResponse>(`/api/agents/${id}`, payload)
   return res.data
 }

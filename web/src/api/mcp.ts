@@ -1,16 +1,7 @@
+import type { InstallMcpRequest } from '@/types'
 import client from './client'
 
-export interface InstallMcpPayload {
-  name: string
-  install_type: 'npm' | 'pip' | 'manual'
-  package?: string
-  params?: string
-  command?: string
-  args?: string[]
-  env?: Record<string, string>
-}
-
-export async function installMcp(payload: InstallMcpPayload): Promise<void> {
+export async function installMcp(payload: InstallMcpRequest): Promise<void> {
   await client.post('/api/mcp/install', payload)
 }
 

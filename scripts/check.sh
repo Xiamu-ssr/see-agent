@@ -30,24 +30,67 @@ run_step() {
     fi
 }
 
-# ── 1. 静态类型检查（抓接口问题）──
+# ── 1. 后端静态类型检查 ──
 run_step "pyright 类型检查" npx pyright@latest see_agent/ --pythonpath .venv/bin/python
 
-# ── 2. Lint（抓代码规范）──
+# ── 2. 后端 Lint ──
 run_step "ruff lint" .venv/bin/ruff check see_agent/ tests/
 
-# ── 3. 单元测试（抓逻辑问题）──
-run_step "pytest 单元测试" .venv/bin/pytest tests/ -v
-
-# ── 4. CLI 冒烟测试（抓组装问题）──
-run_step "CLI version" .venv/bin/see-agent version
-run_step "CLI config show" .venv/bin/see-agent config show
-
-# ── 5. 前端类型检查 ──
+# ── 3. 前端类型检查（抓 API 字段漂移）──
 run_step "tsc 前端类型检查" bash -c "cd web && npx tsc --noEmit"
 
-# ── 6. 前端构建 ──
+# ── 4. 后端单元测试 ──
+run_step "pytest 单元测试" .venv/bin/pytest tests/ -v
+
+# ── 5. 前端构建 ──
 run_step "vite 前端构建" npm --prefix web run build
+
+# ── 6. API 契约检查 ──
+run_step "API contract check" bash -c '
+    set -e
+    # Regenerate and diff
+    bash scripts/generate-api-types.sh > /dev/null 2>&1
+    if ! git diff --quiet web/src/types/generated/api.d.ts; then
+        echo "api.d.ts is out of date — run: bash scripts/generate-api-types.sh"
+        git diff --stat web/src/types/generated/api.d.ts
+        git checkout web/src/types/generated/api.d.ts 2>/dev/null
+        exit 1
+    fi
+    # No stray hand-written type files
+    for f in web/src/types/agent.ts web/src/types/team.ts; do
+        if [ -f "$f" ]; then
+            echo "Stray type file found: $f — delete it and use @/types instead"
+            exit 1
+        fi
+    done
+    echo "Contract OK"
+'
+
+# ── 7. API 冒烟测试 ──
+run_step "API smoke" bash -c '
+    set -e
+    SMOKE_PORT=$((18900 + RANDOM % 100))
+    TMPDIR=$(mktemp -d)
+    trap "rm -rf $TMPDIR" EXIT
+    export SEE_AGENT_HOME="$TMPDIR"
+    mkdir -p "$TMPDIR"
+    echo "{\"llm\":{\"api_key\":\"test\",\"model\":\"test\"}}" > "$TMPDIR/config.json"
+    .venv/bin/uvicorn see_agent.server.app:app --host 127.0.0.1 --port $SMOKE_PORT &
+    PID=$!
+    trap "kill $PID 2>/dev/null; rm -rf $TMPDIR" EXIT
+    for i in $(seq 1 20); do
+        if curl -sf http://127.0.0.1:$SMOKE_PORT/api/health > /dev/null 2>&1; then break; fi
+        sleep 0.3
+    done
+    curl -sf http://127.0.0.1:$SMOKE_PORT/api/health | python3 -c "import sys,json; d=json.load(sys.stdin); assert d[\"status\"]==\"ok\", d"
+    curl -sf http://127.0.0.1:$SMOKE_PORT/api/agents | python3 -c "import sys,json; d=json.load(sys.stdin); assert isinstance(d, list), d"
+    curl -sf http://127.0.0.1:$SMOKE_PORT/api/teams | python3 -c "import sys,json; d=json.load(sys.stdin); assert isinstance(d, list), d"
+    echo "Smoke OK"
+'
+
+# ── 8. CLI 冒烟测试 ──
+run_step "CLI version" .venv/bin/see-agent version
+run_step "CLI config show" .venv/bin/see-agent config show
 
 # ── 汇总 ──
 echo ""

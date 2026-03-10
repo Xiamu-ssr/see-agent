@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { getAgent, updateAgent } from '@/api/agents'
-import type { AgentDetail } from '@/types/agent'
+import type { AgentDetail } from '@/types'
 import { ArrowLeft, Bot, Save } from 'lucide-react'
 
 type Tab = 'info' | 'soul' | 'config'

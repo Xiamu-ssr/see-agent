@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { getConfig } from '@/api/config'
 import { installMcp, deleteMcp } from '@/api/mcp'
-import type { InstallMcpPayload } from '@/api/mcp'
+import type { InstallMcpRequest } from '@/types'
 import { Plug, Plus, Trash2 } from 'lucide-react'
 
 interface McpServer {
@@ -48,7 +48,7 @@ export default function McpPage() {
     setInstalling(true)
     setInstallMsg('')
     try {
-      const payload: InstallMcpPayload = {
+      const payload: InstallMcpRequest = {
         name: form.name.trim(),
         install_type: installType,
       }

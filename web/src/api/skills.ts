@@ -1,13 +1,8 @@
+import type { SkillInfo } from '@/types'
 import client from './client'
 
-export interface Skill {
-  name: string
-  description: string
-  available: boolean
-}
-
-export async function listSkills(): Promise<Skill[]> {
-  const res = await client.get<Skill[]>('/api/skills')
+export async function listSkills(): Promise<SkillInfo[]> {
+  const res = await client.get<SkillInfo[]>('/api/skills')
   return res.data
 }
 

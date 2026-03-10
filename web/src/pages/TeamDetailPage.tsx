@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { getTeamStatus, getMessages, sendMessage, runTeam, stopTeam, updateTeam } from '@/api/teams'
-import type { TeamDetail, TeamMessage } from '@/types/team'
+import type { TeamStatus, TeamMessage } from '@/types'
 import { ArrowLeft, Send, Play, Square, Settings } from 'lucide-react'
 import PixelOffice from '@/components/office/PixelOffice'
 import AgentInfoCard from '@/components/office/AgentInfoCard'
@@ -10,7 +10,7 @@ import TeamSettings from '@/components/team/TeamSettings'
 export default function TeamDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const [team, setTeam] = useState<TeamDetail | null>(null)
+  const [team, setTeam] = useState<TeamStatus | null>(null)
   const [messages, setMessages] = useState<TeamMessage[]>([])
   const [loading, setLoading] = useState(true)
   const [msgInput, setMsgInput] = useState('')

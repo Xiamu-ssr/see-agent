@@ -1,11 +1,5 @@
+import type { LogEntry } from '@/types'
 import client from './client'
-
-export interface LogEntry {
-  time: string
-  level: string
-  logger: string
-  message: string
-}
 
 export interface LogParams {
   date?: string

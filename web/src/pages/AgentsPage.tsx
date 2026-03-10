@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { usePolling } from '@/hooks/usePolling'
 import { listAgents, createAgent } from '@/api/agents'
-import type { Agent, CreateAgentPayload } from '@/types/agent'
+import type { AgentSummary, CreateAgentRequest } from '@/types'
 import { Plus, Bot } from 'lucide-react'
 
 const statusColors: Record<string, string> = {
@@ -13,9 +13,9 @@ const statusColors: Record<string, string> = {
 export default function AgentsPage() {
   const navigate = useNavigate()
   const fetchAgents = useCallback(() => listAgents(), [])
-  const { data: agents, loading, refresh } = usePolling<Agent[]>(fetchAgents, 10000)
+  const { data: agents, loading, refresh } = usePolling<AgentSummary[]>(fetchAgents, 10000)
   const [showCreate, setShowCreate] = useState(false)
-  const [form, setForm] = useState<CreateAgentPayload>({ id: '', name: '', role: 'general assistant' })
+  const [form, setForm] = useState<CreateAgentRequest>({ id: '', name: '', role: 'general assistant' })
 
   const handleCreate = async () => {
     if (!form.id || !form.name) return

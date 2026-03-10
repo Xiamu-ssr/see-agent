@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { usePolling } from '@/hooks/usePolling'
 import { listTeams, createTeam } from '@/api/teams'
-import type { Team, CreateTeamPayload } from '@/types/team'
+import type { TeamSummary, CreateTeamRequest } from '@/types'
 import { Plus, Users } from 'lucide-react'
 
 const statusColors: Record<string, string> = {
@@ -13,7 +13,7 @@ const statusColors: Record<string, string> = {
   stopped: 'var(--warn)',
 }
 
-function TeamCard({ team, onClick }: { team: Team; onClick: () => void }) {
+function TeamCard({ team, onClick }: { team: TeamSummary; onClick: () => void }) {
   return (
     <button
       onClick={onClick}
@@ -49,9 +49,9 @@ function TeamCard({ team, onClick }: { team: Team; onClick: () => void }) {
 export default function TeamsPage() {
   const navigate = useNavigate()
   const fetchTeams = useCallback(() => listTeams(), [])
-  const { data: teams, loading, refresh } = usePolling<Team[]>(fetchTeams, 10000)
+  const { data: teams, loading, refresh } = usePolling<TeamSummary[]>(fetchTeams, 10000)
   const [showCreate, setShowCreate] = useState(false)
-  const [form, setForm] = useState<CreateTeamPayload>({ name: '', members: [] })
+  const [form, setForm] = useState<CreateTeamRequest>({ name: '', members: [] })
   const [memberInput, setMemberInput] = useState('')
 
   const handleCreate = async () => {

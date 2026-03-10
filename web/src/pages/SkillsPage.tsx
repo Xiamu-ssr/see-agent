@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react'
 import { listSkills, installSkill } from '@/api/skills'
-import type { Skill } from '@/api/skills'
+import type { SkillInfo } from '@/types'
 import { Sparkles, Check, X, Plus, Download, FolderOpen } from 'lucide-react'
 
 export default function SkillsPage() {
-  const [skills, setSkills] = useState<Skill[]>([])
+  const [skills, setSkills] = useState<SkillInfo[]>([])
   const [loading, setLoading] = useState(true)
   const [showInstall, setShowInstall] = useState(false)
   const [installMode, setInstallMode] = useState<'clawhub' | 'manual'>('clawhub')
