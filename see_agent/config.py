@@ -50,7 +50,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "mcp_servers": {},
 }
 
-WORKSPACE_DIR = Path.home() / ".see-agent"
+WORKSPACE_DIR = Path(os.environ.get("SEE_AGENT_HOME", "~/.see-agent")).expanduser()
 CONFIG_PATH = WORKSPACE_DIR / "config.json"
 SESSIONS_DIR = WORKSPACE_DIR / "sessions"  # Used by quick mode as fallback
 LOGS_DIR = WORKSPACE_DIR / "logs"

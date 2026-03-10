@@ -43,7 +43,7 @@ class UpdateAgentRequest(BaseModel):
 # -------------------------------------------------------------------- #
 
 
-@router.get("/")
+@router.get("")
 async def list_agents(request: Request) -> list[dict[str, Any]]:
     """List all agents (global + team-scoped) with status."""
     from see_agent.agent.definition import AgentDefinition
@@ -112,7 +112,7 @@ async def get_agent(agent_id: str) -> dict[str, Any]:
     }
 
 
-@router.post("/")
+@router.post("")
 async def create_agent(body: CreateAgentRequest) -> dict[str, Any]:
     """Create a new agent definition."""
     from see_agent.agent.definition import AgentDefinition

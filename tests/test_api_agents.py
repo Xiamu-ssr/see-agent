@@ -78,7 +78,7 @@ class TestAgentAPI:
 class TestListAgents:
 
     def test_list_empty(self, client):
-        resp = client.get("/api/agents/")
+        resp = client.get("/api/agents")
         assert resp.status_code == 200
         assert resp.json() == []
 
@@ -86,7 +86,7 @@ class TestListAgents:
         from see_agent.agent.definition import AgentDefinition
 
         AgentDefinition.create("a1", name="Agent1", role="coder")
-        resp = client.get("/api/agents/")
+        resp = client.get("/api/agents")
         assert resp.status_code == 200
         data = resp.json()
         assert len(data) == 1
@@ -108,7 +108,7 @@ class TestListAgents:
         team_agents.mkdir()
         AgentDefinition(id="t1", name="TeamAgent").save_to(team_agents)
 
-        resp = client.get("/api/agents/")
+        resp = client.get("/api/agents")
         data = resp.json()
         team_entries = [e for e in data if e["team_id"] is not None]
         assert len(team_entries) == 1
@@ -149,7 +149,7 @@ class TestCreateAgent:
 
     def test_create(self, client, workspace):
         resp = client.post(
-            "/api/agents/",
+            "/api/agents",
             json={"id": "new1", "name": "New Agent", "role": "tester"},
         )
         assert resp.status_code == 200
@@ -164,7 +164,7 @@ class TestCreateAgent:
         from see_agent.agent.definition import AgentDefinition
 
         resp = client.post(
-            "/api/agents/",
+            "/api/agents",
             json={
                 "id": "cfg1",
                 "name": "Configured",
@@ -179,11 +179,11 @@ class TestCreateAgent:
 
     def test_create_duplicate(self, client, workspace):
         client.post(
-            "/api/agents/",
+            "/api/agents",
             json={"id": "dup", "name": "Dup"},
         )
         resp = client.post(
-            "/api/agents/",
+            "/api/agents",
             json={"id": "dup", "name": "Dup Again"},
         )
         assert resp.status_code == 409

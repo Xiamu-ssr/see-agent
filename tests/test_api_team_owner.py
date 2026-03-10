@@ -35,7 +35,7 @@ def client(workspace):
 
 def _create_team(client: TestClient) -> str:
     resp = client.post(
-        "/api/teams/",
+        "/api/teams",
         json={"name": "T", "members": ["alice"], "leader": "alice"},
     )
     return resp.json()["id"]

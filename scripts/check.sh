@@ -39,8 +39,15 @@ run_step "ruff lint" .venv/bin/ruff check see_agent/ tests/
 # ── 3. 单元测试（抓逻辑问题）──
 run_step "pytest 单元测试" .venv/bin/pytest tests/ -v
 
-# ── 4. 端到端冒烟测试（抓组装问题）──
+# ── 4. CLI 冒烟测试（抓组装问题）──
+run_step "CLI version" .venv/bin/see-agent version
 run_step "CLI config show" .venv/bin/see-agent config show
+
+# ── 5. 前端类型检查 ──
+run_step "tsc 前端类型检查" bash -c "cd web && npx tsc --noEmit"
+
+# ── 6. 前端构建 ──
+run_step "vite 前端构建" npm --prefix web run build
 
 # ── 汇总 ──
 echo ""

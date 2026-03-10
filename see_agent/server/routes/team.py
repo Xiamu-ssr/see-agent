@@ -50,7 +50,7 @@ class OwnerMessageRequest(BaseModel):
 # -------------------------------------------------------------------- #
 
 
-@router.post("/")
+@router.post("")
 async def create_team(body: CreateTeamRequest) -> dict[str, Any]:
     """Create a new team."""
     from see_agent.team.definition import TeamDefinition
@@ -61,7 +61,7 @@ async def create_team(body: CreateTeamRequest) -> dict[str, Any]:
     return {"id": team.id, "name": team.name, "status": team.status}
 
 
-@router.get("/")
+@router.get("")
 async def list_teams() -> list[dict[str, Any]]:
     """List all teams."""
     from see_agent.team.definition import TeamDefinition
