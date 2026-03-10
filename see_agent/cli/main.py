@@ -13,6 +13,7 @@ v3.1 commands (launchd-based):
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -128,8 +129,12 @@ def install(
     dev: bool = typer.Option(
         False, "--dev", help="Install dev deps.",
     ),
+    skip_frontend: bool = typer.Option(
+        False, "--skip-frontend",
+        help="Skip frontend build (CI or backend-only).",
+    ),
 ) -> None:
-    """Install see-agent dependencies."""
+    """Install see-agent dependencies (Python + frontend)."""
     extras: list[str] = []
     if full or not any([memory, mcp, dev]):
         extras.append("all")
@@ -145,7 +150,50 @@ def install(
 
     typer.echo(f"Running: {' '.join(cmd)}")
     result = subprocess.run(cmd, check=False)
-    raise typer.Exit(code=result.returncode)
+    if result.returncode != 0:
+        raise typer.Exit(code=result.returncode)
+
+    # Frontend build
+    if skip_frontend:
+        typer.echo("Skipping frontend build (--skip-frontend)")
+        raise typer.Exit(code=0)
+
+    _build_frontend()
+    raise typer.Exit(code=0)
+
+
+def _build_frontend() -> None:
+    """Run npm install + npm run build if web/package.json exists."""
+    # Locate web/ relative to the package root (two levels up from this file)
+    pkg_root = Path(__file__).resolve().parent.parent.parent
+    web_dir = pkg_root / "web"
+    if not (web_dir / "package.json").exists():
+        typer.echo("No web/package.json found, skipping frontend build")
+        return
+
+    npm = shutil.which("npm")
+    if npm is None:
+        typer.echo(
+            "Error: npm not found. "
+            "Please install Node.js (https://nodejs.org/) "
+            "and ensure npm is in your PATH.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    typer.echo("Installing frontend dependencies...")
+    r1 = subprocess.run([npm, "install"], cwd=web_dir, check=False)
+    if r1.returncode != 0:
+        typer.echo("Error: npm install failed", err=True)
+        raise typer.Exit(code=r1.returncode)
+
+    typer.echo("Building frontend...")
+    r2 = subprocess.run([npm, "run", "build"], cwd=web_dir, check=False)
+    if r2.returncode != 0:
+        typer.echo("Error: npm run build failed", err=True)
+        raise typer.Exit(code=r2.returncode)
+
+    typer.echo("Frontend build complete")
 
 
 @app.command()

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from unittest.mock import patch
 
 from typer.testing import CliRunner
@@ -130,6 +131,100 @@ class TestStopCommand:
             assert "stopped" in result.output
         finally:
             cleanup()
+
+
+# -------------------------------------------------------------------- #
+# Start command (foreground not tested — would block)
+# -------------------------------------------------------------------- #
+
+
+# -------------------------------------------------------------------- #
+# Install command
+# -------------------------------------------------------------------- #
+
+
+class TestInstallCommand:
+    """Tests for the install command."""
+
+    def test_install_skip_frontend(self):
+        """--skip-frontend skips npm steps."""
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value.returncode = 0
+            result = runner.invoke(app, ["install", "--skip-frontend"])
+        assert result.exit_code == 0
+        assert "Skipping frontend build" in result.output
+        assert mock_run.call_count == 1
+
+    def test_install_calls_build_frontend(self):
+        """install calls _build_frontend after pip succeeds."""
+        with (
+            patch("subprocess.run") as mock_run,
+            patch(
+                "see_agent.cli.main._build_frontend",
+            ) as mock_build,
+        ):
+            mock_run.return_value.returncode = 0
+            result = runner.invoke(app, ["install"])
+        assert result.exit_code == 0
+        mock_build.assert_called_once()
+
+    def test_install_pip_failure_skips_frontend(self):
+        """install exits early when pip fails."""
+        with (
+            patch("subprocess.run") as mock_run,
+            patch(
+                "see_agent.cli.main._build_frontend",
+            ) as mock_build,
+        ):
+            mock_run.return_value.returncode = 1
+            result = runner.invoke(app, ["install"])
+        assert result.exit_code == 1
+        mock_build.assert_not_called()
+
+
+class TestBuildFrontend:
+    """Tests for _build_frontend helper."""
+
+    def test_npm_not_in_path(self):
+        """Shows clear error when npm is not found."""
+        with (
+            patch("subprocess.run") as mock_run,
+            patch(
+                "see_agent.cli.main.shutil.which", return_value=None,
+            ),
+            patch.object(Path, "exists", return_value=True),
+        ):
+            mock_run.return_value.returncode = 0
+            result = runner.invoke(app, ["install"])
+        assert result.exit_code == 1
+        assert "npm not found" in result.output
+        assert "Node.js" in result.output
+
+    def test_npm_install_failure(self):
+        """Exits when npm install fails."""
+        call_count = 0
+
+        def mock_run_side_effect(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            mock = type("R", (), {"returncode": 0})()
+            if call_count == 2:  # npm install
+                mock.returncode = 1
+            return mock
+
+        with (
+            patch(
+                "subprocess.run", side_effect=mock_run_side_effect,
+            ),
+            patch(
+                "see_agent.cli.main.shutil.which",
+                return_value="/usr/local/bin/npm",
+            ),
+            patch.object(Path, "exists", return_value=True),
+        ):
+            result = runner.invoke(app, ["install"])
+        assert result.exit_code == 1
+        assert "npm install failed" in result.output
 
 
 # -------------------------------------------------------------------- #
