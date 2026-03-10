@@ -20,13 +20,14 @@ if TYPE_CHECKING:
 
 
 def create_registry(
-    eye: BaseEye,
+    eye: BaseEye | None = None,
     scale_fn: Callable[[Screenshot], Screenshot] | None = None,
 ) -> ToolRegistry:
     """Create a ToolRegistry with all tools registered.
 
     Parameters:
-        eye: Screen-capture backend for the ScreenshotTool.
+        eye: Screen-capture backend for the ScreenshotTool.  When *None*,
+             the screenshot tool is omitted (useful for listing tools).
         scale_fn: Optional function to resize screenshots for the LLM.
     """
     registry = ToolRegistry()
@@ -37,7 +38,8 @@ def create_registry(
     registry.register(DragTool())
     registry.register(ShellTool())
     registry.register(WaitTool())
-    registry.register(ScreenshotTool(eye=eye, scale_fn=scale_fn))
+    if eye is not None:
+        registry.register(ScreenshotTool(eye=eye, scale_fn=scale_fn))
     registry.register(FinishedTool())
     registry.register(CallUserTool())
     return registry

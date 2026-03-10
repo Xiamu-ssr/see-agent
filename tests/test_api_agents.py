@@ -160,6 +160,23 @@ class TestCreateAgent:
         agents_dir = workspace / "agents"
         assert (agents_dir / "new1" / "agent.json").exists()
 
+    def test_create_with_config(self, client, workspace):
+        from see_agent.agent.definition import AgentDefinition
+
+        resp = client.post(
+            "/api/agents/",
+            json={
+                "id": "cfg1",
+                "name": "Configured",
+                "config_overrides": {"max_steps": 100},
+                "tools_config": {"denied": ["shell"]},
+            },
+        )
+        assert resp.status_code == 200
+        loaded = AgentDefinition.load("cfg1")
+        assert loaded.config_overrides == {"max_steps": 100}
+        assert loaded.tools_config == {"denied": ["shell"]}
+
     def test_create_duplicate(self, client, workspace):
         client.post(
             "/api/agents/",

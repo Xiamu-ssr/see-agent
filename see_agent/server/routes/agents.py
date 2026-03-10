@@ -23,6 +23,10 @@ class CreateAgentRequest(BaseModel):
     name: str
     role: str = "general assistant"
     soul: str | None = None
+    config_overrides: dict[str, Any] | None = None
+    tools_config: dict[str, Any] | None = None
+    skills_config: dict[str, Any] | None = None
+    mcp_config: dict[str, Any] | None = None
 
 
 class UpdateAgentRequest(BaseModel):
@@ -118,7 +122,17 @@ async def create_agent(body: CreateAgentRequest) -> dict[str, Any]:
     if agent_json.exists():
         raise HTTPException(status_code=409, detail="Agent already exists")
 
-    defn = AgentDefinition.create(body.id, name=body.name, role=body.role)
+    kwargs: dict[str, Any] = {"name": body.name, "role": body.role}
+    if body.config_overrides is not None:
+        kwargs["config_overrides"] = body.config_overrides
+    if body.tools_config is not None:
+        kwargs["tools_config"] = body.tools_config
+    if body.skills_config is not None:
+        kwargs["skills_config"] = body.skills_config
+    if body.mcp_config is not None:
+        kwargs["mcp_config"] = body.mcp_config
+
+    defn = AgentDefinition.create(body.id, **kwargs)
 
     if body.soul:
         soul_path = AGENTS_DIR / body.id / "SOUL.md"
