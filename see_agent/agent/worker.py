@@ -46,7 +46,7 @@ async def _run_worker(
         RemoteScrollTool,
         RemoteTypeTextTool,
     )
-    from see_agent.memory.file_backend import FileMemory
+    from see_agent.memory import MarkdownMemoryBackend
 
     setup_logging()
 
@@ -136,9 +136,14 @@ async def _run_worker(
             registry._tools.pop(name, None)
             registry._sources.pop(name, None)
 
-        # Memory.
+        # Memory tools.
         memory_dir = config.get("_memory_dir")
-        memory = FileMemory(memory_dir=Path(memory_dir)) if memory_dir else None
+        if memory_dir:
+            from see_agent.hand.tools.memory import MemorySearchTool, WriteMemoryTool
+
+            mem_backend = MarkdownMemoryBackend(memory_dir=Path(memory_dir))
+            registry.register(MemorySearchTool(mem_backend), source="memory")
+            registry.register(WriteMemoryTool(mem_backend), source="memory")
 
         # Session root.
         session_root = Path(config["_session_root"])
@@ -161,7 +166,6 @@ async def _run_worker(
             agent_id=agent_id,
             session_root=session_root,
             team_bus=remote_bus,
-            memory=memory,
             owner_display=config.get("_owner_display"),
             task_board=remote_board,
         )

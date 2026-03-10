@@ -27,14 +27,9 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "skills_dirs": ["~/.see-agent/skills"],
     "context_engine": "default",
     "memory": {
-        "enabled": False,
-        "provider": "file",
-        "mem0": {
-            "llm_base_url": "",
-            "llm_api_key": "",
-            "llm_model": "",
-            "embedding_model": "",
-            "storage_path": "",
+        "enabled": True,
+        "search": {
+            "mode": "bm25",
         },
     },
     "compact": {

@@ -99,7 +99,6 @@ class AgentLoop:
         config: Application configuration dict (see ``src/config.py``).
         on_step: Optional async callback fired after each tool-execution step.
         on_user_input: Optional async callback for ``call_user`` interactions.
-        memory: Optional memory backend for cross-session knowledge.
         mcp_manager: Optional MCP manager for external tool servers.
     """
 
@@ -111,7 +110,6 @@ class AgentLoop:
         config: dict[str, Any],
         on_step: StepCallback | None = None,
         on_user_input: UserInputCallback | None = None,
-        memory: Any | None = None,
         mcp_manager: Any | None = None,
         user_queue: asyncio.Queue[str] | None = None,
         agent_id: str | None = None,
@@ -126,7 +124,6 @@ class AgentLoop:
         self._config = config
         self._on_step = on_step
         self._on_user_input = on_user_input
-        self._memory = memory
         self._mcp_manager = mcp_manager
         self._mcp_connected = False
         self._user_queue = user_queue
@@ -160,8 +157,6 @@ class AgentLoop:
             status="failed", total_steps=steps,
             elapsed_seconds=round(elapsed, 1), summary=summary,
         )
-        if ctx is not None:
-            self._save_memory(ctx, session.id)
         return RunResult(
             summary=summary,
             task_dir=str(session.dir),
@@ -311,18 +306,6 @@ class AgentLoop:
         except Exception:
             logger.warning("Auto-complete tasks failed", exc_info=True)
 
-    def _save_memory(self, ctx: ConversationContext, session_id: str) -> None:
-        """Persist conversation to memory backend (if configured)."""
-        if self._memory is None:
-            return
-        try:
-            messages = _strip_base64(ctx.get_messages())
-            self._memory.add(
-                messages, session_id, agent_id=self._agent_id,
-            )
-        except Exception:
-            logger.warning("Memory save failed", exc_info=True)
-
     # ------------------------------------------------------------------ #
     # Public entry point
     # ------------------------------------------------------------------ #
@@ -413,22 +396,9 @@ class AgentLoop:
         if skills:
             skills = gate_skills(skills)
 
-        # Load memory (if available)
-        memory_block = ""
-        if self._memory is not None:
-            try:
-                memories = self._memory.search(
-                    task, limit=5, agent_id=self._agent_id,
-                )
-                if memories:
-                    memory_block = "\n".join(f"- {m}" for m in memories)
-            except Exception:
-                logger.warning("Memory search failed", exc_info=True)
-
         system_prompt = build_system_prompt(
             self._config,
             skills=skills or None,
-            memory_block=memory_block,
             team_context=self._config.get("_team_context", ""),
         )
         session.log_system_prompt(system_prompt)
@@ -476,8 +446,6 @@ class AgentLoop:
                 session, ctx, scaled, step_offset, t0,
             )
         except Exception:
-            # Save memory on unexpected crashes so partial work is preserved.
-            self._save_memory(ctx, session.id)
             raise
         finally:
             session.teardown_logging()
@@ -551,7 +519,7 @@ class AgentLoop:
                     status="completed", total_steps=final_step,
                     elapsed_seconds=round(elapsed, 1), summary=summary,
                 )
-                self._save_memory(ctx, session.id)
+
                 return RunResult(
                     summary=summary,
                     task_dir=str(session.dir),
@@ -580,7 +548,7 @@ class AgentLoop:
                         status="completed", total_steps=final_step,
                         elapsed_seconds=round(elapsed, 1), summary=summary,
                     )
-                    self._save_memory(ctx, session.id)
+
                     return RunResult(
                         summary=summary,
                         task_dir=str(session.dir),
@@ -802,44 +770,6 @@ def _screenshot_hash(b64: str) -> str:
     """
     return str(hash(b64[:1000]))
 
-
-def _strip_base64(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Return a copy of *messages* with base64 image data removed.
-
-    Used before persisting to memory to avoid storing large blobs.
-    """
-    import copy
-    import re
-
-    stripped: list[dict[str, Any]] = []
-    data_uri_re = re.compile(r"data:[^;]+;base64,[A-Za-z0-9+/=]+")
-
-    for msg in messages:
-        msg = copy.deepcopy(msg)
-        content = msg.get("content")
-        if isinstance(content, list):
-            new_parts = []
-            for part in content:
-                if isinstance(part, dict) and part.get("type") == "image_url":
-                    new_parts.append({"type": "text", "text": "[image]"})
-                else:
-                    new_parts.append(part)
-            # Flatten to plain string if all parts are text — mem0's
-            # parse_vision_messages treats any list content as potentially
-            # containing images and crashes when llm is None.
-            if all(
-                isinstance(p, dict) and p.get("type") == "text"
-                for p in new_parts
-            ):
-                msg["content"] = " ".join(
-                    p.get("text", "") for p in new_parts if isinstance(p, dict)
-                )
-            else:
-                msg["content"] = new_parts
-        elif isinstance(content, str):
-            msg["content"] = data_uri_re.sub("[image]", content)
-        stripped.append(msg)
-    return stripped
 
 
 def _action_key(tool_name: str, args: dict[str, Any]) -> str:

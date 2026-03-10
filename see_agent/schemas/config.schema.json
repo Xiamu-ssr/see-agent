@@ -24,16 +24,11 @@
     "memory": {
       "type": "object",
       "properties": {
-        "enabled": { "type": "boolean", "default": false },
-        "provider": { "type": "string", "default": "file", "enum": ["file", "mem0"] },
-        "mem0": {
+        "enabled": { "type": "boolean", "default": true },
+        "search": {
           "type": "object",
           "properties": {
-            "llm_base_url": { "type": "string" },
-            "llm_api_key": { "type": "string" },
-            "llm_model": { "type": "string" },
-            "embedding_model": { "type": "string" },
-            "storage_path": { "type": "string" }
+            "mode": { "type": "string", "enum": ["bm25"], "default": "bm25" }
           }
         }
       }

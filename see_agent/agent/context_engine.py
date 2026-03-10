@@ -23,7 +23,6 @@ class BaseContextEngine(ABC):
         config: dict[str, Any],
         *,
         skills: list[SkillInfo] | None = None,
-        memory_block: str = "",
         team_context: str = "",
     ) -> str:
         """Build a full system prompt from *config* and optional sections."""
@@ -43,7 +42,6 @@ class LegacyContextEngine(BaseContextEngine):
         config: dict[str, Any],
         *,
         skills: list[SkillInfo] | None = None,
-        memory_block: str = "",
         team_context: str = "",
     ) -> str:
         from see_agent.brain.prompts import build_system_prompt
@@ -51,6 +49,5 @@ class LegacyContextEngine(BaseContextEngine):
         return build_system_prompt(
             config,
             skills=skills,
-            memory_block=memory_block,
             team_context=team_context,
         )

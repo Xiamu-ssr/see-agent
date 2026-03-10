@@ -13,12 +13,12 @@ class TestLegacyContextEngine:
         assert "AI assistant" in prompt
         assert "10 steps" in prompt
 
-    def test_memory_block_injected(self):
+    def test_memory_rule_in_prompt(self):
         engine = LegacyContextEngine()
         config = {"language": "en", "max_steps": 10}
-        prompt = engine.build_prompt(config, memory_block="User likes cats")
-        assert "<MEMORY>" in prompt
-        assert "User likes cats" in prompt
+        prompt = engine.build_prompt(config)
+        assert "memory_search" in prompt
+        assert "memory_write" in prompt
 
     def test_team_context_injected(self):
         engine = LegacyContextEngine()

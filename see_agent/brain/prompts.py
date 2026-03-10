@@ -17,7 +17,6 @@ def build_system_prompt(
     config: dict,
     *,
     skills: list[SkillInfo] | None = None,
-    memory_block: str = "",
     team_context: str = "",
 ) -> str:
     """Build the full system prompt from *config*.
@@ -29,7 +28,6 @@ def build_system_prompt(
             - ``max_steps`` (int, default 50)
             - ``soul_path`` (str | None, optional path to personality file)
         skills: Optional list of loaded skill definitions to inject.
-        memory_block: Optional pre-formatted memory text to inject.
         team_context: Optional team context block for multi-agent collaboration.
 
     Returns:
@@ -84,6 +82,8 @@ def build_system_prompt(
             "它包含了对话早期的压缩摘要，请将其视为可靠上下文。\n"
             "14. 以 [用户插入消息] 为前缀的是用户在你操作期间发送的实时消息。"
             "优先响应——如果要求改变方向则调整，如果是补充信息则纳入当前任务。\n"
+            "15. 你有 memory_search 和 memory_write 工具。"
+            "开始任务时先搜索相关记忆；任务完成时将重要发现写入记忆。\n"
             "</RULES>"
         )
     else:
@@ -122,6 +122,8 @@ def build_system_prompt(
             "Treat it as reliable context.\n"
             "14. Messages prefixed [User injected message] are real-time user messages. "
             "Prioritize them and adjust your plan accordingly.\n"
+            "15. You have memory_search and memory_write tools. "
+            "Search memory at the start of a task; write important findings to memory when done.\n"
             "</RULES>"
         )
 
@@ -156,9 +158,14 @@ def build_system_prompt(
                 + "\n</SKILLS>"
             )
 
-    # ── Memory (optional) ─────────────────────────────────────────────
-    if memory_block:
-        parts.append(f"<MEMORY>\n{memory_block}\n</MEMORY>")
+    # ── AGENTS.md injection (optional) ────────────────────────────────
+    agent_dir_str: str | None = config.get("_agent_dir")
+    if agent_dir_str:
+        agents_md = Path(agent_dir_str) / "AGENTS.md"
+        if agents_md.exists():
+            content = agents_md.read_text(encoding="utf-8").strip()
+            if content:
+                parts.append(f"<AGENTS_MD>\n{content}\n</AGENTS_MD>")
 
     # ── Team context (optional, for multi-agent collaboration) ────────
     if team_context:
