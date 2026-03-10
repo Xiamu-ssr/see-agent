@@ -664,6 +664,13 @@ export interface components {
                 [key: string]: unknown;
             };
             /**
+             * Sandbox
+             * @default {}
+             */
+            sandbox: {
+                [key: string]: unknown;
+            };
+            /**
              * Has Soul
              * @default false
              */
@@ -751,6 +758,10 @@ export interface components {
             } | null;
             /** Mcp Config */
             mcp_config?: {
+                [key: string]: unknown;
+            } | null;
+            /** Sandbox */
+            sandbox?: {
                 [key: string]: unknown;
             } | null;
         };
@@ -1057,6 +1068,10 @@ export interface components {
             } | null;
             /** Mcp Config */
             mcp_config?: {
+                [key: string]: unknown;
+            } | null;
+            /** Sandbox */
+            sandbox?: {
                 [key: string]: unknown;
             } | null;
         };

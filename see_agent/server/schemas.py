@@ -25,6 +25,7 @@ class AgentDetail(AgentSummary):
     tools_config: dict[str, Any] = {}
     skills_config: dict[str, Any] = {}
     mcp_config: dict[str, Any] = {}
+    sandbox: dict[str, Any] = {}
     has_soul: bool = False
     location: str = ""
 
@@ -162,3 +163,27 @@ class McpInstallResponse(BaseModel):
     status: str
     name: str
     config: dict[str, Any]
+
+
+# -------------------------------------------------------------------- #
+# v3.1 — Sandbox / Screen lease
+# -------------------------------------------------------------------- #
+
+
+class SandboxViolation(BaseModel):
+    timestamp: str
+    operation: str
+    path: str
+
+
+class SandboxAllowResponse(BaseModel):
+    status: str
+    path: str
+    mode: str  # "read" | "write"
+
+
+class ScreenLeaseStatus(BaseModel):
+    holder: str | None = None
+    started_at: str | None = None
+    idle_seconds: int = 0
+    queue_length: int = 0

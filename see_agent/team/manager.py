@@ -1,19 +1,26 @@
-"""TeamManager — orchestrates multi-agent team execution."""
+"""TeamManager — orchestrates multi-agent team execution.
+
+v3.1: Each agent runs in an independent subprocess communicating with
+the main process via Unix Domain Socket (UDS).  The main process runs
+an AgentRouter that manages the TeamBus, TaskBoard, and ScreenManager.
+"""
 
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
+import subprocess
+import sys
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from see_agent.agent.definition import AgentDefinition
-from see_agent.agent.loop import AgentLoop, RunResult
+from see_agent.agent.loop import RunResult
 from see_agent.config import TEAMS_DIR
-from see_agent.hand.tool import ToolRegistry
-from see_agent.team.bus import TeamBus
+from see_agent.ipc.router import AgentRouter
 from see_agent.team.definition import TeamDefinition
-from see_agent.team.task_board import TaskBoard
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +37,10 @@ class TeamRunResult:
 
 class TeamManager:
     """Orchestrate a team of agents working on a shared task.
+
+    v3.1 architecture: agents run as independent subprocesses connected
+    to an AgentRouter via UDS.  The main process manages shared state
+    (bus, board, screen) and delegates execution to worker processes.
 
     Parameters:
         team_def: The team definition.
@@ -49,12 +60,9 @@ class TeamManager:
         # Create team-level subdirectories.
         (self._team_dir / "shared").mkdir(exist_ok=True)
 
-        self._bus = TeamBus(self._team_dir)
-        self._board = TaskBoard(self._team_dir)
-        self._screen_lock = asyncio.Lock()
+        self._router: AgentRouter | None = None
+        self._processes: dict[str, subprocess.Popen[bytes]] = {}
         self._stopped = False
-        # Shared MacEye — only one screen, no need for multiple instances.
-        self._shared_eye: Any | None = None
 
     # ------------------------------------------------------------------ #
     # Public API
@@ -63,113 +71,219 @@ class TeamManager:
     async def run(self, task: str) -> TeamRunResult:
         """Execute *task* with the team.
 
-        If the team has a leader, the leader runs first to decompose and
-        assign sub-tasks.  Workers then run concurrently.  Each agent's
-        session is scoped under the team directory.
+        1. Start AgentRouter (UDS server with bus, board, screen).
+        2. Spawn agent subprocesses.
+        3. Wait for completion and collect results.
+        4. Clean up.
         """
         self._team_def.status = "running"
         self._team_def.save()
 
-        # Create initial task on the board.
-        self._board.create_task(
-            title=task, description=task, created_by="system",
-        )
+        # 1. Start AgentRouter.
+        router = AgentRouter(self._team_def.id)
+        self._router = router
 
         # Register owner on bus if configured.
         if self._team_def.owner:
-            self._bus.register("owner")
+            router.register_agent("owner")
 
-        # Collect environment info once and share across all agents.
-        await self._cache_environment()
-
-        # Build agent loops.
-        loops: dict[str, AgentLoop] = {}
+        # Register all agents on the bus.
         for agent_id in self._team_def.members:
-            self._bus.register(agent_id)
-            loops[agent_id] = self._build_agent_loop(agent_id)
+            router.register_agent(agent_id)
 
-        results: dict[str, RunResult] = {}
-
-        async def _run_agent(aid: str, loop: AgentLoop) -> None:
-            try:
-                agent_task = self._build_agent_task(aid, task)
-                results[aid] = await loop.run(agent_task)
-            except Exception:
-                logger.exception("Agent %s failed", aid)
-                results[aid] = RunResult(
-                    summary=f"Agent {aid} crashed",
-                    task_dir="",
-                    total_steps=0,
-                    elapsed_seconds=0,
-                    success=False,
-                )
-
-        leader_id = self._team_def.leader
-
-        # Phase 1: Run leader first (if any) so it can decompose tasks.
-        if leader_id and leader_id in loops:
-            await _run_agent(leader_id, loops[leader_id])
-
-        # Phase 2: Run workers concurrently.
-        worker_coros = [
-            asyncio.create_task(_run_agent(aid, loop))
-            for aid, loop in loops.items()
-            if aid != leader_id
-        ]
-        if worker_coros:
-            await asyncio.gather(*worker_coros, return_exceptions=True)
-
-        # Determine overall success.
-        success = all(r.success for r in results.values())
-        self._team_def.status = "completed" if success else "failed"
-        self._team_def.save()
-
-        summaries = [
-            f"{aid}: {r.summary}" for aid, r in results.items()
-        ]
-        return TeamRunResult(
-            team_id=self._team_def.id,
-            agent_results=results,
-            success=success,
-            summary="\n".join(summaries),
+        # Create initial task on the board.
+        router.board.create_task(
+            title=task, description=task, created_by="system",
         )
 
+        await router.start()
+
+        try:
+            # Collect environment info once.
+            await self._cache_environment()
+
+            leader_id = self._team_def.leader
+            results: dict[str, RunResult] = {}
+
+            # Phase 1: Run leader first (if any) to decompose tasks.
+            if leader_id and leader_id in self._team_def.members:
+                result = await self._run_agent_subprocess(
+                    leader_id, task, router.sock_path,
+                )
+                results[leader_id] = result
+
+            # Phase 2: Run workers concurrently.
+            worker_ids = [
+                aid for aid in self._team_def.members
+                if aid != leader_id
+            ]
+            if worker_ids:
+                worker_tasks = [
+                    self._run_agent_subprocess(
+                        aid, task, router.sock_path,
+                    )
+                    for aid in worker_ids
+                ]
+                worker_results = await asyncio.gather(
+                    *worker_tasks, return_exceptions=True,
+                )
+                for aid, res in zip(worker_ids, worker_results):
+                    if isinstance(res, BaseException):
+                        logger.exception("Agent %s failed", aid)
+                        results[aid] = RunResult(
+                            summary=f"Agent {aid} crashed: {res}",
+                            task_dir="",
+                            total_steps=0,
+                            elapsed_seconds=0,
+                            success=False,
+                        )
+                    else:
+                        results[aid] = res
+
+            # Determine overall success.
+            success = all(r.success for r in results.values())
+            self._team_def.status = "completed" if success else "failed"
+            self._team_def.save()
+
+            summaries = [
+                f"{aid}: {r.summary}" for aid, r in results.items()
+            ]
+            return TeamRunResult(
+                team_id=self._team_def.id,
+                agent_results=results,
+                success=success,
+                summary="\n".join(summaries),
+            )
+
+        finally:
+            await router.stop()
+            self._router = None
+
     async def stop(self) -> None:
-        """Signal all agents to stop."""
+        """Stop all agent subprocesses and the router."""
         self._stopped = True
+        for agent_id, proc in self._processes.items():
+            logger.info("Terminating agent %s (pid %d)", agent_id, proc.pid)
+            proc.terminate()
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+        self._processes.clear()
+
+        if self._router is not None:
+            await self._router.stop()
+            self._router = None
+
         self._team_def.status = "stopped"
         self._team_def.save()
 
     # ------------------------------------------------------------------ #
-    # Internal builders
+    # Internal — subprocess management
     # ------------------------------------------------------------------ #
 
-    async def _cache_environment(self) -> None:
-        """Collect desktop environment info once and store in global config."""
+    async def _run_agent_subprocess(
+        self, agent_id: str, task: str, sock_path: Path,
+    ) -> RunResult:
+        """Spawn and wait for an agent subprocess."""
+        config = self._build_agent_config(agent_id)
+
+        # Write config to temp file.
+        agent_base = self._team_dir / "agents" / agent_id
+        for subdir in ("sessions", "workspace", "memory", "logs"):
+            (agent_base / subdir).mkdir(parents=True, exist_ok=True)
+
+        config_path = agent_base / "worker_config.json"
+        result_path = agent_base / "worker_result.json"
+
+        # Add subprocess-specific keys.
+        config["_agent_id"] = agent_id
+        config["_session_root"] = str(agent_base / "sessions")
+        config["_memory_dir"] = str(agent_base / "memory")
+        config["_result_path"] = str(result_path)
+        config["_leader_id"] = self._team_def.leader
+        config["_screen_access"] = True  # Default; Phase 3 will add sandbox check.
+
+        owner_display: str | None = None
+        if self._team_def.owner:
+            owner_display = self._team_def.owner.get("display", "Owner")
+        config["_owner_display"] = owner_display
+
+        # Inject team context.
+        config["_team_context"] = self._build_team_context(agent_id)
+
+        # Collect denied tools.
+        agent_def: AgentDefinition | None = None
         try:
-            from see_agent.agent.environment import collect_environment
-            from see_agent.eye.mac import MacEye
+            agent_def = AgentDefinition.load(agent_id)
+        except FileNotFoundError:
+            pass
+        denied: list[str] = []
+        if agent_def and agent_def.tools_config:
+            denied = agent_def.tools_config.get("denied", [])
+        config["_denied_tools"] = denied
 
-            if self._shared_eye is None:
-                self._shared_eye = MacEye()
-            screenshot = await self._shared_eye.capture()
-            env_block = await collect_environment(
-                screenshot.width, screenshot.height,
-            )
-            self._global_config["_cached_env_block"] = env_block
-        except Exception:
-            logger.warning(
-                "Failed to pre-collect environment info", exc_info=True,
-            )
+        config_path.write_text(json.dumps(config, ensure_ascii=False))
 
-    def _build_agent_loop(self, agent_id: str) -> AgentLoop:
-        """Build an :class:`AgentLoop` for a single team member."""
-        from see_agent.brain.openai_client import OpenAIBrain
+        # Remove stale result file.
+        result_path.unlink(missing_ok=True)
+
+        # Spawn subprocess.
+        cmd = [
+            sys.executable, "-m", "see_agent.agent.worker",
+            str(config_path), str(sock_path), task,
+        ]
+
+        log_path = agent_base / "logs" / "worker.log"
+        log_fh = open(log_path, "a")
+
+        proc = subprocess.Popen(
+            cmd,
+            stdout=log_fh,
+            stderr=subprocess.STDOUT,
+        )
+        self._processes[agent_id] = proc
+        logger.info(
+            "Spawned agent %s (pid %d)", agent_id, proc.pid,
+        )
+
+        # Wait for process in a thread so we don't block the event loop.
+        loop = asyncio.get_running_loop()
+        returncode = await loop.run_in_executor(None, proc.wait)
+        log_fh.close()
+
+        # Clean up.
+        self._processes.pop(agent_id, None)
+
+        # Collect result.
+        if result_path.exists():
+            try:
+                data = json.loads(result_path.read_text())
+                return RunResult(
+                    summary=data.get("summary", ""),
+                    task_dir=str(agent_base),
+                    total_steps=data.get("total_steps", 0),
+                    elapsed_seconds=data.get("elapsed_seconds", 0),
+                    success=data.get("success", False),
+                    session_id=data.get("session_id", ""),
+                )
+            except (json.JSONDecodeError, OSError) as exc:
+                logger.warning(
+                    "Failed to read result for %s: %s", agent_id, exc,
+                )
+
+        return RunResult(
+            summary=f"Agent {agent_id} exited with code {returncode}",
+            task_dir=str(agent_base),
+            total_steps=0,
+            elapsed_seconds=0,
+            success=returncode == 0,
+        )
+
+    def _build_agent_config(self, agent_id: str) -> dict[str, Any]:
+        """Build the config dict for an agent subprocess."""
         from see_agent.config import _deep_merge
-        from see_agent.eye.mac import MacEye
-        from see_agent.hand.tools import create_registry
 
-        # Load agent-specific config or fall back to global.
         agent_def: AgentDefinition | None = None
         try:
             agent_def = AgentDefinition.load(agent_id)
@@ -177,7 +291,7 @@ class TeamManager:
         except FileNotFoundError:
             config = self._global_config.copy()
 
-        # Apply team-level overrides from team.json.
+        # Apply team-level overrides.
         if self._team_def.overrides:
             env_overrides = self._team_def.overrides.get("env", {})
             if env_overrides:
@@ -186,31 +300,7 @@ class TeamManager:
             if agent_overrides:
                 config = _deep_merge(config, agent_overrides)
 
-        llm_cfg = config["llm"]
-
-        # Share a single MacEye across all agents (one screen).
-        if self._shared_eye is None:
-            self._shared_eye = MacEye()
-        eye = self._shared_eye
-
-        brain = OpenAIBrain(
-            base_url=llm_cfg["base_url"],
-            api_key=llm_cfg["api_key"],
-            model=llm_cfg["model"],
-        )
-        registry = create_registry(eye)
-        self._register_team_tools(registry, agent_id)
-
-        # Apply agent-level tool filtering (Bug 5).
-        if agent_def and agent_def.tools_config:
-            tools_cfg = agent_def.tools_config
-            denied = tools_cfg.get("denied")
-            if denied:
-                for name in denied:
-                    registry._tools.pop(name, None)
-                    registry._sources.pop(name, None)
-
-        # Apply agent-level MCP filtering (Bug 7).
+        # Apply MCP filtering.
         if agent_def and agent_def.mcp_config:
             mcp_cfg = agent_def.mcp_config
             mcp_servers = config.get("mcp_servers", {})
@@ -228,68 +318,24 @@ class TeamManager:
                 }
             config = {**config, "mcp_servers": mcp_servers}
 
-        # Inject team_context into config for system prompt (Bug 4).
-        team_context = self._build_team_context(agent_id)
-        config = {**config, "_team_context": team_context}
+        return config
 
-        # Agent-scoped directories.
-        agent_base = self._team_dir / "agents" / agent_id
-        session_root = agent_base / "sessions"
-        for subdir in ("sessions", "workspace", "memory", "logs"):
-            (agent_base / subdir).mkdir(parents=True, exist_ok=True)
+    async def _cache_environment(self) -> None:
+        """Collect desktop environment info once and store in global config."""
+        try:
+            from see_agent.agent.environment import collect_environment
+            from see_agent.eye.mac import MacEye
 
-        # Agent-scoped FileMemory.
-        from see_agent.memory.file_backend import FileMemory
-
-        memory = FileMemory(memory_dir=agent_base / "memory")
-
-        owner_display: str | None = None
-        if self._team_def.owner:
-            owner_display = self._team_def.owner.get("display", "Owner")
-
-        loop = AgentLoop(
-            brain=brain,
-            eye=eye,
-            registry=registry,
-            config=config,
-            agent_id=agent_id,
-            session_root=session_root,
-            team_bus=self._bus,
-            screen_lock=self._screen_lock,
-            memory=memory,
-            owner_display=owner_display,
-            task_board=self._board,
-        )
-        return loop
-
-    def _register_team_tools(
-        self, registry: ToolRegistry, agent_id: str,
-    ) -> None:
-        """Register team collaboration tools."""
-        from see_agent.hand.tools.team_tools import (
-            AssignTaskTool,
-            ClaimTaskTool,
-            CompleteTaskTool,
-            CreateTaskTool,
-            ListTasksTool,
-            SendMessageTool,
-            UpdateTaskTool,
-        )
-
-        tools = [
-            SendMessageTool(
-                self._bus, agent_id,
-                leader_id=self._team_def.leader,
-            ),
-            ListTasksTool(self._board),
-            CreateTaskTool(self._board, agent_id),
-            ClaimTaskTool(self._board, agent_id),
-            CompleteTaskTool(self._board, agent_id),
-            UpdateTaskTool(self._board),
-            AssignTaskTool(self._board),
-        ]
-        for tool in tools:
-            registry.register(tool, source="team")
+            eye = MacEye()
+            screenshot = await eye.capture()
+            env_block = await collect_environment(
+                screenshot.width, screenshot.height,
+            )
+            self._global_config["_cached_env_block"] = env_block
+        except Exception:
+            logger.warning(
+                "Failed to pre-collect environment info", exc_info=True,
+            )
 
     def _build_team_context(self, agent_id: str) -> str:
         """Build the team context string injected into the system prompt."""
@@ -309,8 +355,9 @@ class TeamManager:
         except FileNotFoundError:
             pass
 
-        # Current task board summary
-        tasks = self._board.list_tasks()
+        # Current task board summary.
+        board = self._router.board if self._router else None
+        tasks = board.list_tasks() if board else []
         task_lines = []
         for t in tasks:
             assignee = t.assigned_to or "unassigned"
@@ -328,7 +375,7 @@ class TeamManager:
             else "你是 Team Worker，专注执行分配给你的任务。"
         )
 
-        # Owner info
+        # Owner info.
         owner_info = ""
         if self._team_def.owner:
             display = self._team_def.owner.get("display", "Owner")
@@ -350,11 +397,3 @@ class TeamManager:
             "- 收到队友消息（[teammate xxx]: ...）时优先处理\n"
             "- 用 send_message(to='owner') 向项目负责人汇报\n"
         )
-
-    def _build_agent_task(self, agent_id: str, task: str) -> str:
-        """Build the task string for a single agent.
-
-        Team context is now injected via the system prompt (config key
-        ``_team_context``), so the task string only contains the task.
-        """
-        return task

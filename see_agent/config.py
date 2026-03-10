@@ -57,6 +57,7 @@ LOGS_DIR = WORKSPACE_DIR / "logs"
 SKILLS_DIR = WORKSPACE_DIR / "skills"
 AGENTS_DIR = WORKSPACE_DIR / "agents"
 TEAMS_DIR = WORKSPACE_DIR / "teams"
+RUN_DIR = WORKSPACE_DIR / "run"
 
 # Path to bundled workspace templates
 _TEMPLATE_DIR = Path(__file__).parent / "templates"
@@ -86,6 +87,7 @@ def ensure_workspace() -> None:
     SKILLS_DIR.mkdir(exist_ok=True)
     AGENTS_DIR.mkdir(exist_ok=True)
     TEAMS_DIR.mkdir(exist_ok=True)
+    RUN_DIR.mkdir(exist_ok=True)
 
     if not CONFIG_PATH.exists():
         CONFIG_PATH.write_text(json.dumps(DEFAULT_CONFIG, indent=4, ensure_ascii=False))

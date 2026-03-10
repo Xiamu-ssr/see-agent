@@ -12,6 +12,17 @@
     "tools_config": { "type": "object", "default": {} },
     "skills_config": { "type": "object", "default": {} },
     "mcp_config": { "type": "object", "default": {} },
+    "sandbox": {
+      "type": "object",
+      "default": {},
+      "properties": {
+        "enabled": { "type": "boolean", "default": true },
+        "extra_read": { "type": "array", "items": { "type": "string" }, "default": [] },
+        "extra_write": { "type": "array", "items": { "type": "string" }, "default": [] },
+        "network": { "type": "boolean", "default": true },
+        "screen_access": { "type": "boolean", "default": true }
+      }
+    },
     "soul_path": { "type": ["string", "null"] }
   }
 }

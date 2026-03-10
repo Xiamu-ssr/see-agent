@@ -25,7 +25,17 @@ def teams_dir(tmp_path):
     d = tmp_path / "teams"
     d.mkdir()
     with patch("see_agent.team.definition.TEAMS_DIR", d), \
-         patch("see_agent.team.manager.TEAMS_DIR", d):
+         patch("see_agent.team.manager.TEAMS_DIR", d), \
+         patch("see_agent.ipc.router.TEAMS_DIR", d):
+        yield d
+
+
+@pytest.fixture
+def run_dir(tmp_path):
+    d = tmp_path / "run"
+    d.mkdir()
+    with patch("see_agent.ipc.router.RUN_DIR", d), \
+         patch("see_agent.config.RUN_DIR", d):
         yield d
 
 
@@ -40,59 +50,42 @@ def agents_dir(tmp_path):
 
 class TestTeamManager:
 
-    def test_init(self, teams_dir):
+    def test_init(self, teams_dir, run_dir):
         team_def = TeamDefinition.create("T", ["a", "b"])
         mgr = TeamManager(team_def, FAKE_CONFIG)
-        assert mgr._bus is not None
-        assert mgr._board is not None
+        assert mgr._router is None
+        assert mgr._processes == {}
 
-    def test_register_team_tools(self, teams_dir):
-        from see_agent.hand.tool import ToolRegistry
-
-        team_def = TeamDefinition.create("T", ["a", "b"])
-        mgr = TeamManager(team_def, FAKE_CONFIG)
-        registry = ToolRegistry()
-        mgr._register_team_tools(registry, "a")
-        tool_names = list(registry._tools.keys())
-        expected = [
-            "send_message", "list_tasks", "create_task",
-            "claim_task", "complete_task", "update_task", "assign_task",
-        ]
-        for name in expected:
-            assert name in tool_names
-
-    def test_build_team_context_leader(self, teams_dir, agents_dir):
+    def test_build_team_context_leader(self, teams_dir, run_dir, agents_dir):
         from see_agent.agent.definition import AgentDefinition
+        from see_agent.ipc.router import AgentRouter
 
         AgentDefinition.create("a", name="Alice", role="leader")
         AgentDefinition.create("b", name="Bob", role="coder")
         team_def = TeamDefinition.create("T", ["a", "b"], leader="a")
         mgr = TeamManager(team_def, FAKE_CONFIG)
+
+        # Set up a router so _build_team_context can access the board.
+        mgr._router = AgentRouter(team_def.id)
         ctx = mgr._build_team_context("a")
         assert "Team Leader" in ctx
         assert "Team" in ctx
 
-    def test_build_team_context_worker(self, teams_dir, agents_dir):
+    def test_build_team_context_worker(self, teams_dir, run_dir, agents_dir):
         from see_agent.agent.definition import AgentDefinition
+        from see_agent.ipc.router import AgentRouter
 
         AgentDefinition.create("a", name="Alice", role="leader")
         AgentDefinition.create("b", name="Bob", role="coder")
         team_def = TeamDefinition.create("T", ["a", "b"], leader="a")
         mgr = TeamManager(team_def, FAKE_CONFIG)
+        mgr._router = AgentRouter(team_def.id)
         ctx = mgr._build_team_context("b")
         assert "Team Worker" in ctx
 
-    def test_build_agent_task(self, teams_dir, agents_dir):
+    def test_owner_context(self, teams_dir, run_dir, agents_dir):
         from see_agent.agent.definition import AgentDefinition
-
-        AgentDefinition.create("a", name="Alice", role="leader")
-        team_def = TeamDefinition.create("T", ["a"], leader="a")
-        mgr = TeamManager(team_def, FAKE_CONFIG)
-        task_str = mgr._build_agent_task("a", "Fix the bug")
-        assert task_str == "Fix the bug"
-
-    def test_owner_context(self, teams_dir, agents_dir):
-        from see_agent.agent.definition import AgentDefinition
+        from see_agent.ipc.router import AgentRouter
 
         AgentDefinition.create("a", name="Alice", role="leader")
         owner = {"name": "john", "display": "John Doe"}
@@ -100,12 +93,13 @@ class TestTeamManager:
             "T", ["a"], leader="a", owner=owner,
         )
         mgr = TeamManager(team_def, FAKE_CONFIG)
+        mgr._router = AgentRouter(team_def.id)
         ctx = mgr._build_team_context("a")
         assert "John Doe" in ctx
         assert "Owner" in ctx
 
     @pytest.mark.asyncio
-    async def test_stop(self, teams_dir):
+    async def test_stop(self, teams_dir, run_dir):
         team_def = TeamDefinition.create("T", ["a"])
         mgr = TeamManager(team_def, FAKE_CONFIG)
         await mgr.stop()

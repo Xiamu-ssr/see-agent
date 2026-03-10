@@ -29,6 +29,7 @@ class CreateAgentRequest(BaseModel):
     tools_config: dict[str, Any] | None = None
     skills_config: dict[str, Any] | None = None
     mcp_config: dict[str, Any] | None = None
+    sandbox: dict[str, Any] | None = None
 
 
 class UpdateAgentRequest(BaseModel):
@@ -38,6 +39,7 @@ class UpdateAgentRequest(BaseModel):
     tools_config: dict[str, Any] | None = None
     skills_config: dict[str, Any] | None = None
     mcp_config: dict[str, Any] | None = None
+    sandbox: dict[str, Any] | None = None
 
 
 # -------------------------------------------------------------------- #
@@ -107,6 +109,7 @@ async def get_agent(agent_id: str) -> AgentDetail:
         tools_config=defn.tools_config,
         skills_config=defn.skills_config,
         mcp_config=defn.mcp_config,
+        sandbox=defn.sandbox,
         team_id=team_id,
         team_name=team_name,
         has_soul=has_soul,
@@ -133,6 +136,8 @@ async def create_agent(body: CreateAgentRequest) -> AgentCreateResponse:
         kwargs["skills_config"] = body.skills_config
     if body.mcp_config is not None:
         kwargs["mcp_config"] = body.mcp_config
+    if body.sandbox is not None:
+        kwargs["sandbox"] = body.sandbox
 
     defn = AgentDefinition.create(body.id, **kwargs)
 
@@ -171,6 +176,8 @@ async def update_agent(
         defn.skills_config = body.skills_config
     if body.mcp_config is not None:
         defn.mcp_config = body.mcp_config
+    if body.sandbox is not None:
+        defn.sandbox = body.sandbox
 
     # Save back to the directory where the agent was found.
     defn.save_to(agent_dir.parent)

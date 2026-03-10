@@ -2,14 +2,9 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from see_agent.hand.tool import Tool
-
-if TYPE_CHECKING:
-    from see_agent.team.bus import TeamBus
-    from see_agent.team.task_board import TaskBoard
-
 
 # -------------------------------------------------------------------- #
 # Messaging
@@ -20,7 +15,7 @@ class SendMessageTool(Tool):
     """Send a message to a teammate."""
 
     def __init__(
-        self, bus: TeamBus, sender_id: str,
+        self, bus: Any, sender_id: str,
         leader_id: str | None = None,
     ) -> None:
         self._bus = bus
@@ -91,7 +86,7 @@ class SendMessageTool(Tool):
 class ListTasksTool(Tool):
     """List tasks on the board."""
 
-    def __init__(self, board: TaskBoard) -> None:
+    def __init__(self, board: Any) -> None:
         self._board = board
 
     @property
@@ -132,7 +127,7 @@ class CreateTaskTool(Tool):
     """Create a new task."""
 
     def __init__(
-        self, board: TaskBoard, creator_id: str,
+        self, board: Any, creator_id: str,
     ) -> None:
         self._board = board
         self._creator_id = creator_id
@@ -175,7 +170,7 @@ class ClaimTaskTool(Tool):
     """Claim a task."""
 
     def __init__(
-        self, board: TaskBoard, agent_id: str,
+        self, board: Any, agent_id: str,
     ) -> None:
         self._board = board
         self._agent_id = agent_id
@@ -212,7 +207,7 @@ class CompleteTaskTool(Tool):
     """Complete a task."""
 
     def __init__(
-        self, board: TaskBoard, agent_id: str,
+        self, board: Any, agent_id: str,
     ) -> None:
         self._board = board
         self._agent_id = agent_id
@@ -254,7 +249,7 @@ class CompleteTaskTool(Tool):
 class UpdateTaskTool(Tool):
     """Update task status."""
 
-    def __init__(self, board: TaskBoard) -> None:
+    def __init__(self, board: Any) -> None:
         self._board = board
 
     @property
@@ -292,7 +287,7 @@ class UpdateTaskTool(Tool):
 class AssignTaskTool(Tool):
     """Assign a task to an agent."""
 
-    def __init__(self, board: TaskBoard) -> None:
+    def __init__(self, board: Any) -> None:
         self._board = board
 
     @property

@@ -28,6 +28,7 @@ class AgentDefinition:
     tools_config: dict[str, Any] = field(default_factory=dict)
     skills_config: dict[str, Any] = field(default_factory=dict)
     mcp_config: dict[str, Any] = field(default_factory=dict)
+    sandbox: dict[str, Any] = field(default_factory=dict)
     soul_path: Path | None = None
 
     # ------------------------------------------------------------------ #
@@ -52,6 +53,8 @@ class AgentDefinition:
             data["skills_config"] = self.skills_config
         if self.mcp_config:
             data["mcp_config"] = self.mcp_config
+        if self.sandbox:
+            data["sandbox"] = self.sandbox
         if self.soul_path is not None:
             data["soul_path"] = str(self.soul_path)
 
@@ -85,6 +88,7 @@ class AgentDefinition:
             tools_config=data.get("tools_config", {}),
             skills_config=data.get("skills_config", {}),
             mcp_config=data.get("mcp_config", {}),
+            sandbox=data.get("sandbox", {}),
             soul_path=Path(soul_path_raw) if soul_path_raw else None,
         )
 
