@@ -2,7 +2,7 @@ import type { TeamSummary, TeamStatus, TeamMessage, TeamCreateResponse, TeamUpda
 import client from './client'
 
 export async function listTeams(): Promise<TeamSummary[]> {
-  const res = await client.get<TeamSummary[]>('/api/teams/')
+  const res = await client.get<TeamSummary[]>('/api/teams')
   return res.data
 }
 
@@ -12,7 +12,7 @@ export async function getTeamStatus(id: string): Promise<TeamStatus> {
 }
 
 export async function createTeam(payload: CreateTeamRequest): Promise<TeamCreateResponse> {
-  const res = await client.post<TeamCreateResponse>('/api/teams/', payload)
+  const res = await client.post<TeamCreateResponse>('/api/teams', payload)
   return res.data
 }
 

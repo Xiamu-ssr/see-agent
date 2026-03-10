@@ -1,0 +1,25 @@
+;; ---------------------------------------------------------------------------
+;; Agent: Cline
+;; Cline CLI binary, state, and config paths.
+;; Source: 60-agents/cline.sb
+;; $$require=55-integrations-optional/keychain.sb$$
+;; ---------------------------------------------------------------------------
+
+;; - no official standalone CLI install path documented; keep ~/.local/bin fallback
+;; - local state/config
+
+(allow file-read* file-write*
+    (home-prefix "/.local/bin/cline")
+    (home-subpath "/.cline")
+    (home-subpath "/.config/cline")
+    (home-subpath "/.cache/cline")
+    (home-subpath "/.local/share/cline")
+    (home-subpath "/.local/state/cline")
+    (home-subpath "/Documents/Cline")               ;; Cline MCP servers, rules, workflows, hooks.
+    (home-subpath "/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev")
+    (home-literal "/.qwen/oauth_creds.json")
+)
+
+(allow file-read*
+    (home-literal "/.oca/config.json")
+)

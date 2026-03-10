@@ -1,0 +1,36 @@
+;; ---------------------------------------------------------------------------
+;; Integration: LLDB
+;; LLDB/debugserver toolchain access and debugger-grade host process inspection.
+;; Source: 55-integrations-optional/lldb.sb
+;; $$require=55-integrations-optional/process-control.sb$$
+;; ---------------------------------------------------------------------------
+
+;; Extends process-control with task-port and pid-info access, plus read access
+;; to the selected Apple developer toolchain roots that LLDB discovers through
+;; xcode-select/xcrun on macOS.
+;; Note: successful attach still depends on host macOS debugger policy
+;; (taskgated, SIP/hardened targets, developer tooling installation, etc.).
+
+(allow file-read*
+    (home-prefix "/.lldbinit")                                         ;; User LLDB init file and variants.
+    (literal "/Library")                                               ;; Ancestor traversal for selected developer toolchain roots.
+    (literal "/Library/Developer")                                     ;; Ancestor traversal for Command Line Tools.
+    (subpath "/Library/Developer/CommandLineTools")                    ;; Command Line Tools root (lldb, LLDB.framework, debugserver resources).
+    (literal "/Applications")                                          ;; Ancestor traversal for Xcode app bundles.
+    (literal "/Applications/Xcode.app")                                ;; Xcode app root when xcode-select targets the default bundle.
+    (subpath "/Applications/Xcode.app/Contents/Developer")             ;; Full Xcode developer toolchain root.
+    (literal "/Applications/Xcode-beta.app")                           ;; Xcode beta app root when selected explicitly.
+    (subpath "/Applications/Xcode-beta.app/Contents/Developer")        ;; Xcode beta developer toolchain root.
+    (literal "/System")                                                ;; Ancestor traversal for /System/Volumes/Data compatibility aliases.
+    (literal "/System/Volumes")                                        ;; Ancestor traversal for /System/Volumes/Data compatibility aliases.
+    (literal "/System/Volumes/Data")                                   ;; Ancestor traversal for /System/Volumes/Data compatibility aliases.
+    (literal "/System/Volumes/Data/Applications")                      ;; Ancestor traversal for Data-backed /Applications paths.
+    (literal "/System/Volumes/Data/Applications/Xcode.app")            ;; Data-backed Xcode app root on some path-resolution flows.
+    (subpath "/System/Volumes/Data/Applications/Xcode.app/Contents/Developer")
+    (literal "/System/Volumes/Data/Applications/Xcode-beta.app")       ;; Data-backed Xcode beta app root on some path-resolution flows.
+    (subpath "/System/Volumes/Data/Applications/Xcode-beta.app/Contents/Developer")
+)
+
+(allow process-info-pidinfo)           ;; Host process status/introspection used by debugger inspection flows.
+(allow process-info-setcontrol)        ;; Process control metadata operations used by LLDB/debugserver.
+(allow mach-priv-task-port)            ;; Allow task-port lookups for debuggers and advanced process inspection.
