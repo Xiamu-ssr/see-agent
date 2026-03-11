@@ -111,10 +111,8 @@ class AgentLoop:
         on_step: StepCallback | None = None,
         on_user_input: UserInputCallback | None = None,
         mcp_manager: Any | None = None,
-        user_queue: asyncio.Queue[str] | None = None,
         agent_id: str | None = None,
         session_root: "Path | None" = None,
-        team_bus: Any | None = None,
         owner_display: str | None = None,
         task_board: Any | None = None,
     ) -> None:
@@ -126,10 +124,8 @@ class AgentLoop:
         self._on_user_input = on_user_input
         self._mcp_manager = mcp_manager
         self._mcp_connected = False
-        self._user_queue = user_queue
         self._agent_id = agent_id
         self._session_root = session_root
-        self._team_bus = team_bus
         self._owner_display = owner_display
         self._task_board = task_board
         self._active_ctx: ConversationContext | None = None
@@ -179,40 +175,6 @@ class AgentLoop:
         if target is None:
             return screenshot
         return scale_screenshot(screenshot, target)
-
-    def _drain_user_queue(self, ctx: ConversationContext) -> int:
-        """Non-blocking drain of user_queue into context. Returns count."""
-        if self._user_queue is None:
-            return 0
-        count = 0
-        while True:
-            try:
-                msg = self._user_queue.get_nowait()
-                ctx.add_user_reply(f"[用户插入消息] {msg}")
-                count += 1
-                logger.info("Injected user queue message: %s", msg[:80])
-            except asyncio.QueueEmpty:
-                break
-        return count
-
-    async def _drain_team_bus(self, ctx: ConversationContext) -> int:
-        """Drain team bus messages into context. Returns count."""
-        if self._team_bus is None or self._agent_id is None:
-            return 0
-        count = 0
-        if hasattr(self._team_bus, "async_drain"):
-            messages = await self._team_bus.async_drain(self._agent_id)
-        else:
-            messages = self._team_bus.drain(self._agent_id)
-        for msg in messages:
-            if msg.sender == "owner" and self._owner_display:
-                prefix = f"[{self._owner_display}]"
-            else:
-                prefix = f"[teammate {msg.sender}]"
-            ctx.add_user_reply(f"{prefix}: {msg.content}")
-            count += 1
-            logger.info("Injected team bus message from %s", msg.sender)
-        return count
 
     # Tools that interact with the screen and need exclusive access.
     _SCREEN_TOOLS = frozenset({
@@ -540,13 +502,7 @@ class AgentLoop:
             # ── 4a. Maybe compact context ────────────────────────────
             await self._maybe_compact(ctx, session)
 
-            # ── 4a2. Drain team bus ──────────────────────────────────
-            await self._drain_team_bus(ctx)
-
-            # ── 4a3. Drain user queue ─────────────────────────────────
-            self._drain_user_queue(ctx)
-
-            # ── 4a4. Drain inject queue (v3.5 steer messages) ────────
+            # ── 4a2. Drain inject queue (v3.5 steer messages) ────────
             inject_queue = getattr(self, "_inject_queue", None)
             if inject_queue:
                 while inject_queue:
@@ -639,29 +595,6 @@ class AgentLoop:
                 if tc.name == "call_user":
                     question = tc.arguments.get("question", "")
                     logger.info("call_user: %s", question)
-
-                    if self._team_bus is not None and self._agent_id is not None:
-                        # Team mode: send question to owner via bus.
-                        if hasattr(self._team_bus, "async_send"):
-                            await self._team_bus.async_send(
-                                sender=self._agent_id,
-                                recipient="owner",
-                                content=question,
-                            )
-                        else:
-                            from see_agent.team.bus import BusMessage
-
-                            self._team_bus.send(BusMessage(
-                                sender=self._agent_id,
-                                recipient="owner",
-                                content=question,
-                            ))
-                        ctx.add_tool_result(
-                            tc.id,
-                            "Question sent to owner. Continue working on "
-                            "other tasks while waiting for a reply.",
-                        )
-                        continue
 
                     if self._on_user_input is not None:
                         user_reply = await self._on_user_input(question)

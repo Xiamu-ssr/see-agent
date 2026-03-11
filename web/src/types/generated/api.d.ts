@@ -82,7 +82,10 @@ export interface paths {
         put?: never;
         /**
          * Run Team
-         * @description Run a task on a team.
+         * @description Start all team agents and send the task as a message.
+         *
+         *     v3.5: Uses AgentSupervisor to start agents and MessageRouter
+         *     to deliver the task, replacing the old TeamManager.run().
          */
         post: operations["run_team_api_teams__team_id__run_post"];
         delete?: never;
@@ -122,7 +125,7 @@ export interface paths {
         put?: never;
         /**
          * Stop Team
-         * @description Stop a running team.
+         * @description Stop all agents in a team.
          */
         post: operations["stop_team_api_teams__team_id__stop_post"];
         delete?: never;
@@ -142,7 +145,7 @@ export interface paths {
         put?: never;
         /**
          * Owner Send Message
-         * @description Send a message from the owner to an agent.
+         * @description Send a message from the user to a team agent via MessageRouter.
          */
         post: operations["owner_send_message_api_teams__team_id__message_post"];
         delete?: never;
@@ -240,7 +243,7 @@ export interface paths {
         };
         /**
          * Get Agent Status
-         * @description Get an agent's session status within a team.
+         * @description Get an agent's status within a team.
          */
         get: operations["get_agent_status_api_teams__team_id__agents__agent_id__status_get"];
         put?: never;

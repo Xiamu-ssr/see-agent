@@ -1,4 +1,8 @@
-"""Team management API routes."""
+"""Team management API routes.
+
+v3.5: Teams are lightweight references. Agent lifecycle is managed by
+AgentSupervisor; inter-agent messaging goes through MessageRouter.
+"""
 
 from __future__ import annotations
 
@@ -123,27 +127,35 @@ async def update_team(
 async def run_team(
     team_id: str, body: RunTeamRequest, request: Request,
 ) -> TeamRunResponse:
-    """Run a task on a team."""
+    """Start all team agents and send the task as a message.
+
+    v3.5: Uses AgentSupervisor to start agents and MessageRouter
+    to deliver the task, replacing the old TeamManager.run().
+    """
     from see_agent.team.definition import TeamDefinition
-    from see_agent.team.manager import TeamManager
 
     try:
         team_def = TeamDefinition.load(team_id)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Team not found")
 
-    config = request.app.state.config
-    manager = TeamManager(team_def, config)
-    # Store manager for live message injection.
-    request.app.state.team_managers[team_id] = manager
-    try:
-        result = await manager.run(body.task)
-    finally:
-        request.app.state.team_managers.pop(team_id, None)
+    supervisor = request.app.state.supervisor
+    router_ = request.app.state.message_router
+
+    # Start all member agents and send the task.
+    for agent_id in team_def.members:
+        supervisor.start_agent(agent_id)
+        router_.on_user_message(
+            agent_id, body.task, sender="user",
+        )
+
+    team_def.status = "running"
+    team_def.save()
+
     return TeamRunResponse(
-        team_id=result.team_id,
-        success=result.success,
-        summary=result.summary,
+        team_id=team_id,
+        success=True,
+        summary=f"Task sent to {len(team_def.members)} agents.",
     )
 
 
@@ -180,14 +192,20 @@ async def get_team_status(team_id: str) -> TeamStatus:
 
 
 @router.post("/{team_id}/stop")
-async def stop_team(team_id: str) -> StatusResponse:
-    """Stop a running team."""
+async def stop_team(
+    team_id: str, request: Request,
+) -> StatusResponse:
+    """Stop all agents in a team."""
     from see_agent.team.definition import TeamDefinition
 
     try:
         team = TeamDefinition.load(team_id)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Team not found")
+
+    supervisor = request.app.state.supervisor
+    for agent_id in team.members:
+        supervisor.stop_agent(agent_id)
 
     team.status = "stopped"
     team.save()
@@ -200,7 +218,6 @@ async def stop_team(team_id: str) -> StatusResponse:
 
 
 def _team_dir(team_id: str) -> Path:
-    # Import at call-time so patches work in tests.
     import see_agent.config as _cfg
 
     return _cfg.TEAMS_DIR / team_id
@@ -210,8 +227,7 @@ def _team_dir(team_id: str) -> Path:
 async def owner_send_message(
     team_id: str, body: OwnerMessageRequest, request: Request,
 ) -> StatusResponse:
-    """Send a message from the owner to an agent."""
-    from see_agent.team.bus import BusMessage
+    """Send a message from the user to a team agent via MessageRouter."""
     from see_agent.team.definition import TeamDefinition
 
     try:
@@ -219,29 +235,27 @@ async def owner_send_message(
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Team not found")
 
-    msg = BusMessage(sender="owner", recipient=body.to, content=body.content)
+    router_ = request.app.state.message_router
+    router_.on_user_message(body.to, body.content, sender="user")
 
-    # Inject into live bus if team is running.
-    manager = request.app.state.team_managers.get(team_id)
-    if manager is not None:
-        manager._bus.send(msg)
-    else:
-        # Persist to audit log directly.
-        log_path = _team_dir(team_id) / "messages.jsonl"
-        log_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(log_path, "a", encoding="utf-8") as fh:
-            fh.write(
-                json.dumps(
-                    {
-                        "sender": msg.sender,
-                        "recipient": msg.recipient,
-                        "content": msg.content,
-                        "ts": msg.ts,
-                    },
-                    ensure_ascii=False,
-                )
-                + "\n"
+    # Also persist to audit log.
+    from datetime import datetime, timezone
+
+    log_path = _team_dir(team_id) / "messages.jsonl"
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(log_path, "a", encoding="utf-8") as fh:
+        fh.write(
+            json.dumps(
+                {
+                    "sender": "owner",
+                    "recipient": body.to,
+                    "content": body.content,
+                    "ts": datetime.now(timezone.utc).isoformat(),
+                },
+                ensure_ascii=False,
             )
+            + "\n"
+        )
 
     return StatusResponse(status="sent")
 
@@ -289,7 +303,6 @@ async def owner_unread_count(team_id: str) -> UnreadResponse:
     if not log_path.exists():
         return UnreadResponse(unread=0)
 
-    # Read last_read_ts from owner_state.json.
     state_path = td / "owner_state.json"
     last_read_ts = ""
     if state_path.exists():
@@ -301,7 +314,10 @@ async def owner_unread_count(team_id: str) -> UnreadResponse:
         if not line.strip():
             continue
         entry = json.loads(line)
-        if entry.get("recipient") == "owner" and entry.get("ts", "") > last_read_ts:
+        if (
+            entry.get("recipient") == "owner"
+            and entry.get("ts", "") > last_read_ts
+        ):
             count += 1
 
     return UnreadResponse(unread=count)
@@ -365,7 +381,7 @@ async def get_team_logs(
 async def get_agent_status(
     team_id: str, agent_id: str, request: Request,
 ) -> AgentStatusResponse:
-    """Get an agent's session status within a team."""
+    """Get an agent's status within a team."""
     from see_agent.team.definition import TeamDefinition
 
     try:
@@ -378,8 +394,8 @@ async def get_agent_status(
             status_code=404, detail="Agent not in team",
         )
 
-    manager = request.app.state.team_managers.get(team_id)
-    running = manager is not None
+    supervisor = request.app.state.supervisor
+    running = supervisor.is_running(agent_id)
     return AgentStatusResponse(
         agent_id=agent_id,
         team_id=team_id,

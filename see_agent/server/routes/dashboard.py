@@ -22,14 +22,14 @@ async def get_dashboard(request: Request) -> DashboardResponse:
     from see_agent.team.task_board import TaskBoard
 
     teams = TeamDefinition.list_all()
-    all_agents = AgentDefinition.list_all_global()
+    all_agents = AgentDefinition.list_all()
 
     teams_by_status: dict[str, int] = {}
     for t in teams:
         teams_by_status[t.status] = teams_by_status.get(t.status, 0) + 1
 
-    agents_in_team = sum(1 for _, tid in all_agents if tid is not None)
-    agents_idle = sum(1 for _, tid in all_agents if tid is None)
+    agents_in_team = sum(1 for a in all_agents if a.get_team() is not None)
+    agents_idle = sum(1 for a in all_agents if a.get_team() is None)
 
     total_tasks = 0
     tasks_by_status: dict[str, int] = {}

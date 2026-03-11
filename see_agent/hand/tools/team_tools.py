@@ -52,8 +52,6 @@ class SendMessageTool(Tool):
         }
 
     async def execute(self, **kwargs: Any) -> ToolResult:
-        from see_agent.team.bus import BusMessage
-
         to = kwargs["to"]
         content = kwargs["content"]
 
@@ -75,13 +73,15 @@ class SendMessageTool(Tool):
                 content=content,
             )
         else:
-            self._bus.send(
-                BusMessage(
-                    sender=self._sender_id,
-                    recipient=to,
-                    content=content,
-                )
+            # Fallback: create a simple message object for sync send.
+            from types import SimpleNamespace
+
+            msg = SimpleNamespace(
+                sender=self._sender_id,
+                recipient=to,
+                content=content,
             )
+            self._bus.send(msg)
         return ToolResult(text=f"Message sent to {to}.")
 
 

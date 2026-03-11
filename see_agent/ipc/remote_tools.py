@@ -16,7 +16,6 @@ from see_agent.ipc.protocol import (
     BOARD_CREATE,
     BOARD_LIST,
     BOARD_UPDATE,
-    BUS_DRAIN,
     BUS_SEND,
     SCREEN_ACQUIRE,
     SCREEN_CAPTURE,
@@ -33,15 +32,15 @@ if TYPE_CHECKING:
 
 
 # -------------------------------------------------------------------- #
-# RemoteBus — replaces TeamBus in subprocess
+# RemoteBus — routes send_message through UDS to main process
 # -------------------------------------------------------------------- #
 
 
 class RemoteBus:
-    """TeamBus proxy — routes bus operations through UDS to main process.
+    """Bus proxy — routes bus.send through UDS to main process.
 
-    Implements the same interface expected by team_tools (send / drain /
-    has_prior_message / register).
+    v3.5: drain() returns empty (messages delivered via MessageRouter push).
+    send/async_send still write to audit log via router's bus.send handler.
     """
 
     def __init__(self, client: UDSClient, agent_id: str) -> None:
@@ -49,10 +48,10 @@ class RemoteBus:
         self._agent_id = agent_id
 
     def register(self, agent_id: str) -> None:
-        """No-op — agents are registered on the main process."""
+        """No-op."""
 
     def send(self, msg: Any) -> None:
-        """Send a BusMessage through the router."""
+        """Send a message through the router."""
         import asyncio
         loop = asyncio.get_event_loop()
         loop.run_until_complete(
@@ -76,37 +75,12 @@ class RemoteBus:
         )
 
     def drain(self, agent_id: str) -> list[Any]:
-        """Drain pending messages for *agent_id*."""
-        import asyncio
-        loop = asyncio.get_event_loop()
-        result = loop.run_until_complete(
-            self._client.call(BUS_DRAIN, agent_id=agent_id),
-        )
-        # Convert dicts back to BusMessage-like objects.
-        from see_agent.team.bus import BusMessage
-        return [
-            BusMessage(
-                sender=m["sender"],
-                recipient=m["recipient"],
-                content=m["content"],
-                ts=m.get("ts", ""),
-            )
-            for m in result.get("messages", [])
-        ]
+        """v3.5: Returns empty. Messages delivered via MessageRouter."""
+        return []
 
     async def async_drain(self, agent_id: str) -> list[Any]:
-        """Async variant of drain."""
-        result = await self._client.call(BUS_DRAIN, agent_id=agent_id)
-        from see_agent.team.bus import BusMessage
-        return [
-            BusMessage(
-                sender=m["sender"],
-                recipient=m["recipient"],
-                content=m["content"],
-                ts=m.get("ts", ""),
-            )
-            for m in result.get("messages", [])
-        ]
+        """v3.5: Returns empty. Messages delivered via MessageRouter."""
+        return []
 
     def has_prior_message(self, from_: str, to: str) -> bool:
         """Always return True in subprocess mode.

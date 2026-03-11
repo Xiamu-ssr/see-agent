@@ -37,7 +37,10 @@ def client(workspace):
         "llm": {"base_url": "http://test/v1", "api_key": "k", "model": "m"},
         "max_steps": 5,
     }
-    app.state.team_managers = {}
+    from see_agent.server.supervisor import AgentSupervisor
+    app.state.supervisor = AgentSupervisor({})
+    from see_agent.server.message_router import MessageRouter
+    app.state.message_router = MessageRouter(app.state.supervisor)
     with TestClient(app, raise_server_exceptions=True) as c:
         yield c
 

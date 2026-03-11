@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import base64
 from pathlib import Path
 from typing import Any
@@ -1007,64 +1006,9 @@ class TestAgentLoopV2Behavior:
         assert result.success is True
         assert brain.summarize.call_count >= 1
 
-    @pytest.mark.asyncio
-    async def test_user_queue_drained_before_chat(self, tmp_path):
-        """Pre-filled user_queue messages appear in LLM input."""
-        brain = AsyncMock()
-        brain.chat = AsyncMock(return_value=_make_finished_response("done"))
-
-        eye = AsyncMock()
-        eye.capture = AsyncMock(return_value=_make_screenshot())
-
-        registry = MagicMock()
-        registry.get_openai_schemas.return_value = []
-
-        user_queue: asyncio.Queue[str] = asyncio.Queue()
-        await user_queue.put("change direction please")
-
-        config: dict[str, Any] = {
-            "language": "en",
-            "max_steps": 10,
-            "max_images": 5,
-            "screenshot_interval_ms": 0,
-            "tool_delay_ms": 0,
-            "scaling_enabled": False,
-        }
-        loop = AgentLoop(
-            brain=brain, eye=eye, registry=registry,
-            config=config, user_queue=user_queue,
-            session_root=tmp_path / "sessions",
-        )
-
-        if True:
-            result = await loop.run("test queue")
-
-        assert result.success is True
-        # The injected message should appear in the messages sent to brain.
-        call_args = brain.chat.call_args
-        messages = call_args[0][0]
-        all_text = str(messages)
-        assert "[用户插入消息] change direction please" in all_text
-
-    @pytest.mark.asyncio
-    async def test_user_queue_none_no_crash(self, tmp_path):
-        """user_queue=None should not cause any crash."""
-        brain = AsyncMock()
-        brain.chat = AsyncMock(return_value=_make_finished_response("done"))
-
-        eye = AsyncMock()
-        eye.capture = AsyncMock(return_value=_make_screenshot())
-
-        registry = MagicMock()
-        registry.get_openai_schemas.return_value = []
-
-        loop = _build_loop(brain, eye, registry, max_steps=10, tmp_path=tmp_path)
-        assert loop._user_queue is None  # default
-
-        if True:
-            result = await loop.run("test no queue")
-
-        assert result.success is True
+    # v3.5: user_queue removed from AgentLoop.
+    # User messages are now routed through AgentRuntime collect/steer.
+    # See test_runtime.py for replacement tests.
 
 
 # -------------------------------------------------------------------- #
@@ -1098,104 +1042,9 @@ class TestAgentLoopTeamParams:
         )
         assert loop._session_root == root
 
-    def test_team_bus_stored(self):
-        """team_bus param is stored on the loop."""
-        brain = AsyncMock()
-        eye = AsyncMock()
-        registry = MagicMock()
-        bus = MagicMock()
-        loop = AgentLoop(
-            brain=brain, eye=eye, registry=registry,
-            config={"max_steps": 1}, team_bus=bus, agent_id="alice",
-        )
-        assert loop._team_bus is bus
-
-    @pytest.mark.asyncio
-    async def test_drain_team_bus(self):
-        """_drain_team_bus drains messages from team bus into context."""
-        from see_agent.agent.context import ConversationContext
-        from see_agent.team.bus import BusMessage, TeamBus
-
-        brain = AsyncMock()
-        eye = AsyncMock()
-        registry = MagicMock()
-        bus = TeamBus(Path("/tmp/test_bus_drain"))
-        bus.register("alice")
-        bus.register("bob")
-        bus.send(BusMessage(sender="bob", recipient="alice", content="hello"))
-
-        loop = AgentLoop(
-            brain=brain, eye=eye, registry=registry,
-            config={"max_steps": 1}, team_bus=bus, agent_id="alice",
-        )
-        ctx = ConversationContext("system prompt")
-        count = await loop._drain_team_bus(ctx)
-        assert count == 1
-        msgs = ctx.get_messages()
-        # Should have system + user reply with teammate message.
-        user_msgs = [m for m in msgs if m.get("role") == "user"]
-        assert any("[teammate bob]" in str(m.get("content", "")) for m in user_msgs)
-
-    @pytest.mark.asyncio
-    async def test_drain_team_bus_no_bus(self):
-        """_drain_team_bus with no bus returns 0."""
-        from see_agent.agent.context import ConversationContext
-
-        brain = AsyncMock()
-        eye = AsyncMock()
-        registry = MagicMock()
-        loop = AgentLoop(
-            brain=brain, eye=eye, registry=registry,
-            config={"max_steps": 1},
-        )
-        ctx = ConversationContext("system prompt")
-        assert await loop._drain_team_bus(ctx) == 0
-
-class TestCallUserTeamMode:
-    """call_user sends to owner when in team mode."""
-
-    @pytest.mark.asyncio
-    async def test_call_user_sends_to_owner(self, tmp_path):
-        """In team mode, call_user sends question to owner via bus."""
-        from see_agent.team.bus import TeamBus
-
-        bus = TeamBus(tmp_path / "team")
-        bus.register("owner")
-        bus.register("agent1")
-
-        call_user_response = _make_call_user_response()
-        finished_response = _make_finished_response("Done.")
-
-        brain = AsyncMock()
-        brain.chat = AsyncMock(
-            side_effect=[call_user_response, finished_response],
-        )
-
-        eye = AsyncMock()
-        eye.capture = AsyncMock(return_value=_make_screenshot())
-
-        registry = MagicMock()
-        registry.get_openai_schemas.return_value = []
-        registry._tools = {"screenshot": True, "click": True}
-
-        loop = AgentLoop(
-            brain=brain,
-            eye=eye,
-            registry=registry,
-            config={"max_steps": 5, "tool_delay_ms": 0},
-            agent_id="agent1",
-            team_bus=bus,
-            session_root=tmp_path / "sessions",
-        )
-
-        if True:
-            result = await loop.run("test task")
-
-        assert result.success is True
-        # Owner should have received the question.
-        owner_msgs = bus.drain("owner")
-        assert len(owner_msgs) == 1
-        assert owner_msgs[0].sender == "agent1"
+    # v3.5: team_bus and user_queue params removed from AgentLoop.
+    # Team communication is handled by AgentRuntime + MessageRouter.
+    # See test_runtime.py and test_supervisor.py for the replacement tests.
 
 
 class TestScreenshotSkip:

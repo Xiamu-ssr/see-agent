@@ -165,7 +165,6 @@ async def _run_worker(
             config=config,
             agent_id=agent_id,
             session_root=session_root,
-            team_bus=remote_bus,
             owner_display=config.get("_owner_display"),
             task_board=remote_board,
         )

@@ -1,8 +1,11 @@
 """AgentRouter — main-process UDS server handling agent subprocess requests.
 
-The router is the central hub: it owns the TeamBus, TaskBoard,
-ScreenManager, and MacEye instances, and exposes them over a Unix
-Domain Socket using a JSON-RPC style protocol.
+The router is the central hub: it owns the TaskBoard, ScreenManager,
+and MacEye instances, and exposes them over a Unix Domain Socket using
+a JSON-RPC style protocol.
+
+v3.5: TeamBus removed. Bus send/drain handlers now write to audit log
+and return empty (actual message delivery goes through MessageRouter).
 """
 
 from __future__ import annotations
@@ -34,7 +37,6 @@ from see_agent.ipc.protocol import (
     SCREEN_TYPE_TEXT,
 )
 from see_agent.screen.manager import ScreenManager
-from see_agent.team.bus import BusMessage, TeamBus
 from see_agent.team.task_board import TaskBoard
 
 logger = logging.getLogger(__name__)
@@ -48,7 +50,6 @@ class AgentRouter:
         self._team_dir = TEAMS_DIR / team_id
         self._team_dir.mkdir(parents=True, exist_ok=True)
 
-        self._bus = TeamBus(self._team_dir)
         self._board = TaskBoard(self._team_dir)
         self._screen = ScreenManager()
         self._eye: Any = None  # Lazy-loaded MacEye
@@ -62,20 +63,12 @@ class AgentRouter:
         return self._sock_path
 
     @property
-    def bus(self) -> TeamBus:
-        return self._bus
-
-    @property
     def board(self) -> TaskBoard:
         return self._board
 
     @property
     def screen(self) -> ScreenManager:
         return self._screen
-
-    def register_agent(self, agent_id: str) -> None:
-        """Register an agent on the bus (must be called before start)."""
-        self._bus.register(agent_id)
 
     async def start(self) -> None:
         """Start the UDS server and screen manager."""
@@ -175,33 +168,35 @@ class AgentRouter:
             return {"id": req_id, "error": str(exc)}
 
     # ------------------------------------------------------------------ #
-    # Bus handlers
+    # Bus handlers (v3.5: audit log only, delivery via MessageRouter)
     # ------------------------------------------------------------------ #
 
     async def _bus_send(
         self, sender: str, recipient: str, content: str, **_: Any,
     ) -> dict[str, Any]:
-        logger.debug("bus.send: %s -> %s (%d chars)", sender, recipient, len(content))
-        self._bus.send(
-            BusMessage(sender=sender, recipient=recipient, content=content),
-        )
+        logger.debug("bus.send: %s -> %s", sender, recipient)
+        # Write to audit log.
+        import json as _json
+        from datetime import datetime, timezone
+
+        log_path = self._team_dir / "messages.jsonl"
+        with open(log_path, "a", encoding="utf-8") as fh:
+            fh.write(
+                _json.dumps({
+                    "sender": sender,
+                    "recipient": recipient,
+                    "content": content,
+                    "ts": datetime.now(timezone.utc).isoformat(),
+                }, ensure_ascii=False) + "\n"
+            )
         return {"status": "ok"}
 
     async def _bus_drain(
         self, agent_id: str, **_: Any,
     ) -> dict[str, Any]:
-        messages = self._bus.drain(agent_id)
-        return {
-            "messages": [
-                {
-                    "sender": m.sender,
-                    "recipient": m.recipient,
-                    "content": m.content,
-                    "ts": m.ts,
-                }
-                for m in messages
-            ],
-        }
+        # v3.5: messages are delivered via MessageRouter push,
+        # not polled via drain. Return empty.
+        return {"messages": []}
 
     # ------------------------------------------------------------------ #
     # Board handlers

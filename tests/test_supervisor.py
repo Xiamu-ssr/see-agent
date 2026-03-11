@@ -2,13 +2,18 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-from unittest.mock import patch
+import json
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from see_agent.ipc.message import Message
 from see_agent.server.supervisor import AgentSupervisor
+
+FAKE_CONFIG = {
+    "llm": {"base_url": "http://x", "api_key": "k", "model": "m"},
+    "max_steps": 5,
+}
 
 
 @pytest.fixture()
@@ -26,37 +31,176 @@ def dirs(tmp_path):
         yield tmp_path
 
 
-class TestAgentSupervisor:
+class TestAgentSupervisorBasic:
+    """Basic init/query operations."""
 
-    def test_init(self, dirs):
-        config = {"llm": {"base_url": "http://x", "api_key": "k", "model": "m"}}
-        sup = AgentSupervisor(config)
+    def test_init_empty(self, dirs):
+        sup = AgentSupervisor(FAKE_CONFIG)
         assert sup.running_agents == []
 
-    def test_is_running_false(self, dirs):
-        config = {"llm": {"base_url": "http://x", "api_key": "k", "model": "m"}}
-        sup = AgentSupervisor(config)
-        assert not sup.is_running("nonexistent")
+    def test_is_running_nonexistent(self, dirs):
+        sup = AgentSupervisor(FAKE_CONFIG)
+        assert not sup.is_running("ghost")
 
-    def test_stop_nonexistent_noop(self, dirs):
-        config = {"llm": {"base_url": "http://x", "api_key": "k", "model": "m"}}
-        sup = AgentSupervisor(config)
-        sup.stop_agent("nonexistent")  # should not raise
+    def test_stop_nonexistent_is_noop(self, dirs):
+        sup = AgentSupervisor(FAKE_CONFIG)
+        sup.stop_agent("ghost")  # should not raise
 
     def test_stop_all_empty(self, dirs):
-        config = {"llm": {"base_url": "http://x", "api_key": "k", "model": "m"}}
-        sup = AgentSupervisor(config)
+        sup = AgentSupervisor(FAKE_CONFIG)
         sup.stop_all()  # should not raise
 
+
+class TestAgentSupervisorProcessLifecycle:
+    """Process start/stop without actually spawning real subprocesses."""
+
+    def test_start_agent_creates_config_and_process(self, dirs):
+        sup = AgentSupervisor(FAKE_CONFIG)
+        mock_proc = MagicMock()
+        mock_proc.poll.return_value = None  # "running"
+        mock_proc.pid = 12345
+
+        with patch("see_agent.server.supervisor.subprocess.Popen", return_value=mock_proc):
+            sock = sup.start_agent("alice")
+
+        # Should return a sock path.
+        assert sock.name == "agent.sock"
+        assert "alice" in str(sock)
+
+        # Config file should be written.
+        config_path = dirs / "run" / "agents" / "alice" / "config.json"
+        assert config_path.exists()
+        data = json.loads(config_path.read_text())
+        assert data["_agent_id"] == "alice"
+
+        # Should be tracked as running.
+        assert sup.is_running("alice")
+        assert "alice" in sup.running_agents
+
+    def test_start_already_running_returns_existing(self, dirs):
+        sup = AgentSupervisor(FAKE_CONFIG)
+        mock_proc = MagicMock()
+        mock_proc.poll.return_value = None
+        mock_proc.pid = 111
+
+        with patch("see_agent.server.supervisor.subprocess.Popen", return_value=mock_proc) as popen:
+            sock1 = sup.start_agent("bob")
+            sock2 = sup.start_agent("bob")
+
+        assert sock1 == sock2
+        popen.assert_called_once()  # Only one Popen call.
+
+    def test_start_restarts_exited_process(self, dirs):
+        sup = AgentSupervisor(FAKE_CONFIG)
+        dead_proc = MagicMock()
+        dead_proc.poll.return_value = 1  # exited
+        dead_proc.pid = 222
+
+        new_proc = MagicMock()
+        new_proc.poll.return_value = None
+        new_proc.pid = 333
+
+        popen_path = "see_agent.server.supervisor.subprocess.Popen"
+        with patch(popen_path, side_effect=[dead_proc, new_proc]):
+            sup.start_agent("eve")
+            # First start registers dead_proc; second call should detect exit and restart.
+            sup.start_agent("eve")
+
+        assert sup.is_running("eve")
+
+    def test_stop_terminates_process(self, dirs):
+        sup = AgentSupervisor(FAKE_CONFIG)
+        mock_proc = MagicMock()
+        mock_proc.poll.return_value = None
+        mock_proc.pid = 444
+
+        with patch("see_agent.server.supervisor.subprocess.Popen", return_value=mock_proc):
+            sup.start_agent("alice")
+
+        sup.stop_agent("alice")
+        mock_proc.terminate.assert_called_once()
+        assert not sup.is_running("alice")
+
+    def test_stop_all_kills_all(self, dirs):
+        sup = AgentSupervisor(FAKE_CONFIG)
+        procs = []
+        for name in ("a", "b", "c"):
+            p = MagicMock()
+            p.poll.return_value = None
+            p.pid = hash(name) % 10000
+            procs.append(p)
+
+        with patch("see_agent.server.supervisor.subprocess.Popen", side_effect=procs):
+            for name in ("a", "b", "c"):
+                sup.start_agent(name)
+
+        sup.stop_all()
+        for p in procs:
+            p.terminate.assert_called_once()
+        assert sup.running_agents == []
+
+    def test_is_running_detects_exited(self, dirs):
+        sup = AgentSupervisor(FAKE_CONFIG)
+        mock_proc = MagicMock()
+        mock_proc.poll.return_value = None
+        mock_proc.pid = 555
+
+        with patch("see_agent.server.supervisor.subprocess.Popen", return_value=mock_proc):
+            sup.start_agent("alice")
+
+        assert sup.is_running("alice")
+
+        # Simulate process exit.
+        mock_proc.poll.return_value = 0
+        assert not sup.is_running("alice")
+
+
+class TestAgentSupervisorMessaging:
+    """Message sending via inbox."""
+
     def test_send_to_writes_inbox(self, dirs):
-        config = {"llm": {"base_url": "http://x", "api_key": "k", "model": "m"}}
-        sup = AgentSupervisor(config)
-        msg = Message(source="user", sender="user", content="hello")
-        # Patch start_agent to avoid actually spawning a process.
-        with patch.object(sup, "start_agent", return_value=Path("/tmp/fake.sock")):
+        sup = AgentSupervisor(FAKE_CONFIG)
+        mock_proc = MagicMock()
+        mock_proc.poll.return_value = None
+        mock_proc.pid = 666
+
+        with patch("see_agent.server.supervisor.subprocess.Popen", return_value=mock_proc):
+            msg = Message(source="user", sender="lanxuan", content="hello agent")
             sup.send_to("alice", msg)
-        run = dirs / "run"
-        inbox = run / "agents" / "alice" / "inbox.jsonl"
+
+        inbox = dirs / "run" / "agents" / "alice" / "inbox.jsonl"
         assert inbox.exists()
-        content = inbox.read_text()
-        assert "hello" in content
+        lines = inbox.read_text().strip().splitlines()
+        assert len(lines) == 1
+        data = json.loads(lines[0])
+        assert data["content"] == "hello agent"
+        assert data["source"] == "user"
+
+    def test_send_to_auto_starts_agent(self, dirs):
+        sup = AgentSupervisor(FAKE_CONFIG)
+        mock_proc = MagicMock()
+        mock_proc.poll.return_value = None
+        mock_proc.pid = 777
+
+        with patch("see_agent.server.supervisor.subprocess.Popen", return_value=mock_proc) as popen:
+            msg = Message(source="user", sender="u", content="wake up")
+            sup.send_to("bob", msg)
+
+        popen.assert_called_once()  # Agent was started.
+        assert sup.is_running("bob")
+
+    def test_send_multiple_messages_appends(self, dirs):
+        sup = AgentSupervisor(FAKE_CONFIG)
+        mock_proc = MagicMock()
+        mock_proc.poll.return_value = None
+        mock_proc.pid = 888
+
+        with patch("see_agent.server.supervisor.subprocess.Popen", return_value=mock_proc):
+            for i in range(3):
+                sup.send_to("alice", Message(source="user", sender="u", content=f"msg{i}"))
+
+        inbox = dirs / "run" / "agents" / "alice" / "inbox.jsonl"
+        lines = inbox.read_text().strip().splitlines()
+        assert len(lines) == 3
+        contents = [json.loads(line)["content"] for line in lines]
+        assert contents == ["msg0", "msg1", "msg2"]

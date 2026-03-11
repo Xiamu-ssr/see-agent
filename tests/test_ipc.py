@@ -147,24 +147,22 @@ def teams_dir(tmp_path):
 
 class TestAgentRouter:
     @pytest.mark.asyncio
-    async def test_router_bus_send_drain(self, run_dir, teams_dir):
+    async def test_router_bus_send_writes_audit_log(self, run_dir, teams_dir):
+        """v3.5: bus.send writes to audit log, drain returns empty."""
         from see_agent.ipc.router import AgentRouter
 
         with patch("see_agent.ipc.router.RUN_DIR", run_dir), \
              patch("see_agent.ipc.router.TEAMS_DIR", teams_dir):
             router = AgentRouter("test-team")
-            router.register_agent("alice")
-            router.register_agent("bob")
             await router.start()
 
             try:
-                # Connect a client.
                 from see_agent.ipc.client import UDSClient
 
                 client = UDSClient(router.sock_path)
                 await client.connect()
 
-                # Send a message from alice to bob.
+                # Send writes to audit log.
                 result = await client.call(
                     BUS_SEND,
                     sender="alice", recipient="bob",
@@ -172,16 +170,19 @@ class TestAgentRouter:
                 )
                 assert result["status"] == "ok"
 
-                # Drain bob's messages.
-                result = await client.call(BUS_DRAIN, agent_id="bob")
-                msgs = result["messages"]
-                assert len(msgs) == 1
-                assert msgs[0]["sender"] == "alice"
-                assert msgs[0]["content"] == "hello bob"
+                # Verify audit log written.
+                import json
+                log_path = teams_dir / "test-team" / "messages.jsonl"
+                assert log_path.exists()
+                entry = json.loads(
+                    log_path.read_text().strip().splitlines()[0],
+                )
+                assert entry["sender"] == "alice"
+                assert entry["content"] == "hello bob"
 
-                # Alice has no messages.
-                result = await client.call(BUS_DRAIN, agent_id="alice")
-                assert len(result["messages"]) == 0
+                # Drain returns empty (v3.5: delivery via MessageRouter).
+                result = await client.call(BUS_DRAIN, agent_id="bob")
+                assert result["messages"] == []
 
                 await client.close()
             finally:

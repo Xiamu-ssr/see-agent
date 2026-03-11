@@ -194,34 +194,6 @@ class TestLoadFromSaveTo:
             AgentDefinition.load_from(tmp_path, "nope")
 
 
-class TestListAllGlobal:
-    """Tests for list_all_global — agents only in AGENTS_DIR, team from team.json."""
-
-    def test_with_team_membership(self, agents_dir, teams_dir):
-        AgentDefinition.create("g1", name="Global1")
-        AgentDefinition.create("g2", name="Global2")
-
-        # Create a team.json referencing g1
-        team_dir = teams_dir / "team-abc"
-        team_dir.mkdir(parents=True)
-        (team_dir / "team.json").write_text(json.dumps({
-            "id": "team-abc",
-            "name": "Test Team",
-            "members": ["g1"],
-            "leader": "g1",
-        }))
-
-        result = AgentDefinition.list_all_global()
-        assert len(result) == 2
-        ids = {d.id: tid for d, tid in result}
-        assert ids["g1"] == "team-abc"
-        assert ids["g2"] is None
-
-    def test_empty(self, agents_dir, teams_dir):
-        result = AgentDefinition.list_all_global()
-        assert result == []
-
-
 class TestFind:
     """Tests for find — only searches AGENTS_DIR."""
 

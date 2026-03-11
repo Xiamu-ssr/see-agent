@@ -63,21 +63,22 @@ async def list_agents(request: Request) -> list[AgentSummary]:
     from see_agent.agent.definition import AgentDefinition
     from see_agent.team.definition import TeamDefinition
 
-    all_agents = AgentDefinition.list_all_global()
-    managers: dict[str, Any] = getattr(request.app.state, "team_managers", {})
+    all_agents = AgentDefinition.list_all()
+    supervisor = getattr(request.app.state, "supervisor", None)
 
     results: list[AgentSummary] = []
-    for defn, team_id in all_agents:
+    for defn in all_agents:
+        team_id = defn.get_team()
         team_name: str | None = None
         status = "idle"
+        if supervisor and supervisor.is_running(defn.id):
+            status = "busy"
         if team_id is not None:
             try:
                 td = TeamDefinition.load(team_id)
                 team_name = td.name
             except FileNotFoundError:
                 team_name = team_id
-            if team_id in managers:
-                status = "busy"
         results.append(AgentSummary(
             id=defn.id,
             name=defn.name,

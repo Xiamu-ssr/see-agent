@@ -153,28 +153,6 @@ class AgentDefinition:
         return results
 
     @staticmethod
-    def list_all_global() -> list[tuple[AgentDefinition, str | None]]:
-        """Return all agents with team membership info.
-
-        Each entry is ``(definition, team_id_or_None)``.
-        Agents are only stored in ``AGENTS_DIR``; team membership is
-        determined by cross-referencing ``team.json`` files.
-        """
-        from see_agent.team.definition import TeamDefinition
-
-        # Build agent→team mapping from team definitions.
-        agent_team_map: dict[str, str] = {}
-        for team in TeamDefinition.list_all():
-            for member_id in team.members:
-                agent_team_map[member_id] = team.id
-
-        agents = AgentDefinition.list_all()
-        return [
-            (defn, agent_team_map.get(defn.id))
-            for defn in agents
-        ]
-
-    @staticmethod
     def find(agent_id: str) -> tuple[AgentDefinition, Path]:
         """Find an agent by *agent_id* in the global agents directory.
 
