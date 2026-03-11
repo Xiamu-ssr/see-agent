@@ -769,7 +769,7 @@ export interface components {
         /** CreateAgentRequest */
         CreateAgentRequest: {
             /** Id */
-            id: string;
+            id?: string | null;
             /** Name */
             name: string;
             /**

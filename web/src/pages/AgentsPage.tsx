@@ -15,13 +15,13 @@ export default function AgentsPage() {
   const fetchAgents = useCallback(() => listAgents(), [])
   const { data: agents, loading, refresh } = usePolling<AgentSummary[]>(fetchAgents, 10000)
   const [showCreate, setShowCreate] = useState(false)
-  const [form, setForm] = useState<CreateAgentRequest>({ id: '', name: '', role: 'general assistant' })
+  const [form, setForm] = useState<CreateAgentRequest>({ name: '', role: 'general assistant' })
 
   const handleCreate = async () => {
-    if (!form.id || !form.name) return
+    if (!form.name) return
     await createAgent(form)
     setShowCreate(false)
-    setForm({ id: '', name: '', role: 'general assistant' })
+    setForm({ name: '', role: 'general assistant' })
     refresh()
   }
 
@@ -133,13 +133,6 @@ export default function AgentsPage() {
               Create Agent
             </h2>
             <div className="flex flex-col gap-3">
-              <input
-                placeholder="Agent ID"
-                value={form.id}
-                onChange={(e) => setForm({ ...form, id: e.target.value })}
-                className="rounded-[var(--radius-sm)] border px-3 py-2 text-sm outline-none"
-                style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
-              />
               <input
                 placeholder="Display name"
                 value={form.name}

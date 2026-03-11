@@ -31,7 +31,7 @@ router = APIRouter(prefix="/api/agents", tags=["agents"])
 
 
 class CreateAgentRequest(BaseModel):
-    id: str
+    id: str | None = None
     name: str
     role: str = "general assistant"
     soul: str | None = None
@@ -133,10 +133,17 @@ async def get_agent(agent_id: str) -> AgentDetail:
 @router.post("")
 async def create_agent(body: CreateAgentRequest) -> AgentCreateResponse:
     """Create a new agent definition."""
+    import secrets
+    import string
+
     from see_agent.agent.definition import AgentDefinition
     from see_agent.config import AGENTS_DIR
 
-    agent_json = AGENTS_DIR / body.id / "agent.json"
+    agent_id = body.id or "".join(
+        secrets.choice(string.ascii_lowercase + string.digits) for _ in range(6)
+    )
+
+    agent_json = AGENTS_DIR / agent_id / "agent.json"
     if agent_json.exists():
         raise HTTPException(status_code=409, detail="Agent already exists")
 
@@ -152,11 +159,11 @@ async def create_agent(body: CreateAgentRequest) -> AgentCreateResponse:
     if body.sandbox is not None:
         kwargs["sandbox"] = body.sandbox
 
-    defn = AgentDefinition.create(body.id, **kwargs)
+    defn = AgentDefinition.create(agent_id, **kwargs)
     logger.info("Agent created: %s (%s)", defn.id, defn.role)
 
     if body.soul:
-        soul_path = AGENTS_DIR / body.id / "SOUL.md"
+        soul_path = AGENTS_DIR / agent_id / "SOUL.md"
         soul_path.write_text(body.soul, encoding="utf-8")
 
     return AgentCreateResponse(
