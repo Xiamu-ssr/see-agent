@@ -132,17 +132,74 @@ class RemoteBoard:
     """TaskBoard proxy — routes board operations through UDS.
 
     Mirrors the TaskBoard public API used by team_tools.
+    All public methods have ``async_*`` variants for use from async contexts.
     """
 
     def __init__(self, client: UDSClient) -> None:
         self._client = client
 
+    # -- async variants (use these from async contexts) --------------------
+
+    async def async_list_tasks(
+        self, status: str | None = None,
+    ) -> list[Any]:
+        result = await self._client.call(
+            BOARD_LIST, **({"status": status} if status else {}),
+        )
+        return _tasks_from_dicts(result.get("tasks", []))
+
+    async def async_create_task(
+        self, title: str, description: str = "", created_by: str = "",
+    ) -> Any:
+        result = await self._client.call(
+            BOARD_CREATE,
+            title=title, description=description, created_by=created_by,
+        )
+        return _task_stub(result)
+
+    async def async_claim_task(
+        self, task_id: str, agent_id: str,
+    ) -> Any:
+        result = await self._client.call(
+            BOARD_CLAIM, task_id=task_id, agent_id=agent_id,
+        )
+        return _task_stub(result)
+
+    async def async_complete_task(
+        self, task_id: str, agent_id: str, result: str = "",
+    ) -> Any:
+        res = await self._client.call(
+            BOARD_COMPLETE,
+            task_id=task_id, agent_id=agent_id, result=result,
+        )
+        return _task_stub(res)
+
+    async def async_update_task(
+        self, task_id: str, **kwargs: Any,
+    ) -> Any:
+        result = await self._client.call(
+            BOARD_UPDATE, task_id=task_id, **kwargs,
+        )
+        return _task_stub(result)
+
+    async def async_assign_task(
+        self, task_id: str, agent_id: str,
+    ) -> Any:
+        result = await self._client.call(
+            BOARD_ASSIGN, task_id=task_id, agent_id=agent_id,
+        )
+        return _task_stub(result)
+
+    # -- sync wrappers (kept for non-async callers) ------------------------
+
     def list_tasks(self, status: str | None = None) -> list[Any]:
-        """List tasks, optionally filtered by status."""
         import asyncio
         loop = asyncio.get_event_loop()
         result = loop.run_until_complete(
-            self._client.call(BOARD_LIST, **({"status": status} if status else {})),
+            self._client.call(
+                BOARD_LIST,
+                **({"status": status} if status else {}),
+            ),
         )
         return _tasks_from_dicts(result.get("tasks", []))
 
@@ -154,7 +211,8 @@ class RemoteBoard:
         result = loop.run_until_complete(
             self._client.call(
                 BOARD_CREATE,
-                title=title, description=description, created_by=created_by,
+                title=title, description=description,
+                created_by=created_by,
             ),
         )
         return _task_stub(result)

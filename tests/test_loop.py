@@ -1110,7 +1110,8 @@ class TestAgentLoopTeamParams:
         )
         assert loop._team_bus is bus
 
-    def test_drain_team_bus(self):
+    @pytest.mark.asyncio
+    async def test_drain_team_bus(self):
         """_drain_team_bus drains messages from team bus into context."""
         from see_agent.agent.context import ConversationContext
         from see_agent.team.bus import BusMessage, TeamBus
@@ -1128,14 +1129,15 @@ class TestAgentLoopTeamParams:
             config={"max_steps": 1}, team_bus=bus, agent_id="alice",
         )
         ctx = ConversationContext("system prompt")
-        count = loop._drain_team_bus(ctx)
+        count = await loop._drain_team_bus(ctx)
         assert count == 1
         msgs = ctx.get_messages()
         # Should have system + user reply with teammate message.
         user_msgs = [m for m in msgs if m.get("role") == "user"]
         assert any("[teammate bob]" in str(m.get("content", "")) for m in user_msgs)
 
-    def test_drain_team_bus_no_bus(self):
+    @pytest.mark.asyncio
+    async def test_drain_team_bus_no_bus(self):
         """_drain_team_bus with no bus returns 0."""
         from see_agent.agent.context import ConversationContext
 
@@ -1147,7 +1149,7 @@ class TestAgentLoopTeamParams:
             config={"max_steps": 1},
         )
         ctx = ConversationContext("system prompt")
-        assert loop._drain_team_bus(ctx) == 0
+        assert await loop._drain_team_bus(ctx) == 0
 
 class TestCallUserTeamMode:
     """call_user sends to owner when in team mode."""

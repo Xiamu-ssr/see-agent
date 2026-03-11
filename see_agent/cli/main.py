@@ -199,7 +199,7 @@ def _build_frontend() -> None:
 @app.command()
 def start(
     port: int = typer.Option(
-        8000, "--port", "-p", help="Port to listen on.",
+        28789, "--port", "-p", help="Port to listen on.",
     ),
     no_browser: bool = typer.Option(
         False, "--no-browser", help="Don't open browser.",
@@ -299,7 +299,7 @@ def stop() -> None:
 @app.command()
 def restart(
     port: int = typer.Option(
-        8000, "--port", "-p", help="Port to listen on.",
+        28789, "--port", "-p", help="Port to listen on.",
     ),
 ) -> None:
     """Restart the see-agent server."""

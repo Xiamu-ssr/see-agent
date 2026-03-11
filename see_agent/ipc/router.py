@@ -181,6 +181,7 @@ class AgentRouter:
     async def _bus_send(
         self, sender: str, recipient: str, content: str, **_: Any,
     ) -> dict[str, Any]:
+        logger.debug("bus.send: %s -> %s (%d chars)", sender, recipient, len(content))
         self._bus.send(
             BusMessage(sender=sender, recipient=recipient, content=content),
         )
@@ -227,6 +228,7 @@ class AgentRouter:
         self, title: str, description: str = "",
         created_by: str = "", **_: Any,
     ) -> dict[str, Any]:
+        logger.info("board.create: '%s' by %s", title[:60], created_by)
         t = self._board.create_task(
             title=title, description=description, created_by=created_by,
         )

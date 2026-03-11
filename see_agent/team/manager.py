@@ -76,6 +76,7 @@ class TeamManager:
         3. Wait for completion and collect results.
         4. Clean up.
         """
+        logger.info("Team %s starting task: %s", self._team_def.id, task[:100])
         self._team_def.status = "running"
         self._team_def.save()
 
@@ -144,6 +145,10 @@ class TeamManager:
             success = all(r.success for r in results.values())
             self._team_def.status = "completed" if success else "failed"
             self._team_def.save()
+            logger.info(
+                "Team %s finished: success=%s, agents=%d",
+                self._team_def.id, success, len(results),
+            )
 
             summaries = [
                 f"{aid}: {r.summary}" for aid, r in results.items()

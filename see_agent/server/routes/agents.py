@@ -146,6 +146,7 @@ async def create_agent(body: CreateAgentRequest) -> AgentCreateResponse:
         kwargs["sandbox"] = body.sandbox
 
     defn = AgentDefinition.create(body.id, **kwargs)
+    logger.info("Agent created: %s (%s)", defn.id, defn.role)
 
     if body.soul:
         soul_path = AGENTS_DIR / body.id / "SOUL.md"
@@ -187,6 +188,7 @@ async def update_agent(
 
     # Save back to the directory where the agent was found.
     defn.save_to(agent_dir.parent)
+    logger.info("Agent updated: %s", defn.id)
     return AgentCreateResponse(
         id=defn.id,
         name=defn.name,

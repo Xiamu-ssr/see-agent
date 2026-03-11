@@ -142,19 +142,38 @@ class AgentDefinition:
         """Return all agents from global dir and team dirs.
 
         Each entry is ``(definition, team_id_or_None)``.
+        Global agents are cross-referenced against team.json files to
+        determine team membership.
         """
         results: list[tuple[AgentDefinition, str | None]] = []
 
-        # Global agents
+        # Build agent→team mapping from team.json files.
+        agent_team_map: dict[str, str] = {}
+        if TEAMS_DIR.exists():
+            for team_dir in sorted(TEAMS_DIR.iterdir()):
+                team_json = team_dir / "team.json"
+                if team_json.exists():
+                    try:
+                        data = json.loads(team_json.read_text(encoding="utf-8"))
+                        for member_id in data.get("members", []):
+                            agent_team_map[member_id] = team_dir.name
+                    except Exception:
+                        logger.warning(
+                            "Failed to read team.json for %s", team_dir.name,
+                        )
+
+        # Global agents (with team cross-reference)
         if AGENTS_DIR.exists():
             for d in sorted(AGENTS_DIR.iterdir()):
                 if (d / "agent.json").exists():
                     try:
-                        results.append((AgentDefinition.load_from(AGENTS_DIR, d.name), None))
+                        defn = AgentDefinition.load_from(AGENTS_DIR, d.name)
+                        team_id = agent_team_map.get(d.name)
+                        results.append((defn, team_id))
                     except Exception:
                         logger.warning("Failed to load agent %s", d.name)
 
-        # Team-scoped agents
+        # Team-scoped agents (stored under team dirs)
         if TEAMS_DIR.exists():
             for team_dir in sorted(TEAMS_DIR.iterdir()):
                 agents_dir = team_dir / "agents"
@@ -162,6 +181,9 @@ class AgentDefinition:
                     continue
                 for agent_dir in sorted(agents_dir.iterdir()):
                     if (agent_dir / "agent.json").exists():
+                        # Skip if already found in global agents
+                        if any(d.id == agent_dir.name for d, _ in results):
+                            continue
                         try:
                             defn = AgentDefinition.load_from(agents_dir, agent_dir.name)
                             results.append((defn, team_dir.name))

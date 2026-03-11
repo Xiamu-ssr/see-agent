@@ -40,12 +40,19 @@ export default function PixelOffice({
 
     gameRef.current = game;
 
-    // Wait for scene to be ready, then start with data.
-    game.events.once("ready", () => {
+    // OfficeScene.create() receives { members, seating, onAgentClick } via
+    // scene data automatically (passed in the Scene constructor config).
+    // We wait for the scene to finish its create() then grab the reference.
+    game.scene.start("OfficeScene", { members, seating, onAgentClick });
+    const checkScene = () => {
       const scene = game.scene.getScene("OfficeScene") as OfficeScene;
-      sceneRef.current = scene;
-      scene.scene.restart({ members, seating, onAgentClick });
-    });
+      if (scene && scene.scene.isActive()) {
+        sceneRef.current = scene;
+      } else {
+        requestAnimationFrame(checkScene);
+      }
+    };
+    requestAnimationFrame(checkScene);
 
     return () => {
       sceneRef.current = null;

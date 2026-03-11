@@ -193,12 +193,15 @@ class AgentLoop:
                 break
         return count
 
-    def _drain_team_bus(self, ctx: ConversationContext) -> int:
+    async def _drain_team_bus(self, ctx: ConversationContext) -> int:
         """Drain team bus messages into context. Returns count."""
         if self._team_bus is None or self._agent_id is None:
             return 0
         count = 0
-        messages = self._team_bus.drain(self._agent_id)
+        if hasattr(self._team_bus, "async_drain"):
+            messages = await self._team_bus.async_drain(self._agent_id)
+        else:
+            messages = self._team_bus.drain(self._agent_id)
         for msg in messages:
             if msg.sender == "owner" and self._owner_display:
                 prefix = f"[{self._owner_display}]"
@@ -289,20 +292,28 @@ class AgentLoop:
         })
         logger.info("Compaction complete: summary length=%d", len(summary))
 
-    def _auto_complete_tasks(self, summary: str) -> None:
+    async def _auto_complete_tasks(self, summary: str) -> None:
         """Auto-mark claimed/in_progress tasks for this agent as done."""
         if self._task_board is None or self._agent_id is None:
             return
         try:
-            tasks = self._task_board.list_tasks()
+            if hasattr(self._task_board, "async_list_tasks"):
+                tasks = await self._task_board.async_list_tasks()
+            else:
+                tasks = self._task_board.list_tasks()
             for t in tasks:
                 if (
                     t.assigned_to == self._agent_id
                     and t.status in ("claimed", "in_progress")
                 ):
-                    self._task_board.complete_task(
-                        t.id, self._agent_id, result=summary,
-                    )
+                    if hasattr(self._task_board, "async_complete_task"):
+                        await self._task_board.async_complete_task(
+                            t.id, self._agent_id, result=summary,
+                        )
+                    else:
+                        self._task_board.complete_task(
+                            t.id, self._agent_id, result=summary,
+                        )
         except Exception:
             logger.warning("Auto-complete tasks failed", exc_info=True)
 
@@ -475,7 +486,7 @@ class AgentLoop:
             await self._maybe_compact(ctx, session)
 
             # ── 4a2. Drain team bus ──────────────────────────────────
-            self._drain_team_bus(ctx)
+            await self._drain_team_bus(ctx)
 
             # ── 4a3. Drain user queue ─────────────────────────────────
             self._drain_user_queue(ctx)
@@ -541,7 +552,7 @@ class AgentLoop:
                     summary = tc.arguments.get("summary", "Task completed.")
                     ctx.add_tool_result(tc.id, summary)
                     logger.info("Task finished: %s", summary)
-                    self._auto_complete_tasks(summary)
+                    await self._auto_complete_tasks(summary)
                     final_step = step
                     elapsed = time.monotonic() - t0
                     session.update_meta(
@@ -564,13 +575,20 @@ class AgentLoop:
 
                     if self._team_bus is not None and self._agent_id is not None:
                         # Team mode: send question to owner via bus.
-                        from see_agent.team.bus import BusMessage
+                        if hasattr(self._team_bus, "async_send"):
+                            await self._team_bus.async_send(
+                                sender=self._agent_id,
+                                recipient="owner",
+                                content=question,
+                            )
+                        else:
+                            from see_agent.team.bus import BusMessage
 
-                        self._team_bus.send(BusMessage(
-                            sender=self._agent_id,
-                            recipient="owner",
-                            content=question,
-                        ))
+                            self._team_bus.send(BusMessage(
+                                sender=self._agent_id,
+                                recipient="owner",
+                                content=question,
+                            ))
                         ctx.add_tool_result(
                             tc.id,
                             "Question sent to owner. Continue working on "

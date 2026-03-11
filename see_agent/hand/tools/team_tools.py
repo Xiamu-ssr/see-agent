@@ -68,13 +68,20 @@ class SendMessageTool(Tool):
                 "received a message from the owner can message the owner."
             )
 
-        self._bus.send(
-            BusMessage(
+        if hasattr(self._bus, "async_send"):
+            await self._bus.async_send(
                 sender=self._sender_id,
                 recipient=to,
                 content=content,
             )
-        )
+        else:
+            self._bus.send(
+                BusMessage(
+                    sender=self._sender_id,
+                    recipient=to,
+                    content=content,
+                )
+            )
         return ToolResult(text=f"Message sent to {to}.")
 
 
@@ -111,7 +118,10 @@ class ListTasksTool(Tool):
 
     async def execute(self, **kwargs: Any) -> ToolResult:
         status = kwargs.get("status")
-        tasks = self._board.list_tasks(status=status)
+        if hasattr(self._board, "async_list_tasks"):
+            tasks = await self._board.async_list_tasks(status=status)
+        else:
+            tasks = self._board.list_tasks(status=status)
         if not tasks:
             return ToolResult(text="No tasks found.")
         lines = []
@@ -158,11 +168,18 @@ class CreateTaskTool(Tool):
         }
 
     async def execute(self, **kwargs: Any) -> ToolResult:
-        task = self._board.create_task(
-            title=kwargs["title"],
-            description=kwargs.get("description", ""),
-            created_by=self._creator_id,
-        )
+        if hasattr(self._board, "async_create_task"):
+            task = await self._board.async_create_task(
+                title=kwargs["title"],
+                description=kwargs.get("description", ""),
+                created_by=self._creator_id,
+            )
+        else:
+            task = self._board.create_task(
+                title=kwargs["title"],
+                description=kwargs.get("description", ""),
+                created_by=self._creator_id,
+            )
         return ToolResult(text=f"Task created: {task.id} — {task.title}")
 
 
@@ -197,9 +214,14 @@ class ClaimTaskTool(Tool):
         }
 
     async def execute(self, **kwargs: Any) -> ToolResult:
-        task = self._board.claim_task(
-            kwargs["task_id"], self._agent_id,
-        )
+        if hasattr(self._board, "async_claim_task"):
+            task = await self._board.async_claim_task(
+                kwargs["task_id"], self._agent_id,
+            )
+        else:
+            task = self._board.claim_task(
+                kwargs["task_id"], self._agent_id,
+            )
         return ToolResult(text=f"Claimed task {task.id}: {task.title}")
 
 
@@ -238,11 +260,18 @@ class CompleteTaskTool(Tool):
         }
 
     async def execute(self, **kwargs: Any) -> ToolResult:
-        task = self._board.complete_task(
-            kwargs["task_id"],
-            self._agent_id,
-            result=kwargs.get("result", ""),
-        )
+        if hasattr(self._board, "async_complete_task"):
+            task = await self._board.async_complete_task(
+                kwargs["task_id"],
+                self._agent_id,
+                result=kwargs.get("result", ""),
+            )
+        else:
+            task = self._board.complete_task(
+                kwargs["task_id"],
+                self._agent_id,
+                result=kwargs.get("result", ""),
+            )
         return ToolResult(text=f"Completed task {task.id}: {task.title}")
 
 
@@ -278,9 +307,14 @@ class UpdateTaskTool(Tool):
         }
 
     async def execute(self, **kwargs: Any) -> ToolResult:
-        task = self._board.update_task(
-            kwargs["task_id"], status=kwargs["status"],
-        )
+        if hasattr(self._board, "async_update_task"):
+            task = await self._board.async_update_task(
+                kwargs["task_id"], status=kwargs["status"],
+            )
+        else:
+            task = self._board.update_task(
+                kwargs["task_id"], status=kwargs["status"],
+            )
         return ToolResult(text=f"Updated task {task.id} status to {task.status}")
 
 
@@ -316,7 +350,12 @@ class AssignTaskTool(Tool):
         }
 
     async def execute(self, **kwargs: Any) -> ToolResult:
-        task = self._board.assign_task(
-            kwargs["task_id"], kwargs["agent_id"],
-        )
+        if hasattr(self._board, "async_assign_task"):
+            task = await self._board.async_assign_task(
+                kwargs["task_id"], kwargs["agent_id"],
+            )
+        else:
+            task = self._board.assign_task(
+                kwargs["task_id"], kwargs["agent_id"],
+            )
         return ToolResult(text=f"Assigned task {task.id} to {task.assigned_to}")

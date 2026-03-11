@@ -44,12 +44,21 @@ class InstallSkillRequest(BaseModel):
 @router.post("/skills/install")
 async def install_skill(body: InstallSkillRequest) -> SkillInstallResponse:
     """Install a skill from ClawHub."""
-    result = subprocess.run(
-        ["clawhub", "install", body.name, "--target", str(SKILLS_DIR)],
-        capture_output=True,
-        text=True,
-        timeout=60,
-    )
+    try:
+        result = subprocess.run(
+            ["clawhub", "install", body.name, "--target", str(SKILLS_DIR)],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+    except FileNotFoundError:
+        logger.warning("clawhub binary not found")
+        raise HTTPException(
+            status_code=500,
+            detail="clawhub is not installed. Run `pip install clawhub` first.",
+        )
+    except subprocess.TimeoutExpired:
+        raise HTTPException(status_code=504, detail="Install timed out.")
     if result.returncode != 0:
         raise HTTPException(status_code=400, detail=f"Install failed: {result.stderr}")
     return SkillInstallResponse(status="ok", name=body.name)
