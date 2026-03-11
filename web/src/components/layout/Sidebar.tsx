@@ -1,8 +1,7 @@
 import { NavLink } from 'react-router-dom'
 import {
-  MessageSquare,
-  LayoutDashboard,
   Bot,
+  Users,
   Sparkles,
   Plug,
   Settings,
@@ -14,29 +13,13 @@ interface SidebarProps {
   onClose: () => void
 }
 
-const sections = [
-  {
-    label: 'Control',
-    items: [
-      { to: '/dashboard', icon: LayoutDashboard, label: 'Overview' },
-      { to: '/teams', icon: MessageSquare, label: 'Teams' },
-    ],
-  },
-  {
-    label: 'Agents',
-    items: [
-      { to: '/agents', icon: Bot, label: 'Agents' },
-      { to: '/skills', icon: Sparkles, label: 'Skills' },
-      { to: '/mcp', icon: Plug, label: 'MCP' },
-    ],
-  },
-  {
-    label: 'Settings',
-    items: [
-      { to: '/config', icon: Settings, label: 'Config' },
-      { to: '/logs', icon: FileText, label: 'Logs' },
-    ],
-  },
+const navItems = [
+  { to: '/agents', icon: Bot, label: 'Agents' },
+  { to: '/teams', icon: Users, label: 'Teams' },
+  { to: '/skills', icon: Sparkles, label: 'Skills' },
+  { to: '/mcp', icon: Plug, label: 'MCP' },
+  { to: '/config', icon: Settings, label: 'Config' },
+  { to: '/logs', icon: FileText, label: 'Logs' },
 ]
 
 export default function Sidebar({ open, onClose }: SidebarProps) {
@@ -60,35 +43,25 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
         style={{ borderColor: 'var(--border)' }}
       >
         <nav className="flex flex-col gap-1 p-3">
-          {sections.map((section) => (
-            <div key={section.label}>
-              <p
-                className="mb-1 mt-3 px-2 text-[11px] font-medium uppercase tracking-wider first:mt-0"
-                style={{ color: 'var(--muted)' }}
-              >
-                {section.label}
-              </p>
-              {section.items.map((item) => (
-                <NavLink
-                  key={item.to}
-                  to={item.to}
-                  onClick={onClose}
-                  className={({ isActive }) =>
-                    `flex items-center gap-2 rounded-[var(--radius-sm)] px-2 py-1.5 text-sm transition-colors ${
-                      isActive
-                        ? 'bg-[var(--accent-subtle)] font-medium'
-                        : 'hover:bg-[var(--bg-hover)]'
-                    }`
-                  }
-                  style={({ isActive }) => ({
-                    color: isActive ? 'var(--accent)' : 'var(--text)',
-                  })}
-                >
-                  <item.icon size={16} />
-                  {item.label}
-                </NavLink>
-              ))}
-            </div>
+          {navItems.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              onClick={onClose}
+              className={({ isActive }) =>
+                `flex items-center gap-2 rounded-[var(--radius-sm)] px-2 py-1.5 text-sm transition-colors ${
+                  isActive
+                    ? 'bg-[var(--accent-subtle)] font-medium'
+                    : 'hover:bg-[var(--bg-hover)]'
+                }`
+              }
+              style={({ isActive }) => ({
+                color: isActive ? 'var(--accent)' : 'var(--text)',
+              })}
+            >
+              <item.icon size={16} />
+              {item.label}
+            </NavLink>
           ))}
         </nav>
       </aside>
