@@ -4,8 +4,9 @@ import {
   Users,
   Sparkles,
   Plug,
-  Settings,
+  SlidersHorizontal,
   FileText,
+  Settings,
 } from 'lucide-react'
 
 interface SidebarProps {
@@ -18,7 +19,7 @@ const navItems = [
   { to: '/teams', icon: Users, label: 'Teams' },
   { to: '/skills', icon: Sparkles, label: 'Skills' },
   { to: '/mcp', icon: Plug, label: 'MCP' },
-  { to: '/config', icon: Settings, label: 'Config' },
+  { to: '/config', icon: SlidersHorizontal, label: 'Config' },
   { to: '/logs', icon: FileText, label: 'Logs' },
 ]
 
@@ -35,35 +36,104 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
 
       <aside
         className={`
-          fixed top-12 left-0 z-50 h-[calc(100vh-48px)] w-[200px]
-          border-r bg-[var(--bg-elevated)] transition-transform duration-200
+          fixed top-0 left-0 z-50 h-screen w-[72px]
+          border-r flex flex-col items-center
+          transition-transform duration-200
           lg:translate-x-0
           ${open ? 'translate-x-0' : '-translate-x-full'}
         `}
-        style={{ borderColor: 'var(--border)' }}
+        style={{
+          background: '#0d1117',
+          borderColor: 'var(--border)',
+        }}
       >
-        <nav className="flex flex-col gap-1 p-3">
+        {/* Logo */}
+        <div className="flex flex-col items-center pt-4 pb-4">
+          <div
+            className="flex items-center justify-center rounded-lg"
+            style={{
+              width: 36,
+              height: 36,
+              background: '#ff5c5c',
+            }}
+          >
+            <span className="text-white text-base font-bold">S</span>
+          </div>
+          <span
+            className="mt-1"
+            style={{
+              fontSize: 9,
+              color: '#7d8590',
+              letterSpacing: '0.02em',
+            }}
+          >
+            see-agent
+          </span>
+        </div>
+
+        {/* Nav items */}
+        <nav className="flex flex-col items-center gap-1 flex-1 pt-2">
           {navItems.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
               onClick={onClose}
-              className={({ isActive }) =>
-                `flex items-center gap-2 rounded-[var(--radius-sm)] px-2 py-1.5 text-sm transition-colors ${
-                  isActive
-                    ? 'bg-[var(--accent-subtle)] font-medium'
-                    : 'hover:bg-[var(--bg-hover)]'
-                }`
-              }
+              className="flex flex-col items-center justify-center rounded-lg transition-all"
               style={({ isActive }) => ({
-                color: isActive ? 'var(--accent)' : 'var(--text)',
+                width: 56,
+                height: 52,
+                background: isActive ? 'rgba(255, 92, 92, 0.12)' : 'transparent',
+                color: isActive ? '#ff5c5c' : '#7d8590',
               })}
             >
-              <item.icon size={16} />
-              {item.label}
+              {({ isActive }) => (
+                <>
+                  <item.icon size={18} strokeWidth={isActive ? 2 : 1.5} />
+                  <span
+                    style={{
+                      fontSize: 10,
+                      marginTop: 3,
+                      fontWeight: isActive ? 500 : 400,
+                    }}
+                  >
+                    {item.label}
+                  </span>
+                </>
+              )}
             </NavLink>
           ))}
         </nav>
+
+        {/* Bottom: Settings + Avatar */}
+        <div className="flex flex-col items-center gap-2 pb-4">
+          <NavLink
+            to="/config"
+            className="flex flex-col items-center justify-center rounded-lg transition-all"
+            style={({ isActive }) => ({
+              width: 56,
+              height: 52,
+              background: isActive ? 'rgba(255, 92, 92, 0.12)' : 'transparent',
+              color: isActive ? '#ff5c5c' : '#7d8590',
+            })}
+          >
+            {({ isActive }) => (
+              <>
+                <Settings size={18} strokeWidth={isActive ? 2 : 1.5} />
+                <span style={{ fontSize: 10, marginTop: 3, fontWeight: isActive ? 500 : 400 }}>
+                  Settings
+                </span>
+              </>
+            )}
+          </NavLink>
+          <div
+            className="rounded-full"
+            style={{
+              width: 28,
+              height: 28,
+              background: '#30363d',
+            }}
+          />
+        </div>
       </aside>
     </>
   )

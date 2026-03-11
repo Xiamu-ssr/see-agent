@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { getTeamStatus, getMessages, sendMessage, runTeam, stopTeam, updateTeam } from '@/api/teams'
 import type { TeamStatus, TeamMessage } from '@/types'
-import { ArrowLeft, Send, Square, Settings } from 'lucide-react'
+import { ArrowLeft, Square, Settings, Plus, ExternalLink } from 'lucide-react'
 import TeamSettings from '@/components/team/TeamSettings'
 
 export default function TeamDetailPage() {
@@ -13,6 +13,7 @@ export default function TeamDetailPage() {
   const [loading, setLoading] = useState(true)
   const [msgInput, setMsgInput] = useState('')
   const [recipient, setRecipient] = useState('')
+  const [steer, setSteer] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [actionLoading, setActionLoading] = useState(false)
   const [showTaskModal, setShowTaskModal] = useState(false)
@@ -78,216 +79,180 @@ export default function TeamDetailPage() {
     loadData()
   }
 
-  if (loading) return <div style={{ color: 'var(--muted)' }}>Loading...</div>
-  if (!team) return <div style={{ color: 'var(--danger)' }}>Team not found</div>
+  if (loading) return <div style={{ color: '#7d8590' }}>Loading...</div>
+  if (!team) return <div style={{ color: '#f85149' }}>Team not found</div>
 
-  const statusColor =
-    team.status === 'running'
-      ? 'var(--ok)'
-      : team.status === 'failed'
-        ? 'var(--danger)'
-        : 'var(--muted)'
+  const statusColor = team.status === 'running' ? '#3fb950' : team.status === 'failed' ? '#f85149' : '#7d8590'
 
   const tasksByStatus = {
-    pending: team.tasks.filter((t) => t.status === 'pending'),
-    claimed: team.tasks.filter((t) => t.status === 'claimed' || t.status === 'in_progress'),
+    todo: team.tasks.filter((t) => t.status === 'pending'),
+    doing: team.tasks.filter((t) => t.status === 'claimed' || t.status === 'in_progress'),
     done: team.tasks.filter((t) => t.status === 'done' || t.status === 'completed'),
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-96px)]">
-      {/* Sub-topbar */}
-      <div className="flex items-center justify-between mb-4">
+    <div>
+      {/* Header: ← Back + Team Name + Badge + Actions */}
+      <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
-          <button
-            onClick={() => navigate('/teams')}
-            className="hover:bg-[var(--bg-hover)] rounded p-1"
-          >
-            <ArrowLeft size={16} style={{ color: 'var(--text)' }} />
+          <button onClick={() => navigate('/teams')} className="rounded-md p-1.5 hover:bg-[#21262d]">
+            <ArrowLeft size={16} style={{ color: '#e6edf3' }} />
           </button>
-          <h1 className="text-lg font-semibold" style={{ color: 'var(--text-strong)' }}>
-            {team.name}
-          </h1>
+          <h1 className="text-2xl font-bold" style={{ color: '#e6edf3' }}>{team.name}</h1>
           <span
-            className="inline-flex items-center gap-1 text-xs rounded-full px-2 py-0.5"
-            style={{ color: statusColor, background: 'var(--bg-hover)' }}
+            className="inline-flex items-center gap-1.5 text-xs font-medium rounded-full px-2.5 py-1"
+            style={{ color: statusColor, background: `${statusColor}20` }}
           >
-            <span className="h-1.5 w-1.5 rounded-full" style={{ background: statusColor }} />
-            {team.status}
+            <span className="h-2 w-2 rounded-full" style={{ background: statusColor }} />
+            [{team.status}]
           </span>
         </div>
         <div className="flex gap-2">
-          <button
-            onClick={() => setShowSettings(true)}
-            className="flex items-center gap-1 rounded-[var(--radius)] px-3 py-1.5 text-sm hover:bg-[var(--bg-hover)]"
-            style={{ color: 'var(--muted)' }}
-          >
-            <Settings size={14} />
+          <button onClick={() => setShowSettings(true)} className="rounded-md p-2 hover:bg-[#21262d]">
+            <Settings size={16} style={{ color: '#7d8590' }} />
           </button>
           {team.status === 'running' ? (
-            <button
-              onClick={handleStop}
-              disabled={actionLoading}
-              className="flex items-center gap-1 rounded-[var(--radius)] px-3 py-1.5 text-sm font-medium text-white"
-              style={{ background: 'var(--danger)', opacity: actionLoading ? 0.6 : 1 }}
-            >
-              <Square size={14} />
-              Stop
+            <button onClick={handleStop} disabled={actionLoading}
+              className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium text-white"
+              style={{ background: '#f85149', opacity: actionLoading ? 0.6 : 1 }}>
+              <Square size={14} /> Stop
             </button>
-          ) : (
-            <button
-              onClick={() => setShowTaskModal(true)}
-              disabled={actionLoading}
-              className="flex items-center gap-1 rounded-[var(--radius)] px-3 py-1.5 text-sm font-medium text-white"
-              style={{ background: 'var(--ok)', opacity: actionLoading ? 0.6 : 1 }}
-            >
-              Send Task
-            </button>
-          )}
+          ) : null}
         </div>
       </div>
 
-      {/* Main content: Members + TaskBoard + Messages */}
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 flex-1 min-h-0">
-        {/* Members */}
-        <div
-          className="lg:col-span-1 rounded-[var(--radius-lg)] border p-4 overflow-auto"
-          style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
-        >
-          <h3 className="text-sm font-medium mb-3" style={{ color: 'var(--text-strong)' }}>
-            Members
-          </h3>
-          <div className="space-y-3">
-            {team.members.map((m) => (
-              <div key={m} className="flex items-center justify-between">
-                <div>
-                  <span className="text-sm" style={{ color: 'var(--text)' }}>{m}</span>
-                  {m === team.leader && (
-                    <span
-                      className="ml-2 text-[10px] font-medium rounded px-1.5 py-0.5"
-                      style={{ background: 'var(--accent)', color: 'white' }}
-                    >
-                      LEADER
+      {/* Main: Left Members (40%) + Right Content (60%) */}
+      <div className="flex gap-4" style={{ minHeight: 'calc(100vh - 200px)' }}>
+        
+        {/* LEFT: Members */}
+        <div className="w-[40%] shrink-0">
+          <div className="rounded-lg border p-5" style={{ background: '#161b22', borderColor: '#30363d' }}>
+            <h2 className="text-lg font-semibold mb-4" style={{ color: '#e6edf3' }}>Members</h2>
+            <div className="space-y-3">
+              {team.members.map((m) => (
+                <div key={m} className="flex items-center gap-3 rounded-lg p-3" style={{ background: '#0d1117' }}>
+                  {/* Avatar circle */}
+                  <div className="rounded-full flex items-center justify-center shrink-0"
+                    style={{ width: 44, height: 44, background: '#30363d' }}>
+                    <span className="text-sm font-medium" style={{ color: '#e6edf3' }}>
+                      {m.charAt(0).toUpperCase()}
                     </span>
-                  )}
-                </div>
-                <Link
-                  to={`/agents/${m}`}
-                  className="text-xs hover:underline"
-                  style={{ color: 'var(--accent)' }}
-                >
-                  View
-                </Link>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Task Board */}
-        <div
-          className="lg:col-span-2 rounded-[var(--radius-lg)] border p-4 overflow-auto"
-          style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
-        >
-          <h3 className="text-sm font-medium mb-3" style={{ color: 'var(--text-strong)' }}>
-            Task Board
-          </h3>
-          <div className="grid grid-cols-3 gap-3">
-            {(['pending', 'claimed', 'done'] as const).map((col) => (
-              <div key={col}>
-                <p className="text-xs font-medium uppercase mb-2" style={{ color: 'var(--muted)' }}>
-                  {col === 'claimed' ? 'In Progress' : col} ({tasksByStatus[col].length})
-                </p>
-                <div className="space-y-2">
-                  {tasksByStatus[col].map((t) => (
-                    <div
-                      key={t.id}
-                      className="rounded-[var(--radius-sm)] border p-2 text-xs"
-                      style={{ background: 'var(--bg)', borderColor: 'var(--border)' }}
-                    >
-                      <p style={{ color: 'var(--text-strong)' }}>{t.title}</p>
-                      {t.assigned_to && (
-                        <p className="mt-1" style={{ color: 'var(--muted)' }}>
-                          &rarr; {t.assigned_to}
-                        </p>
+                  </div>
+                  {/* Name + Status */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium" style={{ color: '#e6edf3' }}>{m}</span>
+                      {m === team.leader && (
+                        <span className="text-[10px] font-bold rounded px-1.5 py-0.5"
+                          style={{ background: '#ff5c5c', color: 'white' }}>
+                          LEADER
+                        </span>
                       )}
                     </div>
-                  ))}
-                  {tasksByStatus[col].length === 0 && (
-                    <p className="text-[10px] text-center py-4" style={{ color: 'var(--muted)' }}>
-                      Empty
-                    </p>
-                  )}
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <span className="h-1.5 w-1.5 rounded-full" style={{ background: '#3fb950' }} />
+                      <span className="text-xs" style={{ color: '#7d8590' }}>Running</span>
+                    </div>
+                  </div>
+                  {/* View link */}
+                  <Link to={`/agents/${m}`} className="flex items-center gap-1 text-xs shrink-0"
+                    style={{ color: '#7d8590' }}>
+                    View <ExternalLink size={12} />
+                  </Link>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
+            {/* Add Member */}
+            <button className="flex items-center gap-1.5 mt-4 text-sm" style={{ color: '#ff5c5c' }}>
+              <Plus size={14} /> Add Member
+            </button>
           </div>
         </div>
 
-        {/* Messages */}
-        <div
-          className="lg:col-span-2 rounded-[var(--radius-lg)] border p-4 flex flex-col"
-          style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
-        >
-          <div className="flex items-center gap-2 mb-3">
-            <span className="text-sm font-medium" style={{ color: 'var(--text-strong)' }}>
-              Messages
-            </span>
-            <select
-              value={recipient}
-              onChange={(e) => setRecipient(e.target.value)}
-              className="text-xs rounded border px-2 py-1 outline-none"
-              style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
-            >
-              {team.members.map((m) => (
-                <option key={m} value={m}>
-                  {m} {m === team.leader ? '(leader)' : ''}
-                </option>
+        {/* RIGHT: TaskBoard (top) + Messages (bottom) */}
+        <div className="flex-1 flex flex-col gap-4">
+          
+          {/* Task Board */}
+          <div className="rounded-lg border p-5" style={{ background: '#161b22', borderColor: '#30363d' }}>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold" style={{ color: '#e6edf3' }}>Task Board</h2>
+              <button onClick={() => setShowTaskModal(true)}
+                className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium"
+                style={{ color: '#ff5c5c', border: '1px solid #ff5c5c' }}>
+                <Plus size={14} /> Send Task
+              </button>
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              {(['todo', 'doing', 'done'] as const).map((col) => (
+                <div key={col}>
+                  <p className="text-xs font-medium uppercase tracking-wide mb-2" style={{ color: '#7d8590' }}>
+                    {col === 'doing' ? 'Doing' : col === 'todo' ? 'Todo' : 'Done'}
+                  </p>
+                  <div className="space-y-2">
+                    {tasksByStatus[col].map((t) => (
+                      <div key={t.id} className="rounded-lg border p-3"
+                        style={{ background: '#0d1117', borderColor: '#30363d' }}>
+                        <p className="text-sm" style={{ color: '#e6edf3' }}>{t.title}</p>
+                        {t.assigned_to && (
+                          <p className="text-xs mt-1" style={{ color: '#7d8590' }}>→ {t.assigned_to}</p>
+                        )}
+                      </div>
+                    ))}
+                    {tasksByStatus[col].length === 0 && (
+                      <div className="rounded-lg border border-dashed p-4 text-center"
+                        style={{ borderColor: '#30363d' }}>
+                        <p className="text-xs" style={{ color: '#7d8590' }}>Empty</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
               ))}
-            </select>
+            </div>
           </div>
 
-          <div className="flex-1 overflow-auto space-y-2 mb-3 min-h-[100px]">
-            {messages.map((m, i) => (
-              <div
-                key={i}
-                className={`text-xs p-2 rounded-[var(--radius-sm)] max-w-[85%] ${
-                  m.sender === 'owner' ? 'ml-auto' : ''
-                }`}
-                style={{
-                  background: m.sender === 'owner' ? 'var(--accent-subtle)' : 'var(--bg)',
-                  color: 'var(--text)',
-                }}
-              >
-                <span className="font-medium" style={{ color: 'var(--muted)' }}>
-                  {m.sender}:
-                </span>{' '}
-                {m.content}
-              </div>
-            ))}
-            {messages.length === 0 && (
-              <p className="text-xs text-center" style={{ color: 'var(--muted)' }}>
-                No messages yet
-              </p>
-            )}
-          </div>
+          {/* Team Messages */}
+          <div className="rounded-lg border p-5 flex-1 flex flex-col" style={{ background: '#161b22', borderColor: '#30363d' }}>
+            <h2 className="text-lg font-semibold mb-3" style={{ color: '#e6edf3' }}>Team Messages</h2>
+            
+            {/* Message list */}
+            <div className="flex-1 overflow-y-auto space-y-2 mb-4 min-h-[80px]">
+              {messages.map((m, i) => (
+                <p key={i} className="text-sm" style={{ color: '#e6edf3' }}>
+                  <span style={{ color: '#7d8590' }}>{m.sender} to {m.recipient}:</span>{' '}
+                  {m.content}
+                </p>
+              ))}
+              {messages.length === 0 && (
+                <p className="text-sm" style={{ color: '#7d8590' }}>No messages yet.</p>
+              )}
+            </div>
 
-          <div className="flex gap-2">
-            <input
-              value={msgInput}
-              onChange={(e) => setMsgInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-              placeholder="Type a message..."
-              className="flex-1 rounded-[var(--radius-sm)] border px-3 py-1.5 text-sm outline-none"
-              style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
-            />
-            <button
-              onClick={handleSend}
-              disabled={!team.members || team.members.length === 0}
-              className="rounded-[var(--radius-sm)] p-2 text-white"
-              style={{ background: 'var(--accent)', opacity: !team.members || team.members.length === 0 ? 0.5 : 1 }}
-            >
-              <Send size={14} />
-            </button>
+            {/* Input: To dropdown + message + Steer + Send */}
+            <div className="flex items-center gap-2">
+              <span className="text-sm shrink-0" style={{ color: '#7d8590' }}>To:</span>
+              <select value={recipient} onChange={(e) => setRecipient(e.target.value)}
+                className="rounded-md border px-2 py-1.5 text-sm shrink-0"
+                style={{ background: '#0d1117', borderColor: '#30363d', color: '#e6edf3' }}>
+                {team.members.map((m) => (
+                  <option key={m} value={m}>{m} {m === team.leader ? '(leader)' : ''}</option>
+                ))}
+              </select>
+              <input value={msgInput} onChange={(e) => setMsgInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+                placeholder="Type a message..."
+                className="flex-1 rounded-md border px-3 py-1.5 text-sm outline-none"
+                style={{ background: '#0d1117', borderColor: '#30363d', color: '#e6edf3' }} />
+              <label className="flex items-center gap-1 text-xs shrink-0" style={{ color: '#7d8590' }}>
+                <input type="checkbox" checked={steer} onChange={(e) => setSteer(e.target.checked)}
+                  style={{ accentColor: '#ff5c5c' }} />
+                Steer
+              </label>
+              <button onClick={handleSend}
+                className="rounded-md px-3 py-1.5 text-sm font-medium shrink-0"
+                style={{ color: '#7d8590', border: '1px solid #30363d' }}>
+                Send
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -295,49 +260,26 @@ export default function TeamDetailPage() {
       {/* Send Task modal */}
       {showTaskModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div
-            className="w-full max-w-md rounded-[var(--radius-lg)] border p-6"
-            style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border)' }}
-          >
-            <h2 className="text-base font-semibold mb-4" style={{ color: 'var(--text-strong)' }}>
-              Send Task
-            </h2>
-            <input
-              placeholder="Describe the task..."
-              value={taskInput}
+          <div className="w-full max-w-md rounded-lg border p-6" style={{ background: '#161b22', borderColor: '#30363d' }}>
+            <h2 className="text-base font-semibold mb-4" style={{ color: '#e6edf3' }}>Send Task</h2>
+            <input placeholder="Describe the task..." value={taskInput}
               onChange={(e) => setTaskInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSendTask()}
-              className="w-full rounded-[var(--radius-sm)] border px-3 py-2 text-sm outline-none mb-4"
-              style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
-            />
+              className="w-full rounded-md border px-3 py-2 text-sm outline-none mb-4"
+              style={{ background: '#0d1117', borderColor: '#30363d', color: '#e6edf3' }} />
             <div className="flex gap-2 justify-end">
-              <button
-                onClick={() => { setShowTaskModal(false); setTaskInput('') }}
-                className="rounded-[var(--radius-sm)] px-3 py-1.5 text-sm"
-                style={{ color: 'var(--muted)' }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSendTask}
-                disabled={!taskInput.trim() || actionLoading}
-                className="rounded-[var(--radius-sm)] px-3 py-1.5 text-sm font-medium text-white"
-                style={{ background: 'var(--accent)', opacity: !taskInput.trim() || actionLoading ? 0.5 : 1 }}
-              >
-                Send
-              </button>
+              <button onClick={() => { setShowTaskModal(false); setTaskInput('') }}
+                className="px-3 py-1.5 text-sm" style={{ color: '#7d8590' }}>Cancel</button>
+              <button onClick={handleSendTask} disabled={!taskInput.trim() || actionLoading}
+                className="rounded-md px-3 py-1.5 text-sm font-medium text-white"
+                style={{ background: '#ff5c5c', opacity: !taskInput.trim() || actionLoading ? 0.5 : 1 }}>Send</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Team Settings Drawer */}
-      <TeamSettings
-        open={showSettings}
-        onClose={() => setShowSettings(false)}
-        team={team}
-        onSave={handleSettingsSave}
-      />
+      <TeamSettings open={showSettings} onClose={() => setShowSettings(false)}
+        team={team} onSave={handleSettingsSave} />
     </div>
   )
 }

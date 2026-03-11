@@ -4,27 +4,66 @@ interface Props {
   agent: AgentDetail
 }
 
-function InfoCard({ title, value }: { title: string; value: string }) {
+function InfoCard({ title, value, accent }: { title: string; value: string; accent?: boolean }) {
   return (
     <div
-      className="rounded-[var(--radius)] border p-4"
-      style={{ background: 'var(--bg)', borderColor: 'var(--border)' }}
+      className="rounded-lg border p-4"
+      style={{ background: '#0d1117', borderColor: '#30363d' }}
     >
-      <p className="text-xs font-medium mb-1" style={{ color: 'var(--muted)' }}>{title}</p>
-      <p className="text-sm" style={{ color: 'var(--text-strong)' }}>{value}</p>
+      <p className="text-[11px] font-medium uppercase tracking-wide mb-1.5" style={{ color: '#7d8590' }}>
+        {title}
+      </p>
+      <p className="text-sm font-medium" style={{ color: accent ? '#ff5c5c' : '#e6edf3' }}>
+        {value}
+      </p>
     </div>
   )
 }
 
 export default function AgentOverview({ agent }: Props) {
+  const status = agent.status || 'idle'
+  const overrides = agent.config_overrides as Record<string, Record<string, string>> | undefined
+  const model = overrides?.llm?.model || 'default'
+
   return (
-    <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-      <InfoCard title="ID" value={agent.id} />
-      <InfoCard title="Name" value={agent.name} />
-      <InfoCard title="Role" value={agent.role} />
-      <InfoCard title="Team" value={agent.team_name || '\u2014'} />
-      <InfoCard title="Location" value={agent.location} />
-      <InfoCard title="Has SOUL" value={agent.has_soul ? 'Yes' : 'No'} />
+    <div className="space-y-6">
+      {/* Info grid */}
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+        <InfoCard title="ID" value={agent.id} />
+        <InfoCard title="Name" value={agent.name} />
+        <InfoCard title="Role" value={agent.role} />
+        <InfoCard title="Status" value={status} accent={status === 'running' || status === 'busy'} />
+        <InfoCard title="Team" value={agent.team_name || '—'} />
+        <InfoCard title="Model" value={model} />
+      </div>
+
+      {/* Workspace info */}
+      <div>
+        <h3 className="text-xs font-medium uppercase tracking-wide mb-2" style={{ color: '#7d8590' }}>
+          Workspace
+        </h3>
+        <div
+          className="rounded-lg border p-3 text-sm"
+          style={{ background: '#0d1117', borderColor: '#30363d', color: '#e6edf3', fontFamily: 'var(--mono, monospace)' }}
+        >
+          ~/.see-agent/agents/{agent.id}/workspace/
+        </div>
+      </div>
+
+      {/* SOUL preview */}
+      {agent.has_soul && (
+        <div>
+          <h3 className="text-xs font-medium uppercase tracking-wide mb-2" style={{ color: '#7d8590' }}>
+            SOUL.md
+          </h3>
+          <div
+            className="rounded-lg border p-3 text-sm leading-relaxed"
+            style={{ background: '#0d1117', borderColor: '#30363d', color: '#e6edf3' }}
+          >
+            SOUL.md configured
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -79,36 +79,43 @@ export default function AgentsPage() {
         ) : (
           <>
             {/* Agent header */}
-            <div className="mb-4">
-              <div className="flex items-center gap-3 mb-3">
-                <h1 className="text-xl font-semibold" style={{ color: 'var(--text-strong)' }}>
+            <div className="mb-5">
+              <div className="flex items-center gap-3 mb-1">
+                <h1 className="text-xl font-semibold" style={{ color: '#e6edf3' }}>
                   {agent.name}
                 </h1>
-                <span className="text-sm" style={{ color: 'var(--muted)' }}>
-                  {agent.role}
+                <span
+                  className="text-xs font-medium rounded-full px-2.5 py-0.5"
+                  style={{
+                    background: agent.status === 'busy' ? 'rgba(63, 185, 80, 0.15)' : 'rgba(125, 133, 144, 0.15)',
+                    color: agent.status === 'busy' ? '#3fb950' : '#7d8590',
+                  }}
+                >
+                  {agent.status === 'busy' ? 'Running' : 'Idle'}
                 </span>
               </div>
+              <p className="text-sm mb-4" style={{ color: '#7d8590' }}>{agent.role}</p>
 
               {/* Details / Chat toggle */}
               <div className="flex gap-2">
                 <button
                   onClick={() => navigate(`/agents/${id}`)}
-                  className="rounded-[var(--radius-sm)] px-4 py-1.5 text-sm font-medium transition-colors"
+                  className="rounded-full px-4 py-1.5 text-sm font-medium transition-all"
                   style={{
-                    background: !isChat ? 'var(--accent)' : 'transparent',
-                    color: !isChat ? 'white' : 'var(--muted)',
-                    border: !isChat ? 'none' : '1px solid var(--border)',
+                    background: !isChat ? '#ff5c5c' : 'transparent',
+                    color: !isChat ? 'white' : '#7d8590',
+                    border: !isChat ? '1px solid #ff5c5c' : '1px solid #30363d',
                   }}
                 >
                   Details
                 </button>
                 <button
                   onClick={() => navigate(`/agents/${id}/chat`)}
-                  className="rounded-[var(--radius-sm)] px-4 py-1.5 text-sm font-medium transition-colors"
+                  className="rounded-full px-4 py-1.5 text-sm font-medium transition-all"
                   style={{
-                    background: isChat ? 'var(--accent)' : 'transparent',
-                    color: isChat ? 'white' : 'var(--muted)',
-                    border: isChat ? 'none' : '1px solid var(--border)',
+                    background: isChat ? '#ff5c5c' : 'transparent',
+                    color: isChat ? 'white' : '#7d8590',
+                    border: isChat ? '1px solid #ff5c5c' : '1px solid #30363d',
                   }}
                 >
                   Chat
@@ -126,18 +133,24 @@ export default function AgentsPage() {
             ) : (
               <>
                 {/* Details tabs */}
-                <div className="flex gap-1 mb-4">
+                <div className="flex gap-0 mb-4" style={{ borderBottom: '1px solid #30363d' }}>
                   {detailsTabs.map((t) => (
                     <button
                       key={t.key}
                       onClick={() => setDetailsTab(t.key)}
-                      className="px-3 py-1.5 text-sm rounded-[var(--radius-sm)] transition-colors"
+                      className="px-4 py-2 text-sm transition-colors relative"
                       style={{
-                        background: detailsTab === t.key ? 'var(--accent-subtle)' : 'transparent',
-                        color: detailsTab === t.key ? 'var(--accent)' : 'var(--muted)',
+                        color: detailsTab === t.key ? '#ff5c5c' : '#7d8590',
+                        fontWeight: detailsTab === t.key ? 500 : 400,
                       }}
                     >
                       {t.label}
+                      {detailsTab === t.key && (
+                        <span
+                          className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full"
+                          style={{ background: '#ff5c5c' }}
+                        />
+                      )}
                     </button>
                   ))}
                 </div>

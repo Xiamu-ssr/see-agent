@@ -94,18 +94,18 @@ export default function McpPage() {
     })
   }
 
-  if (loading) return <div style={{ color: 'var(--muted)' }}>Loading...</div>
+  if (loading) return <div style={{ color: '#7d8590' }}>Loading...</div>
 
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-lg font-semibold" style={{ color: 'var(--text-strong)' }}>
+        <h1 className="text-xl font-semibold" style={{ color: '#e6edf3' }}>
           MCP Servers
         </h1>
         <button
           onClick={() => { setShowInstall(true); setInstallMsg('') }}
           className="flex items-center gap-1.5 rounded-[var(--radius)] px-3 py-1.5 text-sm font-medium text-white"
-          style={{ background: 'var(--accent)' }}
+          style={{ background: '#ff5c5c' }}
         >
           <Plus size={14} />
           Add MCP Server
@@ -114,39 +114,39 @@ export default function McpPage() {
 
       <div
         className="overflow-hidden rounded-[var(--radius-lg)] border"
-        style={{ borderColor: 'var(--border)' }}
+        style={{ borderColor: '#30363d' }}
       >
         <table className="w-full text-sm">
           <thead>
-            <tr style={{ background: 'var(--bg-elevated)' }}>
-              <th className="text-left px-4 py-2.5 font-medium" style={{ color: 'var(--muted)' }}>Name</th>
-              <th className="text-left px-4 py-2.5 font-medium" style={{ color: 'var(--muted)' }}>Type</th>
-              <th className="text-left px-4 py-2.5 font-medium" style={{ color: 'var(--muted)' }}>Command</th>
-              <th className="text-right px-4 py-2.5 font-medium" style={{ color: 'var(--muted)' }}>Actions</th>
+            <tr style={{ background: '#161b22' }}>
+              <th className="text-left px-4 py-2.5 font-medium" style={{ color: '#7d8590' }}>Name</th>
+              <th className="text-left px-4 py-2.5 font-medium" style={{ color: '#7d8590' }}>Type</th>
+              <th className="text-left px-4 py-2.5 font-medium" style={{ color: '#7d8590' }}>Command</th>
+              <th className="text-right px-4 py-2.5 font-medium" style={{ color: '#7d8590' }}>Actions</th>
             </tr>
           </thead>
           <tbody>
             {servers.map((s) => (
               <tr
                 key={s.name}
-                className="border-t hover:bg-[var(--bg-hover)]"
-                style={{ borderColor: 'var(--border)' }}
+                className="border-t hover:bg-[#21262d]"
+                style={{ borderColor: '#30363d' }}
               >
                 <td className="px-4 py-2.5">
                   <div className="flex items-center gap-2">
                     <Plug size={14} style={{ color: 'var(--accent-2)' }} />
-                    <span style={{ color: 'var(--text-strong)' }}>{s.name}</span>
+                    <span style={{ color: '#e6edf3' }}>{s.name}</span>
                   </div>
                 </td>
-                <td className="px-4 py-2.5" style={{ color: 'var(--muted)' }}>{s.type}</td>
-                <td className="px-4 py-2.5" style={{ color: 'var(--text)', fontFamily: 'var(--mono)' }}>
+                <td className="px-4 py-2.5" style={{ color: '#7d8590' }}>{s.type}</td>
+                <td className="px-4 py-2.5" style={{ color: '#e6edf3', fontFamily: 'var(--mono)' }}>
                   {s.command} {s.args?.join(' ')}
                 </td>
                 <td className="px-4 py-2.5 text-right">
                   <button
                     onClick={() => handleDelete(s.name)}
-                    className="text-xs p-1.5 rounded hover:bg-[var(--bg-hover)]"
-                    style={{ color: 'var(--danger)' }}
+                    className="text-xs p-1.5 rounded hover:bg-[#21262d]"
+                    style={{ color: '#f85149' }}
                   >
                     <Trash2 size={14} />
                   </button>
@@ -155,7 +155,7 @@ export default function McpPage() {
             ))}
             {servers.length === 0 && (
               <tr>
-                <td colSpan={4} className="px-4 py-8 text-center" style={{ color: 'var(--muted)' }}>
+                <td colSpan={4} className="px-4 py-8 text-center" style={{ color: '#7d8590' }}>
                   No MCP servers configured.
                 </td>
               </tr>
@@ -169,9 +169,9 @@ export default function McpPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div
             className="w-full max-w-lg rounded-[var(--radius-lg)] border p-6"
-            style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border)' }}
+            style={{ background: '#161b22', borderColor: '#30363d' }}
           >
-            <h2 className="text-base font-semibold mb-4" style={{ color: 'var(--text-strong)' }}>
+            <h2 className="text-base font-semibold mb-4" style={{ color: '#e6edf3' }}>
               Add MCP Server
             </h2>
 
@@ -183,8 +183,8 @@ export default function McpPage() {
                   onClick={() => setInstallType(t)}
                   className="px-3 py-1.5 text-sm rounded-[var(--radius-sm)] capitalize"
                   style={{
-                    background: installType === t ? 'var(--accent-subtle)' : 'transparent',
-                    color: installType === t ? 'var(--accent)' : 'var(--muted)',
+                    background: installType === t ? 'rgba(255,92,92,0.12)' : 'transparent',
+                    color: installType === t ? '#ff5c5c' : '#7d8590',
                   }}
                 >
                   {t === 'npm' ? 'npm Package' : t === 'pip' ? 'pip Package' : 'Manual'}
@@ -237,7 +237,7 @@ export default function McpPage() {
                     onChange={(v) => setForm({ ...form, args: v })}
                   />
                   <div>
-                    <label className="block text-xs font-medium mb-1" style={{ color: 'var(--muted)' }}>
+                    <label className="block text-xs font-medium mb-1" style={{ color: '#7d8590' }}>
                       Environment Variables
                     </label>
                     {envRows.map((row, i) => (
@@ -251,7 +251,7 @@ export default function McpPage() {
                             setEnvRows(next)
                           }}
                           className="flex-1 rounded-[var(--radius-sm)] border px-2 py-1 text-xs outline-none"
-                          style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
+                          style={{ background: '#0d1117', borderColor: '#30363d', color: '#e6edf3' }}
                         />
                         <input
                           placeholder="VALUE"
@@ -262,12 +262,12 @@ export default function McpPage() {
                             setEnvRows(next)
                           }}
                           className="flex-1 rounded-[var(--radius-sm)] border px-2 py-1 text-xs outline-none"
-                          style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
+                          style={{ background: '#0d1117', borderColor: '#30363d', color: '#e6edf3' }}
                         />
                         <button
                           onClick={() => setEnvRows(envRows.filter((_, j) => j !== i))}
                           className="text-xs px-1"
-                          style={{ color: 'var(--danger)' }}
+                          style={{ color: '#f85149' }}
                         >
                           x
                         </button>
@@ -276,7 +276,7 @@ export default function McpPage() {
                     <button
                       onClick={() => setEnvRows([...envRows, { key: '', value: '' }])}
                       className="text-xs mt-1"
-                      style={{ color: 'var(--accent)' }}
+                      style={{ color: '#ff5c5c' }}
                     >
                       + Add variable
                     </button>
@@ -287,7 +287,7 @@ export default function McpPage() {
               {installMsg && (
                 <p
                   className="text-xs"
-                  style={{ color: installMsg.startsWith('Error') ? 'var(--danger)' : 'var(--ok)' }}
+                  style={{ color: installMsg.startsWith('Error') ? '#f85149' : '#3fb950' }}
                 >
                   {installMsg}
                 </p>
@@ -297,7 +297,7 @@ export default function McpPage() {
                 <button
                   onClick={() => setShowInstall(false)}
                   className="rounded-[var(--radius-sm)] px-3 py-1.5 text-sm"
-                  style={{ color: 'var(--muted)' }}
+                  style={{ color: '#7d8590' }}
                 >
                   Cancel
                 </button>
@@ -305,7 +305,7 @@ export default function McpPage() {
                   onClick={handleInstall}
                   disabled={installing}
                   className="rounded-[var(--radius-sm)] px-3 py-1.5 text-sm font-medium text-white"
-                  style={{ background: 'var(--accent)', opacity: installing ? 0.6 : 1 }}
+                  style={{ background: '#ff5c5c', opacity: installing ? 0.6 : 1 }}
                 >
                   {installing ? 'Adding...' : installType === 'pip' ? 'Install & Add' : 'Add'}
                 </button>
@@ -331,7 +331,7 @@ function Input({
 }) {
   return (
     <div>
-      <label className="block text-xs font-medium mb-1" style={{ color: 'var(--muted)' }}>
+      <label className="block text-xs font-medium mb-1" style={{ color: '#7d8590' }}>
         {label}
       </label>
       <input
@@ -339,7 +339,7 @@ function Input({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         className="w-full rounded-[var(--radius-sm)] border px-3 py-2 text-sm outline-none"
-        style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
+        style={{ background: '#0d1117', borderColor: '#30363d', color: '#e6edf3' }}
       />
     </div>
   )

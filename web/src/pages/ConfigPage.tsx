@@ -37,7 +37,7 @@ export default function ConfigPage() {
   }
 
   if (!config || !schema) {
-    return <div style={{ color: 'var(--muted)' }}>Loading...</div>
+    return <div style={{ color: '#7d8590' }}>Loading...</div>
   }
 
   const properties = (schema as { properties?: Record<string, Record<string, unknown>> }).properties || {}
@@ -45,14 +45,14 @@ export default function ConfigPage() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-lg font-semibold" style={{ color: 'var(--text-strong)' }}>
+        <h1 className="text-xl font-semibold" style={{ color: '#e6edf3' }}>
           Config
         </h1>
         <div className="flex items-center gap-2">
           {message && (
             <span
               className="text-xs"
-              style={{ color: message.startsWith('Error') ? 'var(--danger)' : 'var(--ok)' }}
+              style={{ color: message.startsWith('Error') ? '#f85149' : '#3fb950' }}
             >
               {message}
             </span>
@@ -61,7 +61,7 @@ export default function ConfigPage() {
             onClick={handleSave}
             disabled={saving}
             className="flex items-center gap-1.5 rounded-[var(--radius)] px-3 py-1.5 text-sm font-medium text-white"
-            style={{ background: 'var(--accent)', opacity: saving ? 0.6 : 1 }}
+            style={{ background: '#ff5c5c', opacity: saving ? 0.6 : 1 }}
           >
             <Save size={14} />
             Save
@@ -73,7 +73,7 @@ export default function ConfigPage() {
         {/* Left: Form */}
         <div
           className="rounded-[var(--radius-lg)] border p-5 space-y-4"
-          style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
+          style={{ background: '#161b22', borderColor: '#30363d' }}
         >
           {Object.entries(properties).map(([key, prop]) => (
             <ConfigField
@@ -93,16 +93,16 @@ export default function ConfigPage() {
         {/* Right: JSON preview */}
         <div
           className="rounded-[var(--radius-lg)] border p-5"
-          style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
+          style={{ background: '#161b22', borderColor: '#30363d' }}
         >
           <div className="flex items-center justify-between mb-3">
-            <span className="text-sm font-medium" style={{ color: 'var(--text-strong)' }}>
+            <span className="text-sm font-medium" style={{ color: '#e6edf3' }}>
               JSON
             </span>
             <button
               onClick={() => setEditing(!editing)}
-              className="flex items-center gap-1 text-xs rounded px-2 py-1 hover:bg-[var(--bg-hover)]"
-              style={{ color: 'var(--muted)' }}
+              className="flex items-center gap-1 text-xs rounded px-2 py-1 hover:bg-[#21262d]"
+              style={{ color: '#7d8590' }}
             >
               {editing ? <EyeOff size={12} /> : <Eye size={12} />}
               {editing ? 'Read-only' : 'Edit'}
@@ -114,16 +114,16 @@ export default function ConfigPage() {
               onChange={(e) => setJsonText(e.target.value)}
               className="w-full h-[500px] text-xs rounded-[var(--radius-sm)] border p-3 outline-none resize-none"
               style={{
-                background: 'var(--bg)',
-                borderColor: 'var(--border)',
-                color: 'var(--text)',
+                background: '#0d1117',
+                borderColor: '#30363d',
+                color: '#e6edf3',
                 fontFamily: 'var(--mono)',
               }}
             />
           ) : (
             <pre
               className="text-xs overflow-auto max-h-[500px]"
-              style={{ color: 'var(--text)', fontFamily: 'var(--mono)' }}
+              style={{ color: '#e6edf3', fontFamily: 'var(--mono)' }}
             >
               {jsonText}
             </pre>
@@ -155,10 +155,10 @@ function ConfigField({
   if (isObject) {
     return (
       <div>
-        <label className="block text-xs font-medium mb-1" style={{ color: 'var(--muted)' }}>
+        <label className="block text-xs font-medium mb-1" style={{ color: '#7d8590' }}>
           {name}
         </label>
-        <pre className="text-xs p-2 rounded" style={{ background: 'var(--bg)', color: 'var(--text)', fontFamily: 'var(--mono)' }}>
+        <pre className="text-xs p-2 rounded" style={{ background: '#0d1117', color: '#e6edf3', fontFamily: 'var(--mono)' }}>
           {JSON.stringify(value, null, 2)}
         </pre>
       </div>
@@ -168,13 +168,13 @@ function ConfigField({
   if (isBoolean) {
     return (
       <div className="flex items-center justify-between">
-        <label className="text-xs font-medium" style={{ color: 'var(--muted)' }}>
+        <label className="text-xs font-medium" style={{ color: '#7d8590' }}>
           {name}
         </label>
         <button
           onClick={() => onChange(!value)}
           className="relative w-9 h-5 rounded-full transition-colors"
-          style={{ background: value ? 'var(--accent)' : 'var(--border-strong)' }}
+          style={{ background: value ? '#ff5c5c' : 'var(--border-strong)' }}
         >
           <span
             className="absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform"
@@ -188,14 +188,14 @@ function ConfigField({
   if (enumValues) {
     return (
       <div>
-        <label className="block text-xs font-medium mb-1" style={{ color: 'var(--muted)' }}>
+        <label className="block text-xs font-medium mb-1" style={{ color: '#7d8590' }}>
           {name}
         </label>
         <select
           value={String(value || '')}
           onChange={(e) => onChange(e.target.value)}
           className="w-full rounded-[var(--radius-sm)] border px-3 py-1.5 text-sm outline-none"
-          style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
+          style={{ background: '#0d1117', borderColor: '#30363d', color: '#e6edf3' }}
         >
           {enumValues.map((v) => (
             <option key={v} value={v}>
@@ -209,7 +209,7 @@ function ConfigField({
 
   return (
     <div>
-      <label className="block text-xs font-medium mb-1" style={{ color: 'var(--muted)' }}>
+      <label className="block text-xs font-medium mb-1" style={{ color: '#7d8590' }}>
         {name}
       </label>
       <input
@@ -217,7 +217,7 @@ function ConfigField({
         value={value == null ? '' : String(value)}
         onChange={(e) => onChange(isNumber ? Number(e.target.value) : e.target.value)}
         className="w-full rounded-[var(--radius-sm)] border px-3 py-1.5 text-sm outline-none"
-        style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
+        style={{ background: '#0d1117', borderColor: '#30363d', color: '#e6edf3' }}
       />
     </div>
   )

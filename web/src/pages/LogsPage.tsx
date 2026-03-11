@@ -1,160 +1,100 @@
 import { useState, useEffect, useCallback } from 'react'
 import { getLogs } from '@/api/logs'
 import type { LogEntry } from '@/types'
-import { Search } from 'lucide-react'
 
 const levelColors: Record<string, string> = {
-  DEBUG: 'var(--muted)',
-  INFO: 'var(--accent-2)',
-  WARNING: 'var(--warn)',
-  ERROR: 'var(--danger)',
-  CRITICAL: 'var(--danger)',
-}
-
-const levels = ['ALL', 'DEBUG', 'INFO', 'WARNING', 'ERROR']
-
-function today() {
-  return new Date().toISOString().slice(0, 10)
+  INFO: '#3fb950',
+  DEBUG: '#7d8590',
+  WARNING: '#d29922',
+  WARN: '#d29922',
+  ERROR: '#f85149',
+  CRITICAL: '#f85149',
 }
 
 export default function LogsPage() {
-  const [date, setDate] = useState(today())
-  const [level, setLevel] = useState('ALL')
-  const [search, setSearch] = useState('')
-  const [entries, setEntries] = useState<LogEntry[]>([])
-  const [loading, setLoading] = useState(false)
-  const [offset, setOffset] = useState(0)
-  const limit = 100
+  const [logs, setLogs] = useState<LogEntry[]>([])
+  const [loading, setLoading] = useState(true)
+  const [filter, setFilter] = useState('ALL')
 
-  const fetchLogs = useCallback(
-    async (reset = false) => {
-      setLoading(true)
-      const newOffset = reset ? 0 : offset
-      const result = await getLogs({
-        date,
-        level: level === 'ALL' ? '' : level,
-        limit,
-        offset: newOffset,
-      })
-      if (reset) {
-        setEntries(result)
-        setOffset(result.length)
-      } else {
-        setEntries((prev) => [...prev, ...result])
-        setOffset(newOffset + result.length)
-      }
-      setLoading(false)
-    },
-    [date, level, offset],
-  )
+  const refresh = useCallback(() => {
+    getLogs().then(setLogs).finally(() => setLoading(false))
+  }, [])
 
   useEffect(() => {
-    setOffset(0)
-    fetchLogs(true)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [date, level])
+    refresh()
+    const interval = setInterval(refresh, 5000)
+    return () => clearInterval(interval)
+  }, [refresh])
 
-  const filtered = search
-    ? entries.filter(
-        (e) =>
-          e.message.toLowerCase().includes(search.toLowerCase()) ||
-          e.logger.toLowerCase().includes(search.toLowerCase()),
-      )
-    : entries
+  const filtered = filter === 'ALL' ? logs : logs.filter(l => l.level === filter)
 
   return (
     <div>
-      <h1 className="text-lg font-semibold mb-4" style={{ color: 'var(--text-strong)' }}>
-        Logs
-      </h1>
-
-      <div className="flex flex-wrap gap-3 mb-4">
-        <input
-          type="date"
-          value={date}
-          onChange={(e) => setDate(e.target.value)}
-          className="rounded-[var(--radius-sm)] border px-3 py-1.5 text-sm outline-none"
-          style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
-        />
-        <select
-          value={level}
-          onChange={(e) => setLevel(e.target.value)}
-          className="rounded-[var(--radius-sm)] border px-3 py-1.5 text-sm outline-none"
-          style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
-        >
-          {levels.map((l) => (
-            <option key={l}>{l}</option>
-          ))}
-        </select>
-        <div className="relative flex-1 min-w-[200px]">
-          <Search
-            size={14}
-            className="absolute left-2.5 top-1/2 -translate-y-1/2"
-            style={{ color: 'var(--muted)' }}
-          />
-          <input
-            placeholder="Search..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full rounded-[var(--radius-sm)] border pl-8 pr-3 py-1.5 text-sm outline-none"
-            style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
-          />
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-xl font-semibold" style={{ color: '#e6edf3' }}>Logs</h1>
+        <div className="flex items-center gap-2">
+          <select
+            value={filter}
+            onChange={e => setFilter(e.target.value)}
+            className="rounded-md border px-2.5 py-1.5 text-xs"
+            style={{ background: '#0d1117', borderColor: '#30363d', color: '#e6edf3' }}
+          >
+            {['ALL', 'DEBUG', 'INFO', 'WARNING', 'ERROR'].map(l => (
+              <option key={l} value={l}>{l}</option>
+            ))}
+          </select>
+          <button
+            onClick={refresh}
+            className="rounded-md border px-3 py-1.5 text-xs"
+            style={{ borderColor: '#30363d', color: '#7d8590' }}
+          >
+            Refresh
+          </button>
         </div>
       </div>
 
-      <div
-        className="rounded-[var(--radius-lg)] border overflow-hidden"
-        style={{ borderColor: 'var(--border)' }}
-      >
-        <div className="max-h-[calc(100vh-220px)] overflow-auto">
-          <table className="w-full text-xs" style={{ fontFamily: 'var(--mono)' }}>
+      {loading ? (
+        <div style={{ color: '#7d8590' }}>Loading...</div>
+      ) : (
+        <div className="rounded-lg border overflow-hidden" style={{ borderColor: '#30363d' }}>
+          <table className="w-full text-xs" style={{ fontFamily: 'var(--mono, monospace)' }}>
+            <thead>
+              <tr style={{ background: '#161b22' }}>
+                <th className="text-left px-3 py-2.5 font-medium" style={{ color: '#7d8590', width: 180 }}>Timestamp</th>
+                <th className="text-left px-3 py-2.5 font-medium" style={{ color: '#7d8590', width: 70 }}>Level</th>
+                <th className="text-left px-3 py-2.5 font-medium" style={{ color: '#7d8590', width: 120 }}>Source</th>
+                <th className="text-left px-3 py-2.5 font-medium" style={{ color: '#7d8590' }}>Message</th>
+              </tr>
+            </thead>
             <tbody>
-              {filtered.map((e, i) => (
+              {filtered.map((log, i) => (
                 <tr
                   key={i}
-                  className="border-t hover:bg-[var(--bg-hover)]"
-                  style={{ borderColor: 'var(--border)' }}
+                  className="border-t"
+                  style={{
+                    borderColor: '#21262d',
+                    background: i % 2 === 0 ? '#0d1117' : '#161b22',
+                  }}
                 >
-                  <td className="px-3 py-1.5 whitespace-nowrap" style={{ color: 'var(--muted)' }}>
-                    {e.time}
+                  <td className="px-3 py-2" style={{ color: '#7d8590' }}>{log.time}</td>
+                  <td className="px-3 py-2">
+                    <span style={{ color: levelColors[log.level] || '#7d8590' }}>{log.level}</span>
                   </td>
-                  <td
-                    className="px-2 py-1.5 whitespace-nowrap font-medium"
-                    style={{ color: levelColors[e.level] || 'var(--text)' }}
-                  >
-                    {e.level}
-                  </td>
-                  <td className="px-2 py-1.5 whitespace-nowrap" style={{ color: 'var(--muted)' }}>
-                    {e.logger}
-                  </td>
-                  <td className="px-2 py-1.5" style={{ color: 'var(--text)' }}>
-                    {e.message}
-                  </td>
+                  <td className="px-3 py-2" style={{ color: '#e6edf3' }}>{log.logger || 'server'}</td>
+                  <td className="px-3 py-2" style={{ color: '#e6edf3' }}>{log.message}</td>
                 </tr>
               ))}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="px-4 py-8 text-center text-sm" style={{ color: 'var(--muted)' }}>
-                    {loading ? 'Loading...' : 'No log entries'}
+                  <td colSpan={4} className="px-3 py-8 text-center" style={{ color: '#7d8590' }}>
+                    No logs found.
                   </td>
                 </tr>
               )}
             </tbody>
           </table>
         </div>
-        {entries.length >= offset && entries.length > 0 && (
-          <div className="border-t p-2 text-center" style={{ borderColor: 'var(--border)' }}>
-            <button
-              onClick={() => fetchLogs(false)}
-              disabled={loading}
-              className="text-xs px-3 py-1 rounded hover:bg-[var(--bg-hover)]"
-              style={{ color: 'var(--accent)' }}
-            >
-              {loading ? 'Loading...' : 'Load more'}
-            </button>
-          </div>
-        )}
-      </div>
+      )}
     </div>
   )
 }
