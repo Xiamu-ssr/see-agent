@@ -12,8 +12,12 @@ from see_agent.server.schemas import (
     AgentCreateResponse,
     AgentDetail,
     AgentSummary,
+    ChatMessage,
     SandboxAllowResponse,
     SandboxViolation,
+    StatusResponse,
+    WorkspaceFileContent,
+    WorkspaceFileItem,
 )
 
 logger = logging.getLogger(__name__)
@@ -249,3 +253,151 @@ async def sandbox_allow(
         path=body.path,
         mode=body.mode,
     )
+
+
+# -------------------------------------------------------------------- #
+# Agent messaging & lifecycle (v3.5)
+# -------------------------------------------------------------------- #
+
+
+class SendMessageRequest(BaseModel):
+    content: str
+    priority: str = "normal"
+
+
+class WorkspaceWriteRequest(BaseModel):
+    content: str
+
+
+@router.post("/{agent_id}/message")
+async def send_agent_message(
+    agent_id: str, body: SendMessageRequest, request: Request,
+) -> StatusResponse:
+    """Send a message to an agent."""
+    from see_agent.agent.definition import AgentDefinition
+
+    try:
+        AgentDefinition.find(agent_id)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    router_obj = getattr(request.app.state, "message_router", None)
+    if router_obj is not None:
+        router_obj.on_user_message(
+            agent_id, body.content, priority=body.priority,
+        )
+    return StatusResponse(status="sent")
+
+
+@router.get("/{agent_id}/chat")
+async def get_agent_chat(agent_id: str) -> list[ChatMessage]:
+    """Get chat history for an agent (from latest session)."""
+    import json
+
+    from see_agent.config import AGENTS_DIR
+
+    sessions_dir = AGENTS_DIR / agent_id / "sessions"
+    if not sessions_dir.is_dir():
+        return []
+
+    # Find the most recent session directory.
+    session_dirs = sorted(sessions_dir.iterdir(), reverse=True)
+    if not session_dirs:
+        return []
+
+    latest = session_dirs[0]
+    messages_file = latest / "messages.jsonl"
+    if not messages_file.exists():
+        return []
+
+    results: list[ChatMessage] = []
+    for line in messages_file.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            entry = json.loads(line)
+            results.append(ChatMessage(
+                role=entry.get("role", "unknown"),
+                content=entry.get("content"),
+                timestamp=entry.get("timestamp"),
+            ))
+        except json.JSONDecodeError:
+            continue
+
+    return results[-100:]
+
+
+@router.post("/{agent_id}/start")
+async def start_agent(
+    agent_id: str, request: Request,
+) -> StatusResponse:
+    """Start an agent subprocess."""
+    from see_agent.agent.definition import AgentDefinition
+
+    try:
+        AgentDefinition.find(agent_id)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    supervisor = getattr(request.app.state, "supervisor", None)
+    if supervisor is not None:
+        supervisor.start_agent(agent_id)
+    return StatusResponse(status="started")
+
+
+@router.post("/{agent_id}/stop")
+async def stop_agent(
+    agent_id: str, request: Request,
+) -> StatusResponse:
+    """Stop an agent subprocess."""
+    supervisor = getattr(request.app.state, "supervisor", None)
+    if supervisor is not None:
+        supervisor.stop_agent(agent_id)
+    return StatusResponse(status="stopped")
+
+
+@router.get("/{agent_id}/workspace")
+async def list_workspace_files(agent_id: str) -> list[WorkspaceFileItem]:
+    """List files in an agent's workspace directory."""
+    from see_agent.config import AGENTS_DIR
+
+    workspace = AGENTS_DIR / agent_id / "workspace"
+    if not workspace.is_dir():
+        return []
+
+    return [
+        WorkspaceFileItem(name=f.name, size=f.stat().st_size)
+        for f in sorted(workspace.iterdir())
+        if f.is_file()
+    ]
+
+
+@router.get("/{agent_id}/workspace/{filename}")
+async def get_workspace_file(
+    agent_id: str, filename: str,
+) -> WorkspaceFileContent:
+    """Read a workspace file."""
+    from see_agent.config import AGENTS_DIR
+
+    fpath = AGENTS_DIR / agent_id / "workspace" / filename
+    if not fpath.is_file():
+        raise HTTPException(status_code=404, detail="File not found")
+
+    content = fpath.read_text(encoding="utf-8")
+    return WorkspaceFileContent(name=filename, content=content)
+
+
+@router.put("/{agent_id}/workspace/{filename}")
+async def update_workspace_file(
+    agent_id: str, filename: str, body: WorkspaceWriteRequest,
+) -> StatusResponse:
+    """Write a workspace file."""
+    from see_agent.config import AGENTS_DIR
+
+    workspace = AGENTS_DIR / agent_id / "workspace"
+    if not workspace.is_dir():
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    fpath = workspace / filename
+    fpath.write_text(body.content, encoding="utf-8")
+    return StatusResponse(status="saved")

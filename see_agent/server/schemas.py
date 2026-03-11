@@ -187,3 +187,24 @@ class ScreenLeaseStatus(BaseModel):
     started_at: str | None = None
     idle_seconds: int = 0
     queue_length: int = 0
+
+
+# -------------------------------------------------------------------- #
+# Agent workspace / chat / lifecycle (v3.5)
+# -------------------------------------------------------------------- #
+
+
+class WorkspaceFileItem(BaseModel):
+    name: str
+    size: int
+
+
+class WorkspaceFileContent(BaseModel):
+    name: str
+    content: str
+
+
+class ChatMessage(BaseModel):
+    role: str
+    content: str | None = None
+    timestamp: str | None = None

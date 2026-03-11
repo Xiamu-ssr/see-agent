@@ -45,7 +45,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.config = config
 
     # Shared mutable state accessible from route handlers via ``request.app.state``.
-    app.state.team_managers = {}
+    app.state.team_managers = {}  # legacy, kept for backward compat
+
+    # v3.5: AgentSupervisor + MessageRouter
+    from see_agent.server.message_router import MessageRouter
+    from see_agent.server.supervisor import AgentSupervisor
+
+    supervisor = AgentSupervisor(config)
+    app.state.supervisor = supervisor
+    app.state.message_router = MessageRouter(supervisor)
 
     logger.info(
         "see-agent server started  model=%s  max_steps=%s",
@@ -58,7 +66,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # ── Shutdown ───────────────────────────────────────────────────────
     logger.info("see-agent server shutting down")
 
-    # Stop all running team managers and their agent subprocesses.
+    # Stop all agent subprocesses via supervisor.
+    supervisor.stop_all()
+
+    # Stop legacy team managers.
     managers: dict = getattr(app.state, "team_managers", {})
     for team_id, mgr in list(managers.items()):
         try:
