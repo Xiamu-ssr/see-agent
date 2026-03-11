@@ -48,6 +48,9 @@ BOARD_COMPLETE = "board.complete"
 BOARD_UPDATE = "board.update"
 BOARD_ASSIGN = "board.assign"
 
+# Message delivery (server → agent)
+MSG_DELIVER = "msg.deliver"
+
 # Screen
 SCREEN_ACQUIRE = "screen.acquire"
 SCREEN_RELEASE = "screen.release"

@@ -132,6 +132,8 @@ class AgentLoop:
         self._team_bus = team_bus
         self._owner_display = owner_display
         self._task_board = task_board
+        self._active_ctx: ConversationContext | None = None
+        self._inject_queue: list[Any] = []
 
         # Configurable knobs with sensible defaults.
         self._max_steps: int = int(config.get("max_steps", 50))
@@ -471,6 +473,49 @@ class AgentLoop:
         finally:
             session.teardown_logging()
 
+    async def run_one_turn(
+        self,
+        messages: list[Any] | None = None,
+        inject_queue: list[Any] | None = None,
+    ) -> None:
+        """Execute a single turn with incoming messages.
+
+        v3.5: Called by :class:`AgentRuntime` instead of ``run(task)``.
+        Messages are injected into the conversation context, then the LLM
+        is asked for one response cycle.
+
+        Parameters:
+            messages: List of :class:`Message` objects to process this turn.
+            inject_queue: Shared list where steer messages are appended
+                by the runtime; checked at the start of each step.
+        """
+        # Store inject_queue for access during _run_loop.
+        self._inject_queue = inject_queue or []
+
+        if not messages:
+            return
+
+        # Build formatted content from messages.
+        parts = []
+        for msg in messages:
+            if hasattr(msg, "format_prefix"):
+                parts.append(f"{msg.format_prefix()}: {msg.content}")
+            else:
+                parts.append(str(msg))
+
+        combined = "\n".join(parts)
+
+        # If we have a running session context, inject messages.
+        # Otherwise this is the first turn — use run() with the first message.
+        if self._active_ctx is None:
+            # First turn — initialize via run().
+            m0 = messages[0]
+            first_content = m0.content if hasattr(m0, "content") else str(m0)
+            await self.run(first_content)
+        else:
+            # Subsequent turns — inject into existing context.
+            self._active_ctx.add_user_reply(combined)
+
     async def _run_loop(
         self,
         session: Session,
@@ -500,6 +545,18 @@ class AgentLoop:
 
             # ── 4a3. Drain user queue ─────────────────────────────────
             self._drain_user_queue(ctx)
+
+            # ── 4a4. Drain inject queue (v3.5 steer messages) ────────
+            inject_queue = getattr(self, "_inject_queue", None)
+            if inject_queue:
+                while inject_queue:
+                    imsg = inject_queue.pop(0)
+                    if hasattr(imsg, "format_prefix"):
+                        ctx.add_user_reply(
+                            f"{imsg.format_prefix()}: {imsg.content}",
+                        )
+                    else:
+                        ctx.add_user_reply(str(imsg))
 
             # ── 4b. Ask the LLM ──────────────────────────────────────
             try:
