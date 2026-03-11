@@ -1,10 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, Link } from 'react-router-dom'
 import { getTeamStatus, getMessages, sendMessage, runTeam, stopTeam, updateTeam } from '@/api/teams'
 import type { TeamStatus, TeamMessage } from '@/types'
-import { ArrowLeft, Send, Play, Square, Settings } from 'lucide-react'
-import PixelOffice from '@/components/office/PixelOffice'
-import AgentInfoCard from '@/components/office/AgentInfoCard'
+import { ArrowLeft, Send, Square, Settings } from 'lucide-react'
 import TeamSettings from '@/components/team/TeamSettings'
 
 export default function TeamDetailPage() {
@@ -15,9 +13,10 @@ export default function TeamDetailPage() {
   const [loading, setLoading] = useState(true)
   const [msgInput, setMsgInput] = useState('')
   const [recipient, setRecipient] = useState('')
-  const [selectedAgent, setSelectedAgent] = useState<string | null>(null)
   const [showSettings, setShowSettings] = useState(false)
   const [actionLoading, setActionLoading] = useState(false)
+  const [showTaskModal, setShowTaskModal] = useState(false)
+  const [taskInput, setTaskInput] = useState('')
 
   const loadData = useCallback(async () => {
     if (!id) return
@@ -48,15 +47,14 @@ export default function TeamDetailPage() {
     loadData()
   }
 
-  const handleRun = async () => {
-    if (!id) return
+  const handleSendTask = async () => {
+    if (!id || !taskInput.trim()) return
     setActionLoading(true)
     try {
-      const task = prompt('Enter task description:')
-      if (task) {
-        await runTeam(id, task)
-        loadData()
-      }
+      await runTeam(id, taskInput)
+      setShowTaskModal(false)
+      setTaskInput('')
+      loadData()
     } finally {
       setActionLoading(false)
     }
@@ -138,44 +136,56 @@ export default function TeamDetailPage() {
             </button>
           ) : (
             <button
-              onClick={handleRun}
+              onClick={() => setShowTaskModal(true)}
               disabled={actionLoading}
               className="flex items-center gap-1 rounded-[var(--radius)] px-3 py-1.5 text-sm font-medium text-white"
               style={{ background: 'var(--ok)', opacity: actionLoading ? 0.6 : 1 }}
             >
-              <Play size={14} />
-              Run
+              Send Task
             </button>
           )}
         </div>
       </div>
 
-      {/* Pixel office */}
-      <div className="relative mb-4">
-        <PixelOffice
-          members={team.members}
-          seating={{}}
-          onAgentClick={(agentId) => setSelectedAgent(agentId === selectedAgent ? null : agentId)}
-        />
-        {/* Agent info card overlay */}
-        {selectedAgent && (
-          <div className="absolute top-4 right-4 z-10">
-            <AgentInfoCard
-              agentId={selectedAgent}
-              agentName={selectedAgent}
-              status="idle"
-              onClose={() => setSelectedAgent(null)}
-              onViewDetail={() => navigate(`/agents/${selectedAgent}`)}
-            />
-          </div>
-        )}
-      </div>
-
-      {/* Bottom: TaskBoard + Messages */}
+      {/* Main content: Members + TaskBoard + Messages */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 flex-1 min-h-0">
+        {/* Members */}
+        <div
+          className="lg:col-span-1 rounded-[var(--radius-lg)] border p-4 overflow-auto"
+          style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
+        >
+          <h3 className="text-sm font-medium mb-3" style={{ color: 'var(--text-strong)' }}>
+            Members
+          </h3>
+          <div className="space-y-3">
+            {team.members.map((m) => (
+              <div key={m} className="flex items-center justify-between">
+                <div>
+                  <span className="text-sm" style={{ color: 'var(--text)' }}>{m}</span>
+                  {m === team.leader && (
+                    <span
+                      className="ml-2 text-[10px] font-medium rounded px-1.5 py-0.5"
+                      style={{ background: 'var(--accent)', color: 'white' }}
+                    >
+                      LEADER
+                    </span>
+                  )}
+                </div>
+                <Link
+                  to={`/agents/${m}`}
+                  className="text-xs hover:underline"
+                  style={{ color: 'var(--accent)' }}
+                >
+                  View
+                </Link>
+              </div>
+            ))}
+          </div>
+        </div>
+
         {/* Task Board */}
         <div
-          className="lg:col-span-3 rounded-[var(--radius-lg)] border p-4 overflow-auto"
+          className="lg:col-span-2 rounded-[var(--radius-lg)] border p-4 overflow-auto"
           style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
         >
           <h3 className="text-sm font-medium mb-3" style={{ color: 'var(--text-strong)' }}>
@@ -281,6 +291,45 @@ export default function TeamDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* Send Task modal */}
+      {showTaskModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div
+            className="w-full max-w-md rounded-[var(--radius-lg)] border p-6"
+            style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border)' }}
+          >
+            <h2 className="text-base font-semibold mb-4" style={{ color: 'var(--text-strong)' }}>
+              Send Task
+            </h2>
+            <input
+              placeholder="Describe the task..."
+              value={taskInput}
+              onChange={(e) => setTaskInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleSendTask()}
+              className="w-full rounded-[var(--radius-sm)] border px-3 py-2 text-sm outline-none mb-4"
+              style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
+            />
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => { setShowTaskModal(false); setTaskInput('') }}
+                className="rounded-[var(--radius-sm)] px-3 py-1.5 text-sm"
+                style={{ color: 'var(--muted)' }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSendTask}
+                disabled={!taskInput.trim() || actionLoading}
+                className="rounded-[var(--radius-sm)] px-3 py-1.5 text-sm font-medium text-white"
+                style={{ background: 'var(--accent)', opacity: !taskInput.trim() || actionLoading ? 0.5 : 1 }}
+              >
+                Send
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Team Settings Drawer */}
       <TeamSettings
