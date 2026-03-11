@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
+
+_REAL_TEMPLATE_DIR = (
+    Path(__file__).resolve().parent.parent / "see_agent" / "templates"
+)
 
 
 @pytest.fixture()
@@ -16,7 +21,7 @@ def workspace(tmp_path):
     teams_dir.mkdir()
     with (
         patch("see_agent.agent.definition.AGENTS_DIR", agents_dir),
-        patch("see_agent.agent.definition.TEAMS_DIR", teams_dir),
+        patch("see_agent.agent.definition._TEMPLATE_DIR", _REAL_TEMPLATE_DIR),
         patch("see_agent.config.AGENTS_DIR", agents_dir),
         patch("see_agent.config.TEAMS_DIR", teams_dir),
         patch("see_agent.team.definition.TEAMS_DIR", teams_dir),
@@ -98,15 +103,9 @@ class TestListAgents:
         from see_agent.agent.definition import AgentDefinition
         from see_agent.team.definition import TeamDefinition
 
+        # Create agent in global AGENTS_DIR, then create team referencing it.
+        AgentDefinition.create("t1", name="TeamAgent")
         TeamDefinition.create("MyTeam", ["t1"], leader="t1")
-        teams_dir = workspace / "teams"
-        # find the team dir (hex id)
-        team_dirs = [d for d in teams_dir.iterdir() if d.is_dir()]
-        assert len(team_dirs) == 1
-        team_dir = team_dirs[0]
-        team_agents = team_dir / "agents"
-        team_agents.mkdir()
-        AgentDefinition(id="t1", name="TeamAgent").save_to(team_agents)
 
         resp = client.get("/api/agents")
         data = resp.json()

@@ -34,7 +34,7 @@ app = typer.Typer(
 # ---------------------------------------------------------------------------
 
 PLIST_LABEL = "dev.see-agent.server"
-PLIST_DIR = Path("~/Library/LaunchAgents").expanduser()
+PLIST_DIR = Path("~/.see-agent").expanduser()
 PLIST_PATH = PLIST_DIR / f"{PLIST_LABEL}.plist"
 LOG_PATH = Path("~/.see-agent/logs/server.log").expanduser()
 

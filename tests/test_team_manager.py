@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -43,8 +44,10 @@ def run_dir(tmp_path):
 def agents_dir(tmp_path):
     d = tmp_path / "agents"
     d.mkdir()
+    tmpl = Path(__file__).resolve().parent.parent / "see_agent" / "templates"
     with patch("see_agent.agent.definition.AGENTS_DIR", d), \
-         patch("see_agent.config.AGENTS_DIR", d):
+         patch("see_agent.config.AGENTS_DIR", d), \
+         patch("see_agent.agent.definition._TEMPLATE_DIR", tmpl):
         yield d
 
 
@@ -82,21 +85,6 @@ class TestTeamManager:
         mgr._router = AgentRouter(team_def.id)
         ctx = mgr._build_team_context("b")
         assert "Team Worker" in ctx
-
-    def test_owner_context(self, teams_dir, run_dir, agents_dir):
-        from see_agent.agent.definition import AgentDefinition
-        from see_agent.ipc.router import AgentRouter
-
-        AgentDefinition.create("a", name="Alice", role="leader")
-        owner = {"name": "john", "display": "John Doe"}
-        team_def = TeamDefinition.create(
-            "T", ["a"], leader="a", owner=owner,
-        )
-        mgr = TeamManager(team_def, FAKE_CONFIG)
-        mgr._router = AgentRouter(team_def.id)
-        ctx = mgr._build_team_context("a")
-        assert "John Doe" in ctx
-        assert "Owner" in ctx
 
     @pytest.mark.asyncio
     async def test_stop(self, teams_dir, run_dir):

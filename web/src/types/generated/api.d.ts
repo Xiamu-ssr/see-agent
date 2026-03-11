@@ -260,7 +260,7 @@ export interface paths {
         };
         /**
          * List Agents
-         * @description List all agents (global + team-scoped) with status.
+         * @description List all agents with status.
          */
         get: operations["list_agents_api_agents_get"];
         put?: never;
@@ -999,18 +999,6 @@ export interface components {
             leader?: string | null;
             /** Screen Mode */
             screen_mode?: string | null;
-            /** Seating */
-            seating?: {
-                [key: string]: number;
-            } | null;
-            /** Overrides */
-            overrides?: {
-                [key: string]: unknown;
-            } | null;
-            /** Owner */
-            owner?: {
-                [key: string]: string;
-            } | null;
         };
         /** ValidationError */
         ValidationError: {

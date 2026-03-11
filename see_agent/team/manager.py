@@ -84,10 +84,6 @@ class TeamManager:
         router = AgentRouter(self._team_def.id)
         self._router = router
 
-        # Register owner on bus if configured.
-        if self._team_def.owner:
-            router.register_agent("owner")
-
         # Register all agents on the bus.
         for agent_id in self._team_def.members:
             router.register_agent(agent_id)
@@ -193,8 +189,10 @@ class TeamManager:
         """Spawn and wait for an agent subprocess."""
         config = self._build_agent_config(agent_id)
 
-        # Write config to temp file.
-        agent_base = self._team_dir / "agents" / agent_id
+        # Agent data lives in AGENTS_DIR, not under team dir.
+        from see_agent.config import AGENTS_DIR
+
+        agent_base = AGENTS_DIR / agent_id
         for subdir in ("sessions", "workspace", "memory", "logs"):
             (agent_base / subdir).mkdir(parents=True, exist_ok=True)
 
@@ -221,10 +219,7 @@ class TeamManager:
             sandbox_cfg = agent_def.sandbox or {}
         config["_screen_access"] = sandbox_cfg.get("screen_access", True)
 
-        owner_display: str | None = None
-        if self._team_def.owner:
-            owner_display = self._team_def.owner.get("display", "Owner")
-        config["_owner_display"] = owner_display
+        config["_owner_display"] = None
 
         # Inject team context.
         config["_team_context"] = self._build_team_context(agent_id)
@@ -332,23 +327,12 @@ class TeamManager:
 
     def _build_agent_config(self, agent_id: str) -> dict[str, Any]:
         """Build the config dict for an agent subprocess."""
-        from see_agent.config import _deep_merge
-
         agent_def: AgentDefinition | None = None
         try:
             agent_def = AgentDefinition.load(agent_id)
             config = agent_def.get_merged_config()
         except FileNotFoundError:
             config = self._global_config.copy()
-
-        # Apply team-level overrides.
-        if self._team_def.overrides:
-            env_overrides = self._team_def.overrides.get("env", {})
-            if env_overrides:
-                config = _deep_merge(config, env_overrides)
-            agent_overrides = self._team_def.overrides.get(agent_id, {})
-            if agent_overrides:
-                config = _deep_merge(config, agent_overrides)
 
         # Apply MCP filtering.
         if agent_def and agent_def.mcp_config:
@@ -425,17 +409,10 @@ class TeamManager:
             else "你是 Team Worker，专注执行分配给你的任务。"
         )
 
-        # Owner info.
-        owner_info = ""
-        if self._team_def.owner:
-            display = self._team_def.owner.get("display", "Owner")
-            owner_info = f"- Owner: {display}\n"
-
         return (
             f"## Team Context\n"
             f"- Team: {self._team_def.name}\n"
             f"- Leader: {leader_name}\n"
-            f"{owner_info}"
             f"- 队友:\n"
             + "\n".join(f"  {m}" for m in members_info)
             + "\n\n"
@@ -445,5 +422,4 @@ class TeamManager:
             "- 用 send_message 工具和队友沟通\n"
             "- 用 claim_task 领取任务，complete_task 完成任务\n"
             "- 收到队友消息（[teammate xxx]: ...）时优先处理\n"
-            "- 用 send_message(to='owner') 向项目负责人汇报\n"
         )

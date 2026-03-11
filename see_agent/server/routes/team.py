@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
-from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel
@@ -50,9 +49,6 @@ class UpdateTeamRequest(BaseModel):
     members: list[str] | None = None
     leader: str | None = None
     screen_mode: str | None = None
-    seating: dict[str, int] | None = None
-    overrides: dict[str, Any] | None = None
-    owner: dict[str, str] | None = None
 
 
 class OwnerMessageRequest(BaseModel):
@@ -98,7 +94,6 @@ async def update_team(
     team_id: str, body: UpdateTeamRequest,
 ) -> TeamUpdateResponse:
     """Update an existing team definition."""
-    from see_agent.config import _deep_merge
     from see_agent.team.definition import TeamDefinition
 
     try:
@@ -114,15 +109,6 @@ async def update_team(
         team.leader = body.leader
     if body.screen_mode is not None:
         team.screen_mode = body.screen_mode
-    if body.seating is not None:
-        team.seating = body.seating
-    if body.owner is not None:
-        team.owner = body.owner
-    if body.overrides is not None:
-        if team.overrides:
-            team.overrides = _deep_merge(team.overrides, body.overrides)
-        else:
-            team.overrides = body.overrides
 
     team.save()
     return TeamUpdateResponse(

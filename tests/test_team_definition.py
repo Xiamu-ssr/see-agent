@@ -51,30 +51,36 @@ class TestTeamDefinition:
         reloaded = TeamDefinition.load(team.id)
         assert reloaded.status == "running"
 
-    def test_owner_round_trip(self, teams_dir):
-        owner = {"name": "john", "display": "John Doe"}
-        team = TeamDefinition.create("T", ["a"], owner=owner)
+    def test_deprecated_params_accepted(self, teams_dir):
+        """Deprecated create() params (owner, overrides, seating) are accepted but ignored."""
+        team = TeamDefinition.create(
+            "T", ["a"],
+            owner={"name": "john"},
+            overrides={"env": {}},
+            seating={"a": 1},
+        )
         loaded = TeamDefinition.load(team.id)
-        assert loaded.owner == owner
-        assert loaded.owner["display"] == "John Doe"
+        assert loaded.name == "T"
+        assert loaded.members == ["a"]
 
-    def test_overrides_round_trip(self, teams_dir):
-        overrides = {
-            "env": {"max_steps": 10},
-            "alice": {"tools": {"denied": ["shell"]}},
-        }
-        team = TeamDefinition.create("T", ["alice"], overrides=overrides)
-        loaded = TeamDefinition.load(team.id)
-        assert loaded.overrides == overrides
-        assert loaded.overrides["alice"]["tools"]["denied"] == ["shell"]
+    def test_load_ignores_legacy_fields(self, teams_dir):
+        """Loading a team.json with legacy fields (owner, overrides, seating) works."""
+        import json
 
-    def test_seating_default_empty(self, teams_dir):
-        team = TeamDefinition.create("T", ["a"])
-        loaded = TeamDefinition.load(team.id)
-        assert loaded.seating == {}
-
-    def test_seating_round_trip(self, teams_dir):
-        seating = {"alice": 1, "bob": 2}
-        team = TeamDefinition.create("T", ["alice", "bob"], seating=seating)
-        loaded = TeamDefinition.load(team.id)
-        assert loaded.seating == seating
+        team_dir = teams_dir / "legacy"
+        team_dir.mkdir()
+        (team_dir / "team.json").write_text(json.dumps({
+            "id": "legacy",
+            "name": "Legacy Team",
+            "members": ["alice"],
+            "leader": "alice",
+            "owner": {"name": "john", "display": "John"},
+            "overrides": {"env": {"max_steps": 10}},
+            "seating": {"alice": 1},
+            "screen_mode": "serial",
+            "status": "created",
+            "created_at": "2026-01-01",
+        }))
+        loaded = TeamDefinition.load("legacy")
+        assert loaded.name == "Legacy Team"
+        assert loaded.members == ["alice"]

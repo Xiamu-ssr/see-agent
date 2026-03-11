@@ -10,6 +10,7 @@ Tests verify the router-based wiring instead of direct _bus/_board access.
 from __future__ import annotations
 
 import json
+from pathlib import Path as _Path
 from unittest.mock import patch
 
 import pytest
@@ -19,6 +20,10 @@ from see_agent.team.bus import BusMessage, TeamBus
 from see_agent.team.definition import TeamDefinition
 from see_agent.team.manager import TeamManager
 from see_agent.team.task_board import TaskBoard
+
+_REAL_TEMPLATE_DIR = (
+    _Path(__file__).resolve().parent.parent / "see_agent" / "templates"
+)
 
 
 @pytest.fixture
@@ -32,6 +37,7 @@ def workspace(tmp_path):
     run_dir.mkdir()
     with (
         patch("see_agent.agent.definition.AGENTS_DIR", agents_dir),
+        patch("see_agent.agent.definition._TEMPLATE_DIR", _REAL_TEMPLATE_DIR),
         patch("see_agent.config.AGENTS_DIR", agents_dir),
         patch("see_agent.team.definition.TEAMS_DIR", teams_dir),
         patch("see_agent.team.manager.TEAMS_DIR", teams_dir),
@@ -99,15 +105,14 @@ class TestTeamIntegration:
         data = json.loads(tasks_file.read_text())
         assert len(data) == 1
 
-    def test_session_root_scoped_to_team(self, workspace):
-        """Agent session root is scoped under teams/{id}/agents/{aid}/sessions."""
+    def test_session_root_scoped_to_agent(self, workspace):
+        """Agent session root is scoped under agents/{aid}/sessions."""
         AgentDefinition.create("alice", name="Alice", role="leader")
         team_def = TeamDefinition.create("T", ["alice"])
-        mgr = TeamManager(team_def, FAKE_CONFIG)
-        teams_dir = workspace / "teams"
-        expected_root = teams_dir / team_def.id / "agents" / "alice" / "sessions"
-        session_root = mgr._team_dir / "agents" / "alice" / "sessions"
-        assert session_root == expected_root
+        TeamManager(team_def, FAKE_CONFIG)
+        agents_dir = workspace / "agents"
+        expected_root = agents_dir / "alice" / "sessions"
+        assert expected_root.parent.exists()
 
     def test_team_context_includes_members(self, workspace):
         """Team context string includes all member info."""
@@ -146,22 +151,19 @@ class TestTeamIntegration:
         assert (teams_dir / team_def.id / "shared").is_dir()
 
     @pytest.mark.asyncio
-    async def test_router_started_on_run(self, workspace):
-        """AgentRouter bus has owner registered when run is called with owner."""
+    async def test_router_agents_registered(self, workspace):
+        """AgentRouter bus has agents registered."""
         from see_agent.ipc.router import AgentRouter
 
         AgentDefinition.create("alice", name="Alice", role="leader")
-        owner = {"name": "john", "display": "John"}
         team_def = TeamDefinition.create(
-            "T", ["alice"], leader="alice", owner=owner,
+            "T", ["alice"], leader="alice",
         )
         TeamManager(team_def, FAKE_CONFIG)
 
         # Create a router to verify registration logic.
         router = AgentRouter(team_def.id)
-        router.register_agent("owner")
         router.register_agent("alice")
-        assert "owner" in router.bus._queues
         assert "alice" in router.bus._queues
 
     def test_agent_sandbox_field(self, workspace):

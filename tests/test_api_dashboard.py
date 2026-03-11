@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
+
+_REAL_TEMPLATE_DIR = (
+    Path(__file__).resolve().parent.parent / "see_agent" / "templates"
+)
 
 
 @pytest.fixture()
@@ -16,7 +21,7 @@ def workspace(tmp_path):
     teams_dir.mkdir()
     with (
         patch("see_agent.agent.definition.AGENTS_DIR", agents_dir),
-        patch("see_agent.agent.definition.TEAMS_DIR", teams_dir),
+        patch("see_agent.agent.definition._TEMPLATE_DIR", _REAL_TEMPLATE_DIR),
         patch("see_agent.config.AGENTS_DIR", agents_dir),
         patch("see_agent.config.TEAMS_DIR", teams_dir),
         patch("see_agent.team.definition.TEAMS_DIR", teams_dir),

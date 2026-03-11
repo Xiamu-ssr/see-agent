@@ -1,4 +1,8 @@
-"""TeamDefinition — data model for a team of agents."""
+"""TeamDefinition — data model for a team of agents.
+
+v3.5: Team is a lightweight "room" — just a member list + leader + status.
+Agent data lives in agents/{id}/, not under teams/.
+"""
 
 from __future__ import annotations
 
@@ -22,9 +26,6 @@ class TeamDefinition:
     name: str
     members: list[str] = field(default_factory=list)
     leader: str | None = None
-    owner: dict[str, str] | None = None
-    overrides: dict[str, Any] | None = None
-    seating: dict[str, int] = field(default_factory=dict)
     screen_mode: str = "serial"
     status: str = "created"
     created_at: str = ""
@@ -42,12 +43,9 @@ class TeamDefinition:
             "name": self.name,
             "members": self.members,
             "leader": self.leader,
-            "seating": self.seating,
             "screen_mode": self.screen_mode,
             "status": self.status,
             "created_at": self.created_at,
-            "owner": self.owner,
-            "overrides": self.overrides,
         }
         (team_dir / "team.json").write_text(
             json.dumps(data, indent=2, ensure_ascii=False),
@@ -59,6 +57,7 @@ class TeamDefinition:
         name: str,
         members: list[str],
         leader: str | None = None,
+        # Deprecated params — accepted but ignored for backward compat.
         owner: dict[str, str] | None = None,
         overrides: dict[str, Any] | None = None,
         seating: dict[str, int] | None = None,
@@ -71,9 +70,6 @@ class TeamDefinition:
             name=name,
             members=members,
             leader=leader,
-            owner=owner,
-            overrides=overrides,
-            seating=seating or {},
             created_at=now,
         )
         defn.save()
@@ -84,6 +80,8 @@ class TeamDefinition:
         """Load a team from disk.
 
         Raises ``FileNotFoundError`` if the team does not exist.
+        Ignores deprecated fields (owner, overrides, seating) for
+        backward compatibility.
         """
         team_json = TEAMS_DIR / team_id / "team.json"
         if not team_json.exists():
@@ -94,9 +92,6 @@ class TeamDefinition:
             name=data.get("name", ""),
             members=data.get("members", []),
             leader=data.get("leader"),
-            owner=data.get("owner"),
-            overrides=data.get("overrides"),
-            seating=data.get("seating", {}),
             screen_mode=data.get("screen_mode", "serial"),
             status=data.get("status", "created"),
             created_at=data.get("created_at", ""),

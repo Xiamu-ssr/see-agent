@@ -20,8 +20,8 @@ def agents_dir(tmp_path):
     teams.mkdir()
     with (
         patch("see_agent.agent.definition.AGENTS_DIR", d),
-        patch("see_agent.agent.definition.TEAMS_DIR", teams),
         patch("see_agent.agent.definition._TEMPLATE_DIR", _REAL_TEMPLATE_DIR),
+        patch("see_agent.team.definition.TEAMS_DIR", teams),
     ):
         yield d
 
@@ -137,6 +137,16 @@ class TestCreateSetup:
         AgentDefinition.create("mem-agent", name="MemAgent")
         assert (agents_dir / "mem-agent" / "memory").is_dir()
 
+    def test_create_generates_workspace_dir(self, agents_dir):
+        AgentDefinition.create("ws-agent", name="WsAgent")
+        ws_dir = agents_dir / "ws-agent" / "workspace"
+        assert ws_dir.is_dir()
+        assert (ws_dir / "AGENTS.md").exists()
+        assert (ws_dir / "SOUL.md").exists()
+        assert (ws_dir / "IDENTITY.md").exists()
+        assert (ws_dir / "TOOLS.md").exists()
+        assert (ws_dir / "USER.md").exists()
+
     def test_create_copies_agents_md(self, agents_dir):
         AgentDefinition.create("tmpl-agent", name="TmplAgent")
         agents_md = agents_dir / "tmpl-agent" / "AGENTS.md"
@@ -155,6 +165,14 @@ class TestCreateSetup:
         (agent_dir / "AGENTS.md").write_text("custom content")
         AgentDefinition.create("custom-agent", name="Custom")
         assert (agent_dir / "AGENTS.md").read_text() == "custom content"
+
+    def test_create_workspace_does_not_overwrite(self, agents_dir):
+        agent_dir = agents_dir / "custom-ws"
+        ws_dir = agent_dir / "workspace"
+        ws_dir.mkdir(parents=True)
+        (ws_dir / "AGENTS.md").write_text("my custom rules")
+        AgentDefinition.create("custom-ws", name="CustomWS")
+        assert (ws_dir / "AGENTS.md").read_text() == "my custom rules"
 
 
 class TestLoadFromSaveTo:
@@ -177,23 +195,27 @@ class TestLoadFromSaveTo:
 
 
 class TestListAllGlobal:
-    """Tests for list_all_global."""
+    """Tests for list_all_global — agents only in AGENTS_DIR, team from team.json."""
 
-    def test_mixed(self, agents_dir, teams_dir):
-        # Global agent
+    def test_with_team_membership(self, agents_dir, teams_dir):
         AgentDefinition.create("g1", name="Global1")
+        AgentDefinition.create("g2", name="Global2")
 
-        # Team-scoped agent
-        team_agents = teams_dir / "team-abc" / "agents"
-        team_agents.mkdir(parents=True)
-        t_defn = AgentDefinition(id="t1", name="TeamAgent1")
-        t_defn.save_to(team_agents)
+        # Create a team.json referencing g1
+        team_dir = teams_dir / "team-abc"
+        team_dir.mkdir(parents=True)
+        (team_dir / "team.json").write_text(json.dumps({
+            "id": "team-abc",
+            "name": "Test Team",
+            "members": ["g1"],
+            "leader": "g1",
+        }))
 
         result = AgentDefinition.list_all_global()
         assert len(result) == 2
-        ids = [(d.id, tid) for d, tid in result]
-        assert ("g1", None) in ids
-        assert ("t1", "team-abc") in ids
+        ids = {d.id: tid for d, tid in result}
+        assert ids["g1"] == "team-abc"
+        assert ids["g2"] is None
 
     def test_empty(self, agents_dir, teams_dir):
         result = AgentDefinition.list_all_global()
@@ -201,24 +223,37 @@ class TestListAllGlobal:
 
 
 class TestFind:
-    """Tests for find."""
+    """Tests for find — only searches AGENTS_DIR."""
 
     def test_find_global(self, agents_dir, teams_dir):
         AgentDefinition.create("alice", name="Alice")
-        defn, path, team_id = AgentDefinition.find("alice")
+        defn, path = AgentDefinition.find("alice")
         assert defn.id == "alice"
-        assert team_id is None
         assert path == agents_dir / "alice"
-
-    def test_find_team(self, agents_dir, teams_dir):
-        team_agents = teams_dir / "team-x" / "agents"
-        team_agents.mkdir(parents=True)
-        AgentDefinition(id="bob", name="Bob").save_to(team_agents)
-
-        defn, path, team_id = AgentDefinition.find("bob")
-        assert defn.id == "bob"
-        assert team_id == "team-x"
 
     def test_find_not_found(self, agents_dir, teams_dir):
         with pytest.raises(FileNotFoundError, match="Agent not found"):
             AgentDefinition.find("ghost")
+
+
+class TestGetTeam:
+    """Tests for get_team()."""
+
+    def test_agent_in_team(self, agents_dir, teams_dir):
+        AgentDefinition.create("alice", name="Alice")
+
+        team_dir = teams_dir / "team-x"
+        team_dir.mkdir(parents=True)
+        (team_dir / "team.json").write_text(json.dumps({
+            "id": "team-x",
+            "name": "X Team",
+            "members": ["alice"],
+        }))
+
+        defn = AgentDefinition.load("alice")
+        assert defn.get_team() == "team-x"
+
+    def test_agent_not_in_team(self, agents_dir, teams_dir):
+        AgentDefinition.create("bob", name="Bob")
+        defn = AgentDefinition.load("bob")
+        assert defn.get_team() is None

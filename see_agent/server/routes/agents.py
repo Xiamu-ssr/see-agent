@@ -55,7 +55,7 @@ class UpdateAgentRequest(BaseModel):
 
 @router.get("")
 async def list_agents(request: Request) -> list[AgentSummary]:
-    """List all agents (global + team-scoped) with status."""
+    """List all agents with status."""
     from see_agent.agent.definition import AgentDefinition
     from see_agent.team.definition import TeamDefinition
 
@@ -89,23 +89,25 @@ async def list_agents(request: Request) -> list[AgentSummary]:
 async def get_agent(agent_id: str) -> AgentDetail:
     """Get detailed information about a single agent."""
     from see_agent.agent.definition import AgentDefinition
+    from see_agent.team.definition import TeamDefinition
 
     try:
-        defn, agent_dir, team_id = AgentDefinition.find(agent_id)
+        defn, agent_dir = AgentDefinition.find(agent_id)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Agent not found")
 
+    team_id = defn.get_team()
     team_name: str | None = None
     if team_id is not None:
-        from see_agent.team.definition import TeamDefinition
-
         try:
             td = TeamDefinition.load(team_id)
             team_name = td.name
         except FileNotFoundError:
             team_name = team_id
 
-    has_soul = (agent_dir / "SOUL.md").exists()
+    has_soul = (agent_dir / "SOUL.md").exists() or (
+        agent_dir / "workspace" / "SOUL.md"
+    ).exists()
 
     return AgentDetail(
         id=defn.id,
@@ -167,7 +169,7 @@ async def update_agent(
     from see_agent.agent.definition import AgentDefinition
 
     try:
-        defn, agent_dir, _team_id = AgentDefinition.find(agent_id)
+        defn, agent_dir = AgentDefinition.find(agent_id)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Agent not found")
 
@@ -186,7 +188,6 @@ async def update_agent(
     if body.sandbox is not None:
         defn.sandbox = body.sandbox
 
-    # Save back to the directory where the agent was found.
     defn.save_to(agent_dir.parent)
     logger.info("Agent updated: %s", defn.id)
     return AgentCreateResponse(
@@ -214,8 +215,6 @@ async def get_sandbox_violations(
     from see_agent.sandbox.collector import SandboxViolationCollector
 
     collector = SandboxViolationCollector()
-    # We don't have a live PID — return empty for now.
-    # In a running team, the PID would be tracked by TeamManager.
     return [
         SandboxViolation(**v) for v in await collector.collect(agent_pid=0)
     ]
@@ -229,7 +228,7 @@ async def sandbox_allow(
     from see_agent.agent.definition import AgentDefinition
 
     try:
-        defn, agent_dir, _team_id = AgentDefinition.find(agent_id)
+        defn, agent_dir = AgentDefinition.find(agent_id)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Agent not found")
 
