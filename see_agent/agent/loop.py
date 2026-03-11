@@ -407,10 +407,20 @@ class AgentLoop:
         if skills:
             skills = gate_skills(skills)
 
+        # Derive agent_dir for workspace file injection.
+        agent_dir = None
+        if self._agent_id:
+            from see_agent.config import AGENTS_DIR
+
+            candidate = AGENTS_DIR / self._agent_id
+            if candidate.is_dir():
+                agent_dir = candidate
+
         system_prompt = build_system_prompt(
             self._config,
             skills=skills or None,
             team_context=self._config.get("_team_context", ""),
+            agent_dir=agent_dir,
         )
         session.log_system_prompt(system_prompt)
         session.setup_logging()

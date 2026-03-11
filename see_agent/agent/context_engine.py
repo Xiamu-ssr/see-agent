@@ -11,6 +11,8 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from see_agent.skill.loader import SkillInfo
 
 
@@ -24,6 +26,7 @@ class BaseContextEngine(ABC):
         *,
         skills: list[SkillInfo] | None = None,
         team_context: str = "",
+        agent_dir: Path | None = None,
     ) -> str:
         """Build a full system prompt from *config* and optional sections."""
         ...
@@ -43,6 +46,7 @@ class LegacyContextEngine(BaseContextEngine):
         *,
         skills: list[SkillInfo] | None = None,
         team_context: str = "",
+        agent_dir: Path | None = None,
     ) -> str:
         from see_agent.brain.prompts import build_system_prompt
 
@@ -50,4 +54,5 @@ class LegacyContextEngine(BaseContextEngine):
             config,
             skills=skills,
             team_context=team_context,
+            agent_dir=agent_dir,
         )

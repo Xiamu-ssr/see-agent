@@ -17,48 +17,51 @@ class TestBuildSystemPrompt:
     """Tests for the build_system_prompt function."""
 
     def test_build_system_prompt_zh(self):
-        """Chinese prompt contains RULES and CONSTRAINTS XML sections."""
+        """Chinese prompt contains identity and constraints."""
         config = {"language": "zh", "max_steps": 30}
         prompt = build_system_prompt(config)
 
-        assert "<RULES>" in prompt
-        assert "</RULES>" in prompt
-        assert "<CONSTRAINTS>" in prompt
-        assert "</CONSTRAINTS>" in prompt
-        # Should mention Chinese thinking
-        assert "中文" in prompt
+        # Identity
+        assert "AI 助手" in prompt
+        # Constraints (inline, no XML)
+        assert "30" in prompt
 
     def test_build_system_prompt_en(self):
-        """English prompt contains RULES and CONSTRAINTS, English instructions."""
+        """English prompt contains identity and constraints."""
         config = {"language": "en", "max_steps": 50}
         prompt = build_system_prompt(config)
 
-        assert "<RULES>" in prompt
-        assert "</RULES>" in prompt
-        assert "<CONSTRAINTS>" in prompt
-        assert "</CONSTRAINTS>" in prompt
-        assert "English" in prompt
+        assert "AI assistant" in prompt
+        assert "Maximum 50 steps" in prompt
         # Should not contain Chinese identity text
         assert "中文" not in prompt
 
-    def test_build_system_prompt_with_soul(self, tmp_path):
-        """When soul_path points to a valid file, the PERSONALITY section is included."""
-        soul_file = tmp_path / "SOUL.md"
-        soul_file.write_text("I am a friendly and patient assistant.", encoding="utf-8")
+    def test_build_system_prompt_with_workspace(self, tmp_path):
+        """When agent_dir has workspace files, their content is injected."""
+        ws = tmp_path / "workspace"
+        ws.mkdir()
+        (ws / "SOUL.md").write_text("I am friendly and patient.", encoding="utf-8")
+        (ws / "AGENTS.md").write_text("# Rules\nDo stuff.", encoding="utf-8")
 
-        config = {
-            "language": "en",
-            "max_steps": 50,
-            "soul_path": str(soul_file),
-        }
+        config = {"language": "en", "max_steps": 50}
+        prompt = build_system_prompt(config, agent_dir=tmp_path)
+
+        assert "friendly and patient" in prompt
+        assert "Do stuff" in prompt
+
+    def test_build_system_prompt_backward_compat_agent_dir(self, tmp_path):
+        """config['_agent_dir'] still works for backward compat."""
+        ws = tmp_path / "workspace"
+        ws.mkdir()
+        (ws / "IDENTITY.md").write_text("# Bot\nI am a bot.", encoding="utf-8")
+
+        config = {"language": "en", "max_steps": 50, "_agent_dir": str(tmp_path)}
         prompt = build_system_prompt(config)
 
-        assert "<PERSONALITY>" in prompt
-        assert "friendly and patient" in prompt
-        assert "</PERSONALITY>" in prompt
+        assert "I am a bot" in prompt
 
     def test_build_system_prompt_max_steps(self):
-        """max_steps value appears in the CONSTRAINTS section."""
+        """max_steps value appears in constraints."""
         config = {"language": "en", "max_steps": 42}
         prompt = build_system_prompt(config)
 
@@ -66,11 +69,31 @@ class TestBuildSystemPrompt:
         assert "Maximum 42 steps" in prompt
 
     def test_build_system_prompt_max_steps_zh(self):
-        """max_steps value appears in the Chinese CONSTRAINTS section."""
+        """max_steps value appears in Chinese constraints."""
         config = {"language": "zh", "max_steps": 99}
         prompt = build_system_prompt(config)
 
         assert "99" in prompt
+
+    def test_workspace_truncation(self, tmp_path):
+        """Large workspace files are truncated."""
+        ws = tmp_path / "workspace"
+        ws.mkdir()
+        # Write a file larger than per-file limit
+        (ws / "AGENTS.md").write_text("x" * 25_000, encoding="utf-8")
+
+        config = {"language": "en", "max_steps": 10}
+        prompt = build_system_prompt(config, agent_dir=tmp_path)
+
+        assert "truncated" in prompt
+        # Should not have full 25K chars
+        assert len(prompt) < 25_000
+
+    def test_no_workspace_no_crash(self):
+        """When no agent_dir is provided, prompt still works."""
+        config = {"language": "en", "max_steps": 10}
+        prompt = build_system_prompt(config)
+        assert "AI assistant" in prompt
 
 
 # -------------------------------------------------------------------- #
@@ -147,5 +170,3 @@ class TestOpenAIBrainSummarize:
         result = await brain.summarize(messages)
         assert result == "Summary of the conversation."
         brain._client.chat.completions.create.assert_called_once()
-
-

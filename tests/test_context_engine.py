@@ -13,12 +13,15 @@ class TestLegacyContextEngine:
         assert "AI assistant" in prompt
         assert "10 steps" in prompt
 
-    def test_memory_rule_in_prompt(self):
+    def test_workspace_injection(self, tmp_path):
+        """Workspace files are injected via agent_dir parameter."""
+        ws = tmp_path / "workspace"
+        ws.mkdir()
+        (ws / "AGENTS.md").write_text("Use memory_search to find info.", encoding="utf-8")
         engine = LegacyContextEngine()
         config = {"language": "en", "max_steps": 10}
-        prompt = engine.build_prompt(config)
+        prompt = engine.build_prompt(config, agent_dir=tmp_path)
         assert "memory_search" in prompt
-        assert "memory_write" in prompt
 
     def test_team_context_injected(self):
         engine = LegacyContextEngine()

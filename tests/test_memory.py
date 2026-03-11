@@ -33,19 +33,19 @@ class TestBaseMemory:
 
 
 class TestMemoryPrompt:
-    """Tests for memory tool rule in system prompt."""
+    """Tests for memory tool rule in system prompt via workspace."""
 
-    def test_memory_rule_in_prompt_zh(self):
-        config = {"language": "zh", "max_steps": 10}
-        prompt = build_system_prompt(config)
-        assert "memory_search" in prompt
-        assert "memory_write" in prompt
-
-    def test_memory_rule_in_prompt_en(self):
+    def test_memory_rule_in_workspace_prompt(self, tmp_path):
+        """When AGENTS.md mentions memory_search, it appears in the prompt."""
+        ws = tmp_path / "workspace"
+        ws.mkdir()
+        (ws / "AGENTS.md").write_text(
+            "# Rules\n- Use memory_search to find info\n- Use write_memory to save",
+            encoding="utf-8",
+        )
         config = {"language": "en", "max_steps": 10}
-        prompt = build_system_prompt(config)
+        prompt = build_system_prompt(config, agent_dir=tmp_path)
         assert "memory_search" in prompt
-        assert "memory_write" in prompt
 
     def test_no_memory_block_section(self):
         """The old <MEMORY> section should no longer appear."""
