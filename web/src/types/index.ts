@@ -28,6 +28,11 @@ export type HealthResponse = components['schemas']['HealthResponse']
 export type ToolInfo = components['schemas']['ToolInfo']
 export type McpInstallResponse = components['schemas']['McpInstallResponse']
 
+// Agent workspace / chat (v3.5)
+export type WorkspaceFileItem = components['schemas']['WorkspaceFileItem']
+export type WorkspaceFileContent = components['schemas']['WorkspaceFileContent']
+export type ChatMessage = components['schemas']['ChatMessage']
+
 // Request types
 export type CreateAgentRequest = components['schemas']['CreateAgentRequest']
 export type CreateTeamRequest = components['schemas']['CreateTeamRequest']

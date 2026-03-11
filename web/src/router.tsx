@@ -14,7 +14,7 @@ export const router = createBrowserRouter([
   {
     element: <Layout />,
     children: [
-      { index: true, element: <Navigate to="/teams" replace /> },
+      { index: true, element: <Navigate to="/agents" replace /> },
       { path: '/teams', element: <TeamsPage /> },
       { path: '/teams/:id', element: <TeamDetailPage /> },
       { path: '/dashboard', element: <DashboardPage /> },

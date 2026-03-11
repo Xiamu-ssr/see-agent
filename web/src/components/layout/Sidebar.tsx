@@ -16,15 +16,10 @@ interface SidebarProps {
 
 const sections = [
   {
-    label: 'Chat',
-    items: [
-      { to: '/teams', icon: MessageSquare, label: 'Teams' },
-    ],
-  },
-  {
     label: 'Control',
     items: [
-      { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+      { to: '/dashboard', icon: LayoutDashboard, label: 'Overview' },
+      { to: '/teams', icon: MessageSquare, label: 'Teams' },
     ],
   },
   {
