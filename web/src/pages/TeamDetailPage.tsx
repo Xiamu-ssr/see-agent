@@ -25,7 +25,9 @@ export default function TeamDetailPage() {
       const [t, msgs] = await Promise.all([getTeamStatus(id), getMessages(id)])
       setTeam(t)
       setMessages(msgs)
-      if (!recipient && t.leader) setRecipient(t.leader)
+      if (!recipient && t.members.length > 0) {
+        setRecipient(t.leader || t.members[0])
+      }
     } catch {
       setTeam(null)
     } finally {
@@ -270,8 +272,9 @@ export default function TeamDetailPage() {
             />
             <button
               onClick={handleSend}
+              disabled={!team.members || team.members.length === 0}
               className="rounded-[var(--radius-sm)] p-2 text-white"
-              style={{ background: 'var(--accent)' }}
+              style={{ background: 'var(--accent)', opacity: !team.members || team.members.length === 0 ? 0.5 : 1 }}
             >
               <Send size={14} />
             </button>
