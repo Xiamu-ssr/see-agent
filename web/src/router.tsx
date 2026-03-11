@@ -4,7 +4,6 @@ import TeamsPage from '@/pages/TeamsPage'
 import TeamDetailPage from '@/pages/TeamDetailPage'
 import DashboardPage from '@/pages/DashboardPage'
 import AgentsPage from '@/pages/AgentsPage'
-import AgentDetailPage from '@/pages/AgentDetailPage'
 import SkillsPage from '@/pages/SkillsPage'
 import McpPage from '@/pages/McpPage'
 import ConfigPage from '@/pages/ConfigPage'
@@ -19,7 +18,8 @@ export const router = createBrowserRouter([
       { path: '/teams/:id', element: <TeamDetailPage /> },
       { path: '/dashboard', element: <DashboardPage /> },
       { path: '/agents', element: <AgentsPage /> },
-      { path: '/agents/:id', element: <AgentDetailPage /> },
+      { path: '/agents/:id', element: <AgentsPage /> },
+      { path: '/agents/:id/chat', element: <AgentsPage /> },
       { path: '/skills', element: <SkillsPage /> },
       { path: '/mcp', element: <McpPage /> },
       { path: '/config', element: <ConfigPage /> },

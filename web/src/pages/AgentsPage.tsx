@@ -1,21 +1,43 @@
-import { useCallback, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useCallback, useState, useEffect } from 'react'
+import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import { usePolling } from '@/hooks/usePolling'
-import { listAgents, createAgent } from '@/api/agents'
-import type { AgentSummary, CreateAgentRequest } from '@/types'
-import { Plus, Bot } from 'lucide-react'
+import { listAgents, createAgent, getAgent } from '@/api/agents'
+import type { AgentSummary, AgentDetail, CreateAgentRequest } from '@/types'
+import { Bot } from 'lucide-react'
+import AgentList from '@/components/agents/AgentList'
+import AgentOverview from '@/components/agents/AgentOverview'
+import AgentFiles from '@/components/agents/AgentFiles'
+import AgentTools from '@/components/agents/AgentTools'
+import AgentSkills from '@/components/agents/AgentSkills'
+import AgentSafehouse from '@/components/agents/AgentSafehouse'
+import AgentChat from '@/components/agents/AgentChat'
 
-const statusColors: Record<string, string> = {
-  idle: 'var(--accent-2)',
-  busy: 'var(--ok)',
-}
+type DetailsTab = 'overview' | 'files' | 'tools' | 'skills' | 'safehouse'
 
 export default function AgentsPage() {
   const navigate = useNavigate()
+  const { id } = useParams<{ id: string }>()
+  const location = useLocation()
+  const isChat = location.pathname.endsWith('/chat')
+
   const fetchAgents = useCallback(() => listAgents(), [])
-  const { data: agents, loading, refresh } = usePolling<AgentSummary[]>(fetchAgents, 10000)
+  const { data: agents, refresh } = usePolling<AgentSummary[]>(fetchAgents, 10000)
+
   const [showCreate, setShowCreate] = useState(false)
   const [form, setForm] = useState<CreateAgentRequest>({ name: '', role: 'general assistant' })
+  const [agent, setAgent] = useState<AgentDetail | null>(null)
+  const [detailsTab, setDetailsTab] = useState<DetailsTab>('overview')
+
+  // Load agent detail when id changes
+  useEffect(() => {
+    if (!id) {
+      setAgent(null)
+      return
+    }
+    getAgent(id)
+      .then(setAgent)
+      .catch(() => setAgent(null))
+  }, [id])
 
   const handleCreate = async () => {
     if (!form.name) return
@@ -25,102 +47,117 @@ export default function AgentsPage() {
     refresh()
   }
 
-  return (
-    <div>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-lg font-semibold" style={{ color: 'var(--text-strong)' }}>
-          Agents
-        </h1>
-        <button
-          onClick={() => setShowCreate(true)}
-          className="flex items-center gap-1.5 rounded-[var(--radius)] px-3 py-1.5 text-sm font-medium text-white"
-          style={{ background: 'var(--accent)' }}
-        >
-          <Plus size={14} />
-          New Agent
-        </button>
-      </div>
+  const detailsTabs: { key: DetailsTab; label: string }[] = [
+    { key: 'overview', label: 'Overview' },
+    { key: 'files', label: 'Files' },
+    { key: 'tools', label: 'Tools' },
+    { key: 'skills', label: 'Skills' },
+    { key: 'safehouse', label: 'Safehouse' },
+  ]
 
-      {loading && !agents ? (
-        <div style={{ color: 'var(--muted)' }}>Loading...</div>
-      ) : (
-        <div
-          className="overflow-hidden rounded-[var(--radius-lg)] border"
-          style={{ borderColor: 'var(--border)' }}
-        >
-          <table className="w-full text-sm">
-            <thead>
-              <tr style={{ background: 'var(--bg-elevated)' }}>
-                <th className="text-left px-4 py-2.5 font-medium" style={{ color: 'var(--muted)' }}>
-                  Name
-                </th>
-                <th className="text-left px-4 py-2.5 font-medium" style={{ color: 'var(--muted)' }}>
-                  Role
-                </th>
-                <th className="text-left px-4 py-2.5 font-medium" style={{ color: 'var(--muted)' }}>
-                  Team
-                </th>
-                <th className="text-left px-4 py-2.5 font-medium" style={{ color: 'var(--muted)' }}>
-                  Status
-                </th>
-                <th className="text-right px-4 py-2.5 font-medium" style={{ color: 'var(--muted)' }}>
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {agents?.map((a) => (
-                <tr
-                  key={a.id}
-                  className="border-t hover:bg-[var(--bg-hover)] transition-colors"
-                  style={{ borderColor: 'var(--border)' }}
+  return (
+    <div className="flex h-[calc(100vh-96px)]">
+      {/* Left panel: Agent list */}
+      <AgentList
+        agents={agents ?? undefined}
+        selectedId={id}
+        onSelect={(agentId) => navigate(`/agents/${agentId}`)}
+        onNewAgent={() => setShowCreate(true)}
+      />
+
+      {/* Right panel */}
+      <div className="flex-1 overflow-y-auto p-6">
+        {!id ? (
+          <div className="flex items-center justify-center h-full">
+            <div className="text-center">
+              <Bot size={48} style={{ color: 'var(--muted)', margin: '0 auto 12px' }} />
+              <p className="text-sm" style={{ color: 'var(--muted)' }}>Select an agent</p>
+            </div>
+          </div>
+        ) : !agent ? (
+          <div style={{ color: 'var(--muted)' }}>Loading...</div>
+        ) : (
+          <>
+            {/* Agent header */}
+            <div className="mb-4">
+              <div className="flex items-center gap-3 mb-3">
+                <h1 className="text-xl font-semibold" style={{ color: 'var(--text-strong)' }}>
+                  {agent.name}
+                </h1>
+                <span className="text-sm" style={{ color: 'var(--muted)' }}>
+                  {agent.role}
+                </span>
+              </div>
+
+              {/* Details / Chat toggle */}
+              <div className="flex gap-2">
+                <button
+                  onClick={() => navigate(`/agents/${id}`)}
+                  className="rounded-[var(--radius-sm)] px-4 py-1.5 text-sm font-medium transition-colors"
+                  style={{
+                    background: !isChat ? 'var(--accent)' : 'transparent',
+                    color: !isChat ? 'white' : 'var(--muted)',
+                    border: !isChat ? 'none' : '1px solid var(--border)',
+                  }}
                 >
-                  <td className="px-4 py-2.5">
-                    <div className="flex items-center gap-2">
-                      <Bot size={14} style={{ color: 'var(--accent)' }} />
-                      <span style={{ color: 'var(--text-strong)' }}>{a.name}</span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-2.5" style={{ color: 'var(--text)' }}>
-                    {a.role}
-                  </td>
-                  <td className="px-4 py-2.5" style={{ color: 'var(--muted)' }}>
-                    {a.team_name || '—'}
-                  </td>
-                  <td className="px-4 py-2.5">
-                    <span
-                      className="inline-flex items-center gap-1 text-xs"
-                      style={{ color: statusColors[a.status] || 'var(--muted)' }}
-                    >
-                      <span
-                        className="h-1.5 w-1.5 rounded-full"
-                        style={{ background: statusColors[a.status] || 'var(--muted)' }}
-                      />
-                      {a.status}
-                    </span>
-                  </td>
-                  <td className="px-4 py-2.5 text-right">
+                  Details
+                </button>
+                <button
+                  onClick={() => navigate(`/agents/${id}/chat`)}
+                  className="rounded-[var(--radius-sm)] px-4 py-1.5 text-sm font-medium transition-colors"
+                  style={{
+                    background: isChat ? 'var(--accent)' : 'transparent',
+                    color: isChat ? 'white' : 'var(--muted)',
+                    border: isChat ? 'none' : '1px solid var(--border)',
+                  }}
+                >
+                  Chat
+                </button>
+              </div>
+            </div>
+
+            {isChat ? (
+              <div
+                className="rounded-[var(--radius-lg)] border p-5"
+                style={{ background: 'var(--card)', borderColor: 'var(--border)', height: 'calc(100% - 120px)' }}
+              >
+                <AgentChat agentId={id} />
+              </div>
+            ) : (
+              <>
+                {/* Details tabs */}
+                <div className="flex gap-1 mb-4">
+                  {detailsTabs.map((t) => (
                     <button
-                      onClick={() => navigate(`/agents/${a.id}`)}
-                      className="text-xs px-2 py-1 rounded hover:bg-[var(--bg-hover)]"
-                      style={{ color: 'var(--accent)' }}
+                      key={t.key}
+                      onClick={() => setDetailsTab(t.key)}
+                      className="px-3 py-1.5 text-sm rounded-[var(--radius-sm)] transition-colors"
+                      style={{
+                        background: detailsTab === t.key ? 'var(--accent-subtle)' : 'transparent',
+                        color: detailsTab === t.key ? 'var(--accent)' : 'var(--muted)',
+                      }}
                     >
-                      Detail
+                      {t.label}
                     </button>
-                  </td>
-                </tr>
-              ))}
-              {agents?.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center" style={{ color: 'var(--muted)' }}>
-                    No agents yet.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      )}
+                  ))}
+                </div>
+
+                {/* Tab content */}
+                <div
+                  className="rounded-[var(--radius-lg)] border p-5"
+                  style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
+                >
+                  {detailsTab === 'overview' && <AgentOverview agent={agent} />}
+                  {detailsTab === 'files' && <AgentFiles agentId={id} />}
+                  {detailsTab === 'tools' && <AgentTools agent={agent} />}
+                  {detailsTab === 'skills' && <AgentSkills agent={agent} />}
+                  {detailsTab === 'safehouse' && <AgentSafehouse agent={agent} />}
+                </div>
+              </>
+            )}
+          </>
+        )}
+      </div>
 
       {/* Create modal */}
       {showCreate && (
