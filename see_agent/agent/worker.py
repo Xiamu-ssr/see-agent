@@ -96,7 +96,7 @@ async def _run_worker(agent_id: str, sock_path: str) -> None:
     config["_session_dir"] = str(agent_dir / "session")
     config["_memory_dir"] = str(agent_dir / "memory")
 
-    logger.info("Worker starting: agent=%s sock=%s", agent_id, sock_path)
+    logger.info("Agent process starting: agent=%s sock=%s", agent_id, sock_path)
 
     # ── Build LLM brain ──
     llm_cfg = config["llm"]
@@ -160,33 +160,37 @@ async def _run_worker(agent_id: str, sock_path: str) -> None:
 
     signal.signal(signal.SIGUSR1, _on_sigusr1)
 
-    logger.info("Worker ready, entering inbox drain loop: agent=%s", agent_id)
+    logger.info("Agent process ready, entering inbox drain loop: agent=%s", agent_id)
 
     # ── Main loop: drain inbox → dispatch → sleep ──
     cursor = _read_cursor(agent_dir)
     heartbeat_seconds = 300  # 5 min idle heartbeat
 
-    while True:
-        wake_event.clear()
+    try:
+        while True:
+            wake_event.clear()
 
-        # Drain inbox.
-        messages, new_cursor = _drain_inbox(agent_dir, cursor)
+            # Drain inbox.
+            messages, new_cursor = _drain_inbox(agent_dir, cursor)
 
-        if messages:
-            cursor = new_cursor
-            _write_cursor(agent_dir, cursor)
-            for msg in messages:
+            if messages:
+                cursor = new_cursor
+                _write_cursor(agent_dir, cursor)
+                for msg in messages:
+                    try:
+                        await runtime.handle_message(msg)
+                    except Exception:
+                        logger.exception("Error handling message for agent %s", agent_id)
+            else:
+                # No messages — idle wait for SIGUSR1 or heartbeat timeout.
                 try:
-                    await runtime.handle_message(msg)
-                except Exception:
-                    logger.exception("Error handling message for agent %s", agent_id)
-        else:
-            # No messages — idle wait for SIGUSR1 or heartbeat timeout.
-            try:
-                await asyncio.wait_for(wake_event.wait(), timeout=heartbeat_seconds)
-            except asyncio.TimeoutError:
-                # Heartbeat timeout — could do periodic checks here.
-                logger.debug("Heartbeat: agent=%s idle", agent_id)
+                    await asyncio.wait_for(wake_event.wait(), timeout=heartbeat_seconds)
+                except asyncio.TimeoutError:
+                    logger.debug("Heartbeat: agent=%s idle", agent_id)
+    except Exception:
+        logger.exception("FATAL: agent process %s crashed in main loop", agent_id)
+    finally:
+        logger.error("Agent process %s exiting main loop — THIS SHOULD NOT HAPPEN", agent_id)
 
 
 class _NullEye(BaseEye):
