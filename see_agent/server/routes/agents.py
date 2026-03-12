@@ -328,9 +328,16 @@ async def get_agent_chat(agent_id: str) -> list[ChatMessage]:
             msg_type = entry.get("type", "")
             # Only show user messages and assistant replies in chat.
             if msg_type in ("user_task", "user_reply"):
+                # User messages store text in "text" field (from context engine).
+                user_content = entry.get("content") or entry.get("text") or ""
+                # Strip "[user]: " prefix from display.
+                if user_content.startswith("[user]: "):
+                    user_content = user_content[8:]
+                if not user_content.strip():
+                    continue
                 results.append(ChatMessage(
                     role="user",
-                    content=entry.get("content") or "(no content)",
+                    content=user_content,
                     timestamp=entry.get("timestamp"),
                 ))
             elif msg_type == "assistant":
