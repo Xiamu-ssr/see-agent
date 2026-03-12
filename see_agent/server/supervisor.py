@@ -68,6 +68,7 @@ class AgentSupervisor:
             ],
             stdout=subprocess.DEVNULL,
             stderr=stderr_fh,
+            cwd=str(Path(__file__).parent.parent.parent),
         )
         self._processes[agent_id] = proc
         logger.info("Started agent %s (pid=%d)", agent_id, proc.pid)
