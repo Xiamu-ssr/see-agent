@@ -456,18 +456,14 @@ class AgentLoop:
     _active_session: "Session | None" = None
 
     async def _ensure_session(self) -> None:
-        """Initialize session + context if not already active."""
-        if self._active_ctx is not None:
+        """Ensure session directory exists. Only creates files on first call."""
+        if self._active_session is not None:
             return
 
         if self._session_dir is None:
             raise ValueError("session_dir is required")
 
-        from see_agent.brain.prompts import build_system_prompt
-        from see_agent.config import AGENTS_DIR
-        from see_agent.skill.loader import gate_skills, load_skills
-
-        # MCP
+        # MCP (lazy, first run only)
         if self._mcp_manager is not None and not self._mcp_connected:
             try:
                 await self._mcp_manager.connect_all()
@@ -476,152 +472,147 @@ class AgentLoop:
             except Exception:
                 logger.warning("MCP connection failed", exc_info=True)
 
-        # Session
-        session = SessionStore.create(
-            "conversation", self._config, session_dir=self._session_dir,
-        )
-        session.setup_logging()
+        # Create or reuse session directory.
+        meta_path = self._session_dir / "meta.json"
+        if meta_path.exists():
+            session = SessionStore.load(self._session_dir)
+            session.update_meta(status="running")
+            logger.info("Resumed session at %s", self._session_dir)
+        else:
+            session = SessionStore.create(
+                "conversation", self._config, session_dir=self._session_dir,
+            )
+            logger.info("Created session at %s", self._session_dir)
 
-        # Skills
+        session.setup_logging()
+        self._active_session = session
+
+    def _build_system_prompt(self) -> str:
+        """Build system prompt fresh (hot-reload every turn)."""
+        from see_agent.brain.prompts import build_system_prompt
+        from see_agent.config import AGENTS_DIR
+        from see_agent.skill.loader import gate_skills, load_skills
+
         skills_dirs = self._config.get("skills", {}).get("dirs", [])
         skills = load_skills(skills_dirs) if skills_dirs else []
         if skills:
             skills = gate_skills(skills)
 
-        # Agent dir
         agent_dir = None
         if self._agent_id:
             candidate = AGENTS_DIR / self._agent_id
             if candidate.is_dir():
                 agent_dir = candidate
 
-        # System prompt
-        system_prompt = build_system_prompt(
+        return build_system_prompt(
             self._config,
             skills=skills or None,
             team_context=self._config.get("_team_context", ""),
             agent_dir=agent_dir,
         )
-        session.log_system_prompt(system_prompt)
-
-        # Context
-        ctx = ConversationContext(
-            system_prompt,
-            max_images=self._max_images,
-            on_append=session.append_message,
-        )
-
-        self._active_ctx = ctx
-        self._active_session = session
-        logger.info("Session initialized for agent %s", self._agent_id)
 
     async def run_one_turn(
         self,
         messages: list[Any] | None = None,
         inject_queue: list[Any] | None = None,
     ) -> None:
-        """Execute a single turn with incoming messages.
+        """Process incoming messages with a full ReAct loop.
 
-        v3.5: Called by :class:`AgentRuntime` instead of ``run(task)``.
-        Messages are injected into the conversation context, then the LLM
-        is asked for one response cycle.
-
-        Parameters:
-            messages: List of :class:`Message` objects to process this turn.
-            inject_queue: Shared list where steer messages are appended
-                by the runtime; checked at the start of each step.
+        1. Ensure session exists.
+        2. Rebuild system prompt (hot-reload).
+        3. Append user messages to context.
+        4. ReAct loop: LLM -> tool -> LLM -> ... until no more tool_calls.
         """
-        # Store inject_queue for access during _run_loop.
         self._inject_queue = inject_queue or []
 
         if not messages:
             return
 
-        # Build formatted content from messages.
+        # 1. Session
+        await self._ensure_session()
+        session = self._active_session
+        assert session is not None
+
+        # 2. System prompt (hot-reload every turn)
+        system_prompt = self._build_system_prompt()
+
+        # 3. Build/update context
         parts = []
         for msg in messages:
             if hasattr(msg, "format_prefix"):
                 parts.append(f"{msg.format_prefix()}: {msg.content}")
             else:
                 parts.append(str(msg))
-
         combined = "\n".join(parts)
 
-        # If we have a running session context, inject messages.
-        # Otherwise this is the first turn — initialize session.
         if self._active_ctx is None:
-            await self._ensure_session()
-            # Inject the first message as user task.
+            self._active_ctx = ConversationContext(
+                system_prompt,
+                max_images=self._max_images,
+                on_append=session.append_message,
+            )
             self._active_ctx.add_user_task_text_only(combined)
-            # Run one LLM cycle.
-            session = self._active_session
-            tools_schema = self._registry.get_openai_schemas()
-            try:
-                response = await self._brain.chat(
-                    self._active_ctx.to_messages(), tools_schema,
-                )
-                self._active_ctx.add_assistant(
-                    response.content, response.tool_calls_raw,
-                )
-                session.append_message({
-                    "type": "assistant",
-                    "content": response.content or "",
-                })
-                # Execute tool calls if any.
-                if response.tool_calls:
-                    for tc in response.tool_calls:
-                        try:
-                            result = await self._registry.execute(
-                                tc.name, tc.arguments,
-                            )
-                            self._active_ctx.add_tool_result(tc.id, str(result))
-                            session.append_message({
-                                "type": "tool_result",
-                                "tool_call_id": tc.id,
-                                "result": str(result),
-                            })
-                        except Exception:
-                            logger.exception("Tool %s failed", tc.name)
-                            self._active_ctx.add_tool_result(
-                                tc.id, f"Error: tool {tc.name} failed",
-                            )
-            except Exception:
-                logger.exception("LLM call failed for agent %s", self._agent_id)
         else:
-            # Subsequent turns — inject into existing context.
+            self._active_ctx.update_system_prompt(system_prompt)
             self._active_ctx.add_user_reply(combined)
-            # Run one LLM cycle.
-            tools_schema = self._registry.get_openai_schemas()
+
+        # 4. ReAct loop
+        tools_schema = self._registry.get_openai_schemas()
+
+        for step in range(self._max_steps):
+            logger.info("=== ReAct step %d / %d ===", step + 1, self._max_steps)
+
+            # Drain steer messages before each LLM call.
+            while self._inject_queue:
+                inj = self._inject_queue.pop(0)
+                content = inj.content if hasattr(inj, "content") else str(inj)
+                prefix = inj.format_prefix() if hasattr(inj, "format_prefix") else ""
+                self._active_ctx.add_user_reply(f"{prefix}: {content}" if prefix else content)
+
+            # Call LLM.
             try:
                 response = await self._brain.chat(
                     self._active_ctx.to_messages(), tools_schema,
                 )
-                self._active_ctx.add_assistant(
-                    response.content, response.tool_calls_raw,
-                )
-                self._active_session.append_message({
-                    "type": "assistant",
-                    "content": response.content or "",
-                })
-                if response.tool_calls:
-                    for tc in response.tool_calls:
-                        try:
-                            result = await self._registry.execute(
-                                tc.name, tc.arguments,
-                            )
-                            self._active_ctx.add_tool_result(tc.id, str(result))
-                            self._active_session.append_message({
-                                "type": "tool_result",
-                                "tool_call_id": tc.id,
-                                "result": str(result),
-                            })
-                        except Exception:
-                            logger.exception("Tool %s failed", tc.name)
-                            self._active_ctx.add_tool_result(
-                                tc.id, f"Error: tool {tc.name} failed",
-                            )
             except Exception:
-                logger.exception("LLM call failed for agent %s", self._agent_id)
+                logger.exception("LLM call failed at step %d", step + 1)
+                break  # Break ReAct loop, back to idle. Do NOT exit process.
+
+            # Add assistant response to context.
+            self._active_ctx.add_assistant(response.content, response.tool_calls_raw)
+            session.append_message({
+                "type": "assistant",
+                "content": response.content or "",
+            })
+
+            # If no tool calls, LLM is done. Break ReAct loop.
+            if not response.tool_calls:
+                logger.info("LLM finished (no tool calls). Back to idle.")
+                break
+
+            # Execute tools.
+            for tc in response.tool_calls:
+                logger.info("Tool call: %s", tc.name)
+                try:
+                    result = await self._registry.execute(tc.name, tc.arguments)
+                    result_str = str(result)
+                except Exception as exc:
+                    logger.exception("Tool %s failed", tc.name)
+                    result_str = f"Error: {exc}"
+
+                self._active_ctx.add_tool_result(tc.id, result_str)
+                session.append_message({
+                    "type": "tool_result",
+                    "tool_call_id": tc.id,
+                    "result": result_str[:500],
+                })
+
+                # Check if finished tool was called.
+                if tc.name == "finished":
+                    logger.info("Finished tool called. Back to idle.")
+                    return
+        else:
+            logger.warning("Max ReAct steps reached (%d). Back to idle.", self._max_steps)
 
     async def _run_loop(
         self,

@@ -207,6 +207,11 @@ class ConversationContext:
                 "detail": detail,
             })
 
+    def update_system_prompt(self, new_prompt: str) -> None:
+        """Hot-reload the system prompt (replace first message)."""
+        if self._messages and self._messages[0]["role"] == "system":
+            self._messages[0]["content"] = new_prompt
+
     def add_user_reply(self, text: str) -> None:
         """Append a plain-text user reply (e.g. after ``call_user``).
 
