@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import logging
+import re
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
+from see_agent.config import AGENTS_DIR
 from see_agent.server.schemas import (
     AgentCreateResponse,
     AgentDetail,
@@ -25,6 +28,22 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/agents", tags=["agents"])
 
 
+def _parse_identity(agent_dir: Path) -> tuple[str, str]:
+    """Parse Name and Emoji from IDENTITY.md. Returns (name, emoji)."""
+    identity_path = agent_dir / "IDENTITY.md"
+    name = ""
+    emoji = "🤖"
+    if identity_path.exists():
+        content = identity_path.read_text(encoding="utf-8")
+        m = re.search(r"\*\*Name:\*\*\s*(.+)", content)
+        if m:
+            name = m.group(1).strip()
+        m = re.search(r"\*\*Emoji:\*\*\s*(.+)", content)
+        if m:
+            emoji = m.group(1).strip()
+    return name, emoji
+
+
 # -------------------------------------------------------------------- #
 # Request models
 # -------------------------------------------------------------------- #
@@ -32,6 +51,8 @@ router = APIRouter(prefix="/api/agents", tags=["agents"])
 
 class CreateAgentRequest(BaseModel):
     id: str | None = None
+    name: str | None = None
+    emoji: str | None = None
     soul: str | None = None
     llm: dict[str, Any] | None = None
     agent: dict[str, Any] | None = None
@@ -79,8 +100,11 @@ async def list_agents(request: Request) -> list[AgentSummary]:
                 team_name = td.name
             except FileNotFoundError:
                 team_name = team_id
+        name, emoji = _parse_identity(AGENTS_DIR / defn.id)
         results.append(AgentSummary(
             id=defn.id,
+            name=name or defn.id,
+            emoji=emoji,
             team_id=team_id,
             team_name=team_name,
             status=status,
@@ -110,8 +134,12 @@ async def get_agent(agent_id: str) -> AgentDetail:
 
     has_soul = (agent_dir / "SOUL.md").exists()
 
+    name, emoji = _parse_identity(agent_dir)
+
     return AgentDetail(
         id=defn.id,
+        name=name or defn.id,
+        emoji=emoji,
         tools=defn.tools,
         skills=defn.skills,
         mcp=defn.mcp,
@@ -149,11 +177,25 @@ async def create_agent(body: CreateAgentRequest) -> AgentCreateResponse:
     defn = AgentDefinition.create(agent_id, **kwargs)
     logger.info("Agent created: %s", defn.id)
 
+    agent_dir = AGENTS_DIR / agent_id
+
+    # Write IDENTITY.md with name and emoji.
+    identity_name = body.name or agent_id
+    identity_emoji = body.emoji or "🤖"
+    identity_content = f"""# IDENTITY.md - Who Am I
+
+- **Name:** {identity_name}
+- **Emoji:** {identity_emoji}
+
+---
+"""
+    (agent_dir / "IDENTITY.md").write_text(identity_content, encoding="utf-8")
+
     if body.soul:
-        soul_path = AGENTS_DIR / agent_id / "SOUL.md"
+        soul_path = agent_dir / "SOUL.md"
         soul_path.write_text(body.soul, encoding="utf-8")
 
-    return AgentCreateResponse(id=defn.id)
+    return AgentCreateResponse(id=defn.id, name=identity_name, emoji=identity_emoji)
 
 
 @router.put("/{agent_id}")

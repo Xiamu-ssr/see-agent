@@ -550,6 +550,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/agents/{agent_id}/skills": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Agent Skills
+         * @description Return skill list with per-agent disabled status.
+         */
+        get: operations["get_agent_skills_api_agents__agent_id__skills_get"];
+        /**
+         * Update Agent Skills
+         * @description Update the agent's skills.disabled list.
+         */
+        put: operations["update_agent_skills_api_agents__agent_id__skills_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/config": {
         parameters: {
             query?: never;
@@ -564,7 +588,7 @@ export interface paths {
         get: operations["get_config_api_config_get"];
         /**
          * Update Config
-         * @description Update global config.
+         * @description Update global config — full replace (not merge).
          */
         put: operations["update_config_api_config_put"];
         post?: never;
@@ -678,6 +702,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/{full_path}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Spa Fallback
+         * @description Serve index.html for all non-API routes (SPA fallback).
+         */
+        get: operations["spa_fallback__full_path__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -686,11 +730,31 @@ export interface components {
         AgentCreateResponse: {
             /** Id */
             id: string;
+            /**
+             * Name
+             * @default
+             */
+            name: string;
+            /**
+             * Emoji
+             * @default 🤖
+             */
+            emoji: string;
         };
         /** AgentDetail */
         AgentDetail: {
             /** Id */
             id: string;
+            /**
+             * Name
+             * @default
+             */
+            name: string;
+            /**
+             * Emoji
+             * @default 🤖
+             */
+            emoji: string;
             /** Team Id */
             team_id?: string | null;
             /** Team Name */
@@ -752,6 +816,16 @@ export interface components {
         AgentSummary: {
             /** Id */
             id: string;
+            /**
+             * Name
+             * @default
+             */
+            name: string;
+            /**
+             * Emoji
+             * @default 🤖
+             */
+            emoji: string;
             /** Team Id */
             team_id?: string | null;
             /** Team Name */
@@ -775,6 +849,10 @@ export interface components {
         CreateAgentRequest: {
             /** Id */
             id?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Emoji */
+            emoji?: string | null;
             /** Soul */
             soul?: string | null;
             /** Llm */
@@ -1144,6 +1222,11 @@ export interface components {
             sandbox?: {
                 [key: string]: unknown;
             } | null;
+        };
+        /** UpdateAgentSkillsRequest */
+        UpdateAgentSkillsRequest: {
+            /** Disabled */
+            disabled: string[];
         };
         /** UpdateAgentToolsRequest */
         UpdateAgentToolsRequest: {
@@ -2162,6 +2245,72 @@ export interface operations {
             };
         };
     };
+    get_agent_skills_api_agents__agent_id__skills_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_agent_skills_api_agents__agent_id__skills_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateAgentSkillsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_config_api_config_get: {
         parameters: {
             query?: never;
@@ -2355,6 +2504,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ScreenLeaseStatus"];
+                };
+            };
+        };
+    };
+    spa_fallback__full_path__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                full_path: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

@@ -62,3 +62,47 @@ async def install_skill(body: InstallSkillRequest) -> SkillInstallResponse:
     if result.returncode != 0:
         raise HTTPException(status_code=400, detail=f"Install failed: {result.stderr}")
     return SkillInstallResponse(status="ok", name=body.name)
+
+
+@router.get("/agents/{agent_id}/skills")
+async def get_agent_skills(agent_id: str, request: Request):
+    """Return skill list with per-agent disabled status."""
+    from see_agent.agent.definition import AgentDefinition
+    from see_agent.skill.loader import load_skills
+
+    try:
+        defn = AgentDefinition.load(agent_id)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    config = request.app.state.config
+    skills_dirs = config.get("skills", {}).get("dirs", [])
+    skills = load_skills(skills_dirs) if skills_dirs else []
+    disabled: list[str] = defn.skills.get("disabled", [])
+
+    return {
+        "skills": [
+            {"name": s.name, "description": s.description, "disabled": s.name in disabled}
+            for s in skills
+        ],
+        "disabled": disabled,
+    }
+
+
+class UpdateAgentSkillsRequest(BaseModel):
+    disabled: list[str]
+
+
+@router.put("/agents/{agent_id}/skills")
+async def update_agent_skills(agent_id: str, body: UpdateAgentSkillsRequest):
+    """Update the agent's skills.disabled list."""
+    from see_agent.agent.definition import AgentDefinition
+
+    try:
+        defn = AgentDefinition.load(agent_id)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    defn.skills["disabled"] = body.disabled
+    defn.save()
+    return {"status": "ok", "disabled": body.disabled}

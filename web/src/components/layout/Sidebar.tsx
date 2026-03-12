@@ -6,7 +6,6 @@ import {
   Plug,
   SlidersHorizontal,
   FileText,
-  Settings,
 } from 'lucide-react'
 
 interface SidebarProps {
@@ -104,27 +103,8 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
           ))}
         </nav>
 
-        {/* Bottom: Settings + Avatar */}
+        {/* Bottom: Avatar */}
         <div className="flex flex-col items-center gap-2 pb-4">
-          <NavLink
-            to="/config"
-            className="flex flex-col items-center justify-center rounded-lg transition-all"
-            style={({ isActive }) => ({
-              width: 56,
-              height: 52,
-              background: isActive ? 'rgba(255, 92, 92, 0.12)' : 'transparent',
-              color: isActive ? '#ff5c5c' : '#7d8590',
-            })}
-          >
-            {({ isActive }) => (
-              <>
-                <Settings size={18} strokeWidth={isActive ? 2 : 1.5} />
-                <span style={{ fontSize: 10, marginTop: 3, fontWeight: isActive ? 500 : 400 }}>
-                  Settings
-                </span>
-              </>
-            )}
-          </NavLink>
           <div
             className="rounded-full"
             style={{

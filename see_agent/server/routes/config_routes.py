@@ -38,13 +38,11 @@ class UpdateConfigRequest(BaseModel):
 async def update_config(
     body: UpdateConfigRequest, request: Request,
 ) -> StatusResponse:
-    """Update global config."""
-    from see_agent.config import _deep_merge, save_config
+    """Update global config — full replace (not merge)."""
+    from see_agent.config import save_config
 
-    current = request.app.state.config
-    merged = _deep_merge(current, body.config)
-    save_config(merged)
-    request.app.state.config = merged
+    save_config(body.config)
+    request.app.state.config = body.config
     return StatusResponse(status="updated")
 
 

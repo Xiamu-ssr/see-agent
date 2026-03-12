@@ -13,6 +13,8 @@ from pydantic import BaseModel
 
 class AgentSummary(BaseModel):
     id: str
+    name: str = ""
+    emoji: str = "🤖"
     team_id: str | None = None
     team_name: str | None = None
     status: str = "idle"
@@ -29,6 +31,8 @@ class AgentDetail(AgentSummary):
 
 class AgentCreateResponse(BaseModel):
     id: str
+    name: str = ""
+    emoji: str = "🤖"
 
 
 # -------------------------------------------------------------------- #

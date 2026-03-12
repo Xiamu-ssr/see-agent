@@ -105,4 +105,13 @@ app.include_router(screen.router)
 # ── Serve frontend build (production) ─────────────────────────────────
 _frontend_dir = Path(__file__).parent.parent.parent / "web" / "dist"
 if _frontend_dir.is_dir():
-    app.mount("/", StaticFiles(directory=str(_frontend_dir), html=True), name="frontend")
+    _index_html = _frontend_dir / "index.html"
+
+    app.mount("/assets", StaticFiles(directory=str(_frontend_dir / "assets")), name="assets")
+
+    @app.get("/{full_path:path}")
+    async def spa_fallback(full_path: str):  # noqa: ARG001
+        """Serve index.html for all non-API routes (SPA fallback)."""
+        from fastapi.responses import FileResponse
+
+        return FileResponse(str(_index_html))
