@@ -79,7 +79,15 @@ class AgentSupervisor:
             start_new_session=True,
         )
         self._processes[agent_id] = proc
+        import sys as _sys; print(f"[SUPERVISOR] Spawned pid={proc.pid} poll={proc.poll()}", file=_sys.stderr, flush=True)
         logger.info("Started agent %s (pid=%d)", agent_id, proc.pid)
+
+        # Give it a moment and check again.
+        import time; time.sleep(1)
+        rc2 = proc.poll()
+        print(f"[SUPERVISOR] After 1s: pid={proc.pid} poll={rc2}", file=_sys.stderr, flush=True)
+        if rc2 is not None:
+            print(f"[SUPERVISOR] Agent process died immediately! returncode={rc2}", file=_sys.stderr, flush=True)
 
         return sock_path
 
@@ -119,14 +127,22 @@ class AgentSupervisor:
         """Send a message to an agent.
 
         1. Write to inbox.jsonl with auto-incrementing msg_id (persistence).
-        2. Send SIGUSR1 to wake the worker process (notification).
+        2. Send SIGUSR1 to wake the agent process (notification).
         """
         import json
         import os
         import signal as _signal
 
+        logger.info("send_to called: agent=%s running=%s", agent_id, self.is_running(agent_id))
+        import sys; print(f"[SUPERVISOR] send_to called: agent={agent_id} running={self.is_running(agent_id)}", file=sys.stderr, flush=True)
+
         if not self.is_running(agent_id):
-            self.start_agent(agent_id)
+            try:
+                self.start_agent(agent_id)
+                import sys; print(f"[SUPERVISOR] start_agent OK: agent={agent_id}", file=sys.stderr, flush=True)
+            except Exception as e:
+                import sys, traceback; print(f"[SUPERVISOR] start_agent FAILED: {e}", file=sys.stderr, flush=True); traceback.print_exc(file=sys.stderr)
+                logger.exception("start_agent FAILED: agent=%s", agent_id)
 
         # Write to inbox with msg_id.
         agent_dir = AGENTS_DIR / agent_id

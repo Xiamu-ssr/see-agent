@@ -572,7 +572,7 @@ class AgentLoop:
             # Call LLM.
             try:
                 response = await self._brain.chat(
-                    self._active_ctx.to_messages(), tools_schema,
+                    self._active_ctx.get_messages(), tools_schema,
                 )
             except Exception:
                 logger.exception("LLM call failed at step %d", step + 1)
