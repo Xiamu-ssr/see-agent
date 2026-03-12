@@ -66,7 +66,8 @@ class AgentSupervisor:
             agent_id, python_exe, project_root,
         )
 
-        # Spawn the worker process — worker reads config itself.
+        # Spawn the agent process — detach from parent session to prevent
+        # uvicorn/asyncio from reaping it.
         proc = subprocess.Popen(
             [
                 python_exe, "-m", "see_agent.agent.worker",
@@ -75,6 +76,7 @@ class AgentSupervisor:
             stdout=subprocess.DEVNULL,
             stderr=stderr_fh,
             cwd=str(project_root),
+            start_new_session=True,
         )
         self._processes[agent_id] = proc
         logger.info("Started agent %s (pid=%d)", agent_id, proc.pid)
