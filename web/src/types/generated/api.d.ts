@@ -844,6 +844,28 @@ export interface components {
             content?: string | null;
             /** Timestamp */
             timestamp?: string | null;
+            /** Tool Calls */
+            tool_calls?: components["schemas"]["ChatToolCall"][] | null;
+        };
+        /** ChatToolCall */
+        ChatToolCall: {
+            /**
+             * Id
+             * @default
+             */
+            id: string;
+            /**
+             * Name
+             * @default
+             */
+            name: string;
+            /**
+             * Arguments
+             * @default
+             */
+            arguments: string;
+            /** Result */
+            result?: string | null;
         };
         /** CreateAgentRequest */
         CreateAgentRequest: {

@@ -208,7 +208,15 @@ class WorkspaceFileContent(BaseModel):
     content: str
 
 
+class ChatToolCall(BaseModel):
+    id: str = ""
+    name: str = ""
+    arguments: str = ""
+    result: str | None = None
+
+
 class ChatMessage(BaseModel):
-    role: str
+    role: str  # "user" | "assistant" | "tool"
     content: str | None = None
     timestamp: str | None = None
+    tool_calls: list[ChatToolCall] | None = None

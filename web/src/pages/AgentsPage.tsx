@@ -78,43 +78,42 @@ export default function AgentsPage() {
           <div style={{ color: 'var(--muted)' }}>Loading...</div>
         ) : (
           <>
-            {/* Agent header */}
-            <div className="mb-5">
-              <div className="flex items-center gap-3 mb-1">
-                <h1 className="text-xl font-semibold" style={{ color: '#e6edf3' }}>
-                  {agent.id}
-                </h1>
-                <span
-                  className="text-xs font-medium rounded-full px-2.5 py-0.5"
-                  style={{
-                    background: agent.status === 'busy' ? 'rgba(63, 185, 80, 0.15)' : 'rgba(125, 133, 144, 0.15)',
-                    color: agent.status === 'busy' ? '#3fb950' : '#7d8590',
-                  }}
-                >
-                  {agent.status === 'busy' ? 'Running' : 'Idle'}
-                </span>
-              </div>
+            {/* Agent header + toggle on same line */}
+            <div className="flex items-center gap-3 mb-4">
+              <h1 className="text-xl font-semibold" style={{ color: '#e6edf3' }}>
+                {agent.id}
+              </h1>
+              <span
+                className="text-xs font-medium rounded-full px-2.5 py-0.5"
+                style={{
+                  background: agent.status === 'busy' ? 'rgba(63, 185, 80, 0.15)' : 'rgba(125, 133, 144, 0.15)',
+                  color: agent.status === 'busy' ? '#3fb950' : '#7d8590',
+                }}
+              >
+                {agent.status === 'busy' ? 'Running' : 'Idle'}
+              </span>
 
-              {/* Details / Chat toggle */}
-              <div className="flex gap-2">
+              {/* Toggle switch */}
+              <div
+                className="flex rounded-full p-0.5 ml-auto"
+                style={{ background: '#21262d', border: '1px solid #30363d' }}
+              >
                 <button
                   onClick={() => navigate(`/agents/${id}`)}
-                  className="rounded-full px-4 py-1.5 text-sm font-medium transition-all"
+                  className="rounded-full px-3 py-1 text-xs font-medium transition-all"
                   style={{
                     background: !isChat ? '#ff5c5c' : 'transparent',
                     color: !isChat ? 'white' : '#7d8590',
-                    border: !isChat ? '1px solid #ff5c5c' : '1px solid #30363d',
                   }}
                 >
                   Details
                 </button>
                 <button
                   onClick={() => navigate(`/agents/${id}/chat`)}
-                  className="rounded-full px-4 py-1.5 text-sm font-medium transition-all"
+                  className="rounded-full px-3 py-1 text-xs font-medium transition-all"
                   style={{
                     background: isChat ? '#ff5c5c' : 'transparent',
                     color: isChat ? 'white' : '#7d8590',
-                    border: isChat ? '1px solid #ff5c5c' : '1px solid #30363d',
                   }}
                 >
                   Chat
@@ -125,7 +124,7 @@ export default function AgentsPage() {
             {isChat ? (
               <div
                 className="rounded-[var(--radius-lg)] border p-5"
-                style={{ background: 'var(--card)', borderColor: 'var(--border)', height: 'calc(100% - 120px)' }}
+                style={{ background: 'var(--card)', borderColor: 'var(--border)', height: 'calc(100% - 60px)' }}
               >
                 <AgentChat agentId={id} />
               </div>

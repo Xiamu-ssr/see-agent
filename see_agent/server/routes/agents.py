@@ -319,6 +319,8 @@ async def get_agent_chat(agent_id: str) -> list[ChatMessage]:
     if not messages_file.exists():
         return []
 
+    from see_agent.server.schemas import ChatToolCall
+
     results: list[ChatMessage] = []
     for line in messages_file.read_text(encoding="utf-8").splitlines():
         if not line.strip():
@@ -326,9 +328,8 @@ async def get_agent_chat(agent_id: str) -> list[ChatMessage]:
         try:
             entry = json.loads(line)
             msg_type = entry.get("type", "")
-            # Only show user messages and assistant replies in chat.
+
             if msg_type in ("user_task", "user_reply"):
-                # User messages store text in "text" field (from context engine).
                 user_content = entry.get("content") or entry.get("text") or ""
                 # Strip "[user]: " prefix from display.
                 if user_content.startswith("[user]: "):
@@ -338,16 +339,42 @@ async def get_agent_chat(agent_id: str) -> list[ChatMessage]:
                 results.append(ChatMessage(
                     role="user",
                     content=user_content,
-                    timestamp=entry.get("timestamp"),
+                    timestamp=entry.get("ts"),
                 ))
             elif msg_type == "assistant":
-                content = entry.get("content")
-                if content:  # Skip empty assistant messages (tool-only).
-                    results.append(ChatMessage(
-                        role="assistant",
-                        content=content,
-                        timestamp=entry.get("timestamp"),
-                    ))
+                # Parse tool_calls if present.
+                raw_tc = entry.get("tool_calls") or []
+                tool_calls = None
+                if raw_tc:
+                    tool_calls = []
+                    for tc in raw_tc:
+                        fn = tc.get("function", {})
+                        tool_calls.append(ChatToolCall(
+                            id=tc.get("id", ""),
+                            name=fn.get("name", ""),
+                            arguments=fn.get("arguments", ""),
+                        ))
+                results.append(ChatMessage(
+                    role="assistant",
+                    content=entry.get("content") or None,
+                    timestamp=entry.get("ts"),
+                    tool_calls=tool_calls,
+                ))
+            elif msg_type == "tool_result":
+                # Attach result to the last assistant's matching tool_call.
+                tc_id = entry.get("tool_call_id", "")
+                result_text = entry.get("result")
+                if isinstance(result_text, dict):
+                    result_text = result_text.get("text", str(result_text))
+                result_text = str(result_text) if result_text else ""
+                # Walk backwards to find matching tool_call.
+                for prev in reversed(results):
+                    if prev.role == "assistant" and prev.tool_calls:
+                        for tc in prev.tool_calls:
+                            if tc.id == tc_id:
+                                tc.result = result_text[:500]
+                                break
+                        break
         except json.JSONDecodeError:
             continue
 

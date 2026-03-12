@@ -16,7 +16,7 @@ interface AgentListProps {
 export default function AgentList({ agents, selectedId, onSelect, onNewAgent }: AgentListProps) {
   return (
     <div
-      className="w-[280px] shrink-0 border-r flex flex-col h-full"
+      className="w-[160px] shrink-0 border-r flex flex-col h-full"
       style={{ borderColor: 'var(--border)' }}
     >
       <div className="px-4 pt-4 pb-2">
