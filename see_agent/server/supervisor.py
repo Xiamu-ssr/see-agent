@@ -101,24 +101,52 @@ class AgentSupervisor:
     def send_to(self, agent_id: str, msg: Message) -> None:
         """Send a message to an agent.
 
-        If the agent is not running, it is started first.
-        The message is written to the agent's UDS socket.
-
-        Note: This is a placeholder for the full UDS push implementation.
-        In the current architecture, messages are delivered via the
-        AgentRouter's bus.send RPC, which the worker polls.
+        1. Write to inbox.jsonl with auto-incrementing msg_id (persistence).
+        2. Send SIGUSR1 to wake the worker process (notification).
         """
+        import json
+        import os
+        import signal as _signal
+
         if not self.is_running(agent_id):
             self.start_agent(agent_id)
 
-        # Write the message to the agent's inbox file for the worker to pick up.
+        # Write to inbox with msg_id.
         agent_dir = AGENTS_DIR / agent_id
         agent_dir.mkdir(parents=True, exist_ok=True)
         inbox = agent_dir / "inbox.jsonl"
-        with open(inbox, "a", encoding="utf-8") as f:
-            f.write(msg.to_json() + "\n")
 
-        logger.debug("Message sent to %s: %s", agent_id, msg.format_prefix())
+        # Determine next msg_id.
+        msg_id = 1
+        if inbox.exists():
+            for line in inbox.read_text().splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    data = json.loads(line)
+                    mid = data.get("msg_id", 0)
+                    if mid >= msg_id:
+                        msg_id = mid + 1
+                except json.JSONDecodeError:
+                    continue
+
+        # Build the JSONL entry (msg.to_json() fields + msg_id).
+        entry = json.loads(msg.to_json())
+        entry["msg_id"] = msg_id
+
+        with open(inbox, "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+        # Wake the worker via SIGUSR1.
+        proc = self._processes.get(agent_id)
+        if proc and proc.poll() is None:
+            try:
+                os.kill(proc.pid, _signal.SIGUSR1)
+            except OSError:
+                logger.warning("Failed to signal worker %s", agent_id)
+
+        logger.debug("Message sent to %s (msg_id=%d): %s", agent_id, msg_id, msg.format_prefix())
 
     @property
     def running_agents(self) -> list[str]:
