@@ -52,13 +52,19 @@ class AgentSupervisor:
         sock_path = Path(f"/tmp/see-agent-{agent_id}.sock")
         self._sock_paths[agent_id] = sock_path
 
-        # Use the venv python, not sys.executable (which may be system python).
-        venv_python = Path(__file__).parent.parent.parent / ".venv" / "bin" / "python"
+        # Use the venv python — resolve to absolute path.
+        project_root = Path(__file__).resolve().parent.parent.parent
+        venv_python = project_root / ".venv" / "bin" / "python"
         python_exe = str(venv_python) if venv_python.exists() else sys.executable
 
         # Worker stderr goes to a log file for debugging.
         stderr_log = agent_dir / "worker_stderr.log"
-        stderr_fh = open(stderr_log, "a")
+        stderr_fh = open(stderr_log, "w")
+
+        logger.info(
+            "Spawning worker: agent=%s python=%s cwd=%s",
+            agent_id, python_exe, project_root,
+        )
 
         # Spawn the worker process — worker reads config itself.
         proc = subprocess.Popen(
@@ -68,7 +74,7 @@ class AgentSupervisor:
             ],
             stdout=subprocess.DEVNULL,
             stderr=stderr_fh,
-            cwd=str(Path(__file__).parent.parent.parent),
+            cwd=str(project_root),
         )
         self._processes[agent_id] = proc
         logger.info("Started agent %s (pid=%d)", agent_id, proc.pid)
