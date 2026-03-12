@@ -579,7 +579,7 @@ class AgentLoop:
                 break  # Break ReAct loop, back to idle. Do NOT exit process.
 
             # Add assistant response to context.
-            self._active_ctx.add_assistant(response.content, response.tool_calls_raw)
+            self._active_ctx.add_assistant(response.raw)
             session.append_message({
                 "type": "assistant",
                 "content": response.content or "",
