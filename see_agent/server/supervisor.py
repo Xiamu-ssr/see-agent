@@ -56,14 +56,18 @@ class AgentSupervisor:
         venv_python = Path(__file__).parent.parent.parent / ".venv" / "bin" / "python"
         python_exe = str(venv_python) if venv_python.exists() else sys.executable
 
+        # Worker stderr goes to a log file for debugging.
+        stderr_log = agent_dir / "worker_stderr.log"
+        stderr_fh = open(stderr_log, "a")
+
         # Spawn the worker process — worker reads config itself.
         proc = subprocess.Popen(
             [
                 python_exe, "-m", "see_agent.agent.worker",
                 agent_id, str(sock_path),
             ],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stdout=subprocess.DEVNULL,
+            stderr=stderr_fh,
         )
         self._processes[agent_id] = proc
         logger.info("Started agent %s (pid=%d)", agent_id, proc.pid)
