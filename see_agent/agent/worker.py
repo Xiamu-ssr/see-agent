@@ -1,13 +1,12 @@
 """Agent worker process — runs a single AgentLoop with UDS-based IPC.
 
 This module is the entry point for agent subprocesses spawned by
-TeamManager.  It connects to the AgentRouter via UDS and uses remote
-proxies (RemoteBus, RemoteBoard, RemoteScreen*) instead of local
-in-process objects.
+AgentSupervisor.  It connects to the AgentRouter via UDS and uses remote
+proxies for screen tools and team communication.
 
 Usage::
 
-    python -m see_agent.agent.worker <config_json> <sock_path> <task>
+    python -m see_agent.agent.worker <agent_id> <sock_path>
 """
 
 from __future__ import annotations
@@ -25,13 +24,12 @@ logger = logging.getLogger(__name__)
 
 
 async def _run_worker(
-    config_path: str,
+    agent_id: str,
     sock_path: str,
-    task: str,
 ) -> None:
     """Main async entry point for the worker subprocess."""
     from see_agent.brain.openai_client import OpenAIBrain
-    from see_agent.config import setup_logging
+    from see_agent.config import AGENTS_DIR, load_agent_config, setup_logging
     from see_agent.hand.tool import ToolRegistry
     from see_agent.ipc.client import UDSClient
     from see_agent.ipc.remote_tools import (
@@ -50,10 +48,15 @@ async def _run_worker(
 
     setup_logging()
 
-    # Load config written by TeamManager.
-    config: dict[str, Any] = json.loads(Path(config_path).read_text())
-    agent_id: str = config["_agent_id"]
-    screen_access: bool = config.get("_screen_access", True)
+    # Worker reads config itself — no runtime_config.json needed.
+    config: dict[str, Any] = load_agent_config(agent_id)
+    agent_dir = AGENTS_DIR / agent_id
+
+    # Inject internal fields that the loop/tools need.
+    config["_agent_id"] = agent_id
+    config["_agent_dir"] = str(agent_dir)
+    config["_session_dir"] = str(agent_dir / "session")
+    config["_memory_dir"] = str(agent_dir / "memory")
 
     logger.info("Worker starting: agent=%s sock=%s", agent_id, sock_path)
 
@@ -86,7 +89,8 @@ async def _run_worker(
         registry.register(WaitTool())
         registry.register(FinishedTool())
 
-        # Screen tools (remote) — only if agent has screen access.
+        # Screen tools (remote) — default to enabled.
+        screen_access = config.get("screen", {}).get("enabled", True)
         if screen_access:
             registry.register(RemoteScreenshotTool(client, agent_id))
             registry.register(RemoteClickTool(client, agent_id))
@@ -131,19 +135,18 @@ async def _run_worker(
         registry.register(AssignTaskTool(remote_board), source="team")
 
         # Apply agent-level tool filtering.
-        denied_tools = config.get("_denied_tools", [])
+        denied_tools = config.get("tools", {}).get("disabled", [])
         for name in denied_tools:
             registry._tools.pop(name, None)
             registry._sources.pop(name, None)
 
         # Memory tools.
-        memory_dir = config.get("_memory_dir")
-        if memory_dir:
-            from see_agent.hand.tools.memory import MemorySearchTool, WriteMemoryTool
+        memory_dir = str(agent_dir / "memory")
+        from see_agent.hand.tools.memory import MemorySearchTool, WriteMemoryTool
 
-            mem_backend = MarkdownMemoryBackend(memory_dir=Path(memory_dir))
-            registry.register(MemorySearchTool(mem_backend), source="memory")
-            registry.register(WriteMemoryTool(mem_backend), source="memory")
+        mem_backend = MarkdownMemoryBackend(memory_dir=Path(memory_dir))
+        registry.register(MemorySearchTool(mem_backend), source="memory")
+        registry.register(WriteMemoryTool(mem_backend), source="memory")
 
         # Session directory.
         session_dir = Path(config["_session_dir"])
@@ -169,6 +172,14 @@ async def _run_worker(
             task_board=remote_board,
         )
 
+        # Task comes from inbox or resumed session.
+        task = ""
+        meta_path = session_dir / "meta.json"
+        if meta_path.exists():
+            import json as _json
+            meta = _json.loads(meta_path.read_text())
+            task = meta.get("current_task", "")
+
         result = await loop.run(task)
         logger.info(
             "Worker finished: agent=%s success=%s steps=%d",
@@ -176,7 +187,7 @@ async def _run_worker(
         )
 
         # Write result to a JSON file for the parent to collect.
-        result_path = Path(config["_result_path"])
+        result_path = agent_dir / "session" / "result.json"
         result_path.write_text(
             json.dumps({
                 "summary": result.summary,
@@ -213,20 +224,19 @@ class _NullEye(BaseEye):
 
 
 def main() -> None:
-    """CLI entry point: python -m see_agent.agent.worker <config> <sock> <task>."""
-    if len(sys.argv) < 4:
+    """CLI entry point: python -m see_agent.agent.worker <agent_id> <sock_path>."""
+    if len(sys.argv) < 3:
         print(
             "Usage: python -m see_agent.agent.worker "
-            "<config_json> <sock_path> <task>",
+            "<agent_id> <sock_path>",
             file=sys.stderr,
         )
         sys.exit(1)
 
-    config_path = sys.argv[1]
+    agent_id = sys.argv[1]
     sock_path = sys.argv[2]
-    task = sys.argv[3]
 
-    asyncio.run(_run_worker(config_path, sock_path, task))
+    asyncio.run(_run_worker(agent_id, sock_path))
 
 
 if __name__ == "__main__":

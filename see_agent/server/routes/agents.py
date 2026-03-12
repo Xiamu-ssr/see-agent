@@ -239,7 +239,7 @@ async def sandbox_allow(
 
 class SendMessageRequest(BaseModel):
     content: str
-    priority: str = "normal"
+    priority: str = "collect"
 
 
 class WorkspaceWriteRequest(BaseModel):

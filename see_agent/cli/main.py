@@ -120,9 +120,6 @@ def install(
     full: bool = typer.Option(
         False, "--full", help="Install all optional deps.",
     ),
-    memory: bool = typer.Option(
-        False, "--memory", help="Install memory (mem0ai) deps.",
-    ),
     mcp: bool = typer.Option(
         False, "--mcp", help="Install MCP deps.",
     ),
@@ -136,10 +133,8 @@ def install(
 ) -> None:
     """Install see-agent dependencies (Python + frontend)."""
     extras: list[str] = []
-    if full or not any([memory, mcp, dev]):
+    if full or not any([mcp, dev]):
         extras.append("all")
-    if memory and not full:
-        extras.append("memory")
     if mcp and not full:
         extras.append("mcp")
     if dev:

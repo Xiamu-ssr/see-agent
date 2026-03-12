@@ -50,7 +50,7 @@ class TestAgentSupervisorBasic:
 class TestAgentSupervisorProcessLifecycle:
     """Process start/stop without actually spawning real subprocesses."""
 
-    def test_start_agent_creates_config_and_process(self, dirs):
+    def test_start_agent_creates_process(self, dirs):
         sup = AgentSupervisor(FAKE_CONFIG)
         mock_proc = MagicMock()
         mock_proc.poll.return_value = None  # "running"
@@ -62,11 +62,8 @@ class TestAgentSupervisorProcessLifecycle:
         # Should return a sock path in /tmp/.
         assert "see-agent-alice" in str(sock)
 
-        # Config file should be written in agents dir.
-        config_path = dirs / "agents" / "alice" / "runtime_config.json"
-        assert config_path.exists()
-        data = json.loads(config_path.read_text())
-        assert data["_agent_id"] == "alice"
+        # Agent dir should exist.
+        assert (dirs / "agents" / "alice").is_dir()
 
         # Should be tracked as running.
         assert sup.is_running("alice")
@@ -160,7 +157,7 @@ class TestAgentSupervisorMessaging:
         mock_proc.pid = 666
 
         with patch("see_agent.server.supervisor.subprocess.Popen", return_value=mock_proc):
-            msg = Message(source="user", sender="lanxuan", content="hello agent")
+            msg = Message(sender="lanxuan", content="hello agent")
             sup.send_to("alice", msg)
 
         inbox = dirs / "agents" / "alice" / "inbox.jsonl"
@@ -169,7 +166,7 @@ class TestAgentSupervisorMessaging:
         assert len(lines) == 1
         data = json.loads(lines[0])
         assert data["content"] == "hello agent"
-        assert data["source"] == "user"
+        assert data["sender"] == "lanxuan"
 
     def test_send_to_auto_starts_agent(self, dirs):
         sup = AgentSupervisor(FAKE_CONFIG)
@@ -178,7 +175,7 @@ class TestAgentSupervisorMessaging:
         mock_proc.pid = 777
 
         with patch("see_agent.server.supervisor.subprocess.Popen", return_value=mock_proc) as popen:
-            msg = Message(source="user", sender="u", content="wake up")
+            msg = Message(sender="u", content="wake up")
             sup.send_to("bob", msg)
 
         popen.assert_called_once()  # Agent was started.
@@ -192,7 +189,7 @@ class TestAgentSupervisorMessaging:
 
         with patch("see_agent.server.supervisor.subprocess.Popen", return_value=mock_proc):
             for i in range(3):
-                sup.send_to("alice", Message(source="user", sender="u", content=f"msg{i}"))
+                sup.send_to("alice", Message(sender="u", content=f"msg{i}"))
 
         inbox = dirs / "agents" / "alice" / "inbox.jsonl"
         lines = inbox.read_text().strip().splitlines()

@@ -960,7 +960,7 @@ export interface components {
             content: string;
             /**
              * Priority
-             * @default normal
+             * @default collect
              */
             priority: string;
         };

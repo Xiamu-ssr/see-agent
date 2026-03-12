@@ -7,7 +7,6 @@ agents and send messages to them.
 
 from __future__ import annotations
 
-import json
 import logging
 import subprocess
 import sys
@@ -47,34 +46,17 @@ class AgentSupervisor:
             self._processes.pop(agent_id)
             self._sock_paths.pop(agent_id, None)
 
-        # Write config to a temp file for the worker.
-        from see_agent.agent.definition import AgentDefinition
-
-        try:
-            agent_def = AgentDefinition.load(agent_id)
-            config = agent_def.get_merged_config()
-        except FileNotFoundError:
-            config = self._global_config.copy()
-
         agent_dir = AGENTS_DIR / agent_id
         agent_dir.mkdir(parents=True, exist_ok=True)
-        config["_agent_id"] = agent_id
-        config["_agent_dir"] = str(agent_dir)
-        config["_session_dir"] = str(agent_dir / "session")
-        config["_memory_dir"] = str(agent_dir / "memory")
-
-        # Write runtime config to agent dir.
-        config_path = agent_dir / "runtime_config.json"
-        config_path.write_text(json.dumps(config, default=str))
 
         sock_path = Path(f"/tmp/see-agent-{agent_id}.sock")
         self._sock_paths[agent_id] = sock_path
 
-        # Spawn the worker process.
+        # Spawn the worker process — worker reads config itself.
         proc = subprocess.Popen(
             [
                 sys.executable, "-m", "see_agent.agent.worker",
-                str(config_path), str(sock_path),
+                agent_id, str(sock_path),
             ],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,

@@ -17,8 +17,8 @@ def _make_loop() -> MagicMock:
     return loop
 
 
-def _msg(content: str = "hi", priority: str = "normal", source: str = "user") -> Message:
-    return Message(source=source, sender="u", content=content, priority=priority)
+def _msg(content: str = "hi", priority: str = "collect") -> Message:
+    return Message(sender="u", content=content, priority=priority)
 
 
 class TestAgentRuntime:
