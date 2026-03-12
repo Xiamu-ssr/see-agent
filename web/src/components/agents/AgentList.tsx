@@ -1,5 +1,5 @@
 import type { AgentSummary } from '@/types'
-import { Plus, Bot } from 'lucide-react'
+import { Plus } from 'lucide-react'
 
 const statusColors: Record<string, string> = {
   idle: 'var(--accent-2)',
@@ -40,12 +40,12 @@ export default function AgentList({ agents, selectedId, onSelect, onNewAgent }: 
             }}
           >
             <div className="flex items-center gap-2">
-              <Bot size={14} style={{ color: selectedId === a.id ? 'var(--accent)' : 'var(--muted)' }} />
+              <span style={{ fontSize: 16 }}>{a.emoji || '🤖'}</span>
               <span
                 className="text-sm font-medium"
                 style={{ color: selectedId === a.id ? 'var(--accent)' : 'var(--text-strong)' }}
               >
-                {a.id}
+                {a.name || a.id}
               </span>
             </div>
             <div className="flex items-center gap-1 mt-0.5 ml-[22px]">

@@ -24,7 +24,7 @@ export default function AgentsPage() {
   const { data: agents, refresh } = usePolling<AgentSummary[]>(fetchAgents, 10000)
 
   const [showCreate, setShowCreate] = useState(false)
-  const [form, setForm] = useState<CreateAgentRequest>({ id: '' })
+  const [form, setForm] = useState<CreateAgentRequest>({})
   const [agent, setAgent] = useState<AgentDetail | null>(null)
   const [detailsTab, setDetailsTab] = useState<DetailsTab>('overview')
 
@@ -40,10 +40,10 @@ export default function AgentsPage() {
   }, [id])
 
   const handleCreate = async () => {
-    if (!form.id) return
+    if (!form.name) return
     await createAgent(form)
     setShowCreate(false)
-    setForm({ id: '' })
+    setForm({})
     refresh()
   }
 
@@ -183,9 +183,16 @@ export default function AgentsPage() {
             </h2>
             <div className="flex flex-col gap-3">
               <input
-                placeholder="Agent ID"
-                value={form.id || ''}
-                onChange={(e) => setForm({ ...form, id: e.target.value })}
+                placeholder="Name"
+                value={form.name || ''}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                className="rounded-[var(--radius-sm)] border px-3 py-2 text-sm outline-none"
+                style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
+              />
+              <input
+                placeholder="Emoji (e.g. 🤖)"
+                value={form.emoji || ''}
+                onChange={(e) => setForm({ ...form, emoji: e.target.value })}
                 className="rounded-[var(--radius-sm)] border px-3 py-2 text-sm outline-none"
                 style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
               />
