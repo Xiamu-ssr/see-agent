@@ -72,7 +72,7 @@ class TestSkillPromptInjection:
     """Tests for skill injection into system prompt."""
 
     def test_skills_in_prompt(self):
-        config = {"language": "en", "max_steps": 10}
+        config = {"web": {"language": "en"}, "agent": {"max_steps": 10}}
         skills = [
             SkillInfo(name="open-browser", description="Open URL", body="...", path=Path(".")),
         ]
@@ -83,7 +83,7 @@ class TestSkillPromptInjection:
         assert "</SKILLS>" in prompt
 
     def test_no_skills_no_section(self):
-        config = {"language": "en", "max_steps": 10}
+        config = {"web": {"language": "en"}, "agent": {"max_steps": 10}}
         prompt = build_system_prompt(config, skills=None)
         assert "<SKILLS>" not in prompt
 
@@ -231,7 +231,7 @@ class TestSkillGating:
         assert skill.blocked is True
 
     def test_blocked_skill_excluded_from_prompt(self):
-        config = {"language": "en", "max_steps": 10}
+        config = {"web": {"language": "en"}, "agent": {"max_steps": 10}}
         skills = [
             SkillInfo(name="active", description="Works", body="", path=Path(".")),
             SkillInfo(

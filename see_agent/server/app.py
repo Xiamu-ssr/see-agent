@@ -57,7 +57,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     logger.info(
         "see-agent server started  model=%s  max_steps=%s",
         config.get("llm", {}).get("model", "?"),
-        config.get("max_steps", "?"),
+        config.get("agent", {}).get("max_steps", "?"),
     )
 
     yield
@@ -69,11 +69,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     supervisor.stop_all()
 
     # Clean up stale UDS socket files.
-    from see_agent.config import RUN_DIR
+    import glob
 
-    if RUN_DIR.exists():
-        for sock in RUN_DIR.glob("*.sock"):
-            sock.unlink(missing_ok=True)
+    for sock in glob.glob("/tmp/see-agent-*.sock"):
+        Path(sock).unlink(missing_ok=True)
 
 
 app = FastAPI(

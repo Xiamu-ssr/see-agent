@@ -371,7 +371,7 @@ export interface paths {
         };
         /**
          * Get Agent Chat
-         * @description Get chat history for an agent (from latest session).
+         * @description Get chat history for an agent (single session).
          */
         get: operations["get_agent_chat_api_agents__agent_id__chat_get"];
         put?: never;
@@ -431,7 +431,7 @@ export interface paths {
         };
         /**
          * List Workspace Files
-         * @description List files in an agent's workspace directory.
+         * @description List md files in an agent's directory.
          */
         get: operations["list_workspace_files_api_agents__agent_id__workspace_get"];
         put?: never;
@@ -451,12 +451,12 @@ export interface paths {
         };
         /**
          * Get Workspace File
-         * @description Read a workspace file.
+         * @description Read an agent file.
          */
         get: operations["get_workspace_file_api_agents__agent_id__workspace__filename__get"];
         /**
          * Update Workspace File
-         * @description Write a workspace file.
+         * @description Write an agent file.
          */
         put: operations["update_workspace_file_api_agents__agent_id__workspace__filename__put"];
         post?: never;
@@ -479,6 +479,30 @@ export interface paths {
          */
         get: operations["list_tools_api_tools_get"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agents/{agent_id}/tools": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Agent Tools
+         * @description Return tool list with per-agent disabled status.
+         */
+        get: operations["get_agent_tools_api_agents__agent_id__tools_get"];
+        /**
+         * Update Agent Tools
+         * @description Update the agent's tools.disabled list.
+         */
+        put: operations["update_agent_tools_api_agents__agent_id__tools_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -662,19 +686,11 @@ export interface components {
         AgentCreateResponse: {
             /** Id */
             id: string;
-            /** Name */
-            name: string;
-            /** Role */
-            role: string;
         };
         /** AgentDetail */
         AgentDetail: {
             /** Id */
             id: string;
-            /** Name */
-            name: string;
-            /** Role */
-            role: string;
             /** Team Id */
             team_id?: string | null;
             /** Team Name */
@@ -685,31 +701,24 @@ export interface components {
              */
             status: string;
             /**
-             * Config Overrides
+             * Tools
              * @default {}
              */
-            config_overrides: {
+            tools: {
                 [key: string]: unknown;
             };
             /**
-             * Tools Config
+             * Skills
              * @default {}
              */
-            tools_config: {
+            skills: {
                 [key: string]: unknown;
             };
             /**
-             * Skills Config
+             * Mcp
              * @default {}
              */
-            skills_config: {
-                [key: string]: unknown;
-            };
-            /**
-             * Mcp Config
-             * @default {}
-             */
-            mcp_config: {
+            mcp: {
                 [key: string]: unknown;
             };
             /**
@@ -743,10 +752,6 @@ export interface components {
         AgentSummary: {
             /** Id */
             id: string;
-            /** Name */
-            name: string;
-            /** Role */
-            role: string;
             /** Team Id */
             team_id?: string | null;
             /** Team Name */
@@ -770,29 +775,30 @@ export interface components {
         CreateAgentRequest: {
             /** Id */
             id?: string | null;
-            /** Name */
-            name: string;
-            /**
-             * Role
-             * @default general assistant
-             */
-            role: string;
             /** Soul */
             soul?: string | null;
-            /** Config Overrides */
-            config_overrides?: {
+            /** Llm */
+            llm?: {
                 [key: string]: unknown;
             } | null;
-            /** Tools Config */
-            tools_config?: {
+            /** Agent */
+            agent?: {
                 [key: string]: unknown;
             } | null;
-            /** Skills Config */
-            skills_config?: {
+            /** Screen */
+            screen?: {
                 [key: string]: unknown;
             } | null;
-            /** Mcp Config */
-            mcp_config?: {
+            /** Tools */
+            tools?: {
+                [key: string]: unknown;
+            } | null;
+            /** Skills */
+            skills?: {
+                [key: string]: unknown;
+            } | null;
+            /** Mcp */
+            mcp?: {
                 [key: string]: unknown;
             } | null;
             /** Sandbox */
@@ -805,7 +811,7 @@ export interface components {
             /** Name */
             name: string;
             /** Members */
-            members: string[];
+            members: components["schemas"]["TeamMember"][];
             /** Leader */
             leader?: string | null;
         };
@@ -1010,6 +1016,13 @@ export interface components {
             /** Ts */
             ts: string;
         };
+        /** TeamMember */
+        TeamMember: {
+            /** Id */
+            id: string;
+            /** Role */
+            role: string;
+        };
         /** TeamMessage */
         TeamMessage: {
             /** Sender */
@@ -1040,7 +1053,7 @@ export interface components {
              * Members
              * @default []
              */
-            members: string[];
+            members: components["schemas"]["TeamMember"][];
             /**
              * Status
              * @default created
@@ -1064,7 +1077,7 @@ export interface components {
              * Members
              * @default []
              */
-            members: string[];
+            members: components["schemas"]["TeamMember"][];
             /**
              * Status
              * @default created
@@ -1078,7 +1091,7 @@ export interface components {
             /** Name */
             name: string;
             /** Members */
-            members: string[];
+            members: components["schemas"]["TeamMember"][];
             /** Status */
             status: string;
         };
@@ -1103,30 +1116,39 @@ export interface components {
         };
         /** UpdateAgentRequest */
         UpdateAgentRequest: {
-            /** Name */
-            name?: string | null;
-            /** Role */
-            role?: string | null;
-            /** Config Overrides */
-            config_overrides?: {
+            /** Llm */
+            llm?: {
                 [key: string]: unknown;
             } | null;
-            /** Tools Config */
-            tools_config?: {
+            /** Agent */
+            agent?: {
                 [key: string]: unknown;
             } | null;
-            /** Skills Config */
-            skills_config?: {
+            /** Screen */
+            screen?: {
                 [key: string]: unknown;
             } | null;
-            /** Mcp Config */
-            mcp_config?: {
+            /** Tools */
+            tools?: {
+                [key: string]: unknown;
+            } | null;
+            /** Skills */
+            skills?: {
+                [key: string]: unknown;
+            } | null;
+            /** Mcp */
+            mcp?: {
                 [key: string]: unknown;
             } | null;
             /** Sandbox */
             sandbox?: {
                 [key: string]: unknown;
             } | null;
+        };
+        /** UpdateAgentToolsRequest */
+        UpdateAgentToolsRequest: {
+            /** Disabled */
+            disabled: string[];
         };
         /** UpdateConfigRequest */
         UpdateConfigRequest: {
@@ -1140,11 +1162,9 @@ export interface components {
             /** Name */
             name?: string | null;
             /** Members */
-            members?: string[] | null;
+            members?: components["schemas"]["TeamMember"][] | null;
             /** Leader */
             leader?: string | null;
-            /** Screen Mode */
-            screen_mode?: string | null;
         };
         /** ValidationError */
         ValidationError: {
@@ -2015,6 +2035,76 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ToolInfo"][];
+                };
+            };
+        };
+    };
+    get_agent_tools_api_agents__agent_id__tools_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_agent_tools_api_agents__agent_id__tools_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                agent_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateAgentToolsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

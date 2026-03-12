@@ -35,7 +35,7 @@ def client(workspace):
 
     app.state.config = {
         "llm": {"base_url": "http://test/v1", "api_key": "k", "model": "m"},
-        "max_steps": 5,
+        "agent": {"max_steps": 5},
     }
     from see_agent.server.supervisor import AgentSupervisor
     app.state.supervisor = AgentSupervisor({})
@@ -50,37 +50,35 @@ class TestAgentAPI:
     def test_update_agent(self, client, workspace):
         from see_agent.agent.definition import AgentDefinition
 
-        AgentDefinition.create("alice", name="Alice", role="coder")
+        AgentDefinition.create("alice")
         resp = client.put(
             "/api/agents/alice",
-            json={"name": "Alice Updated", "role": "leader"},
+            json={"agent": {"max_steps": 200}},
         )
         assert resp.status_code == 200
         data = resp.json()
-        assert data["name"] == "Alice Updated"
-        assert data["role"] == "leader"
+        assert data["id"] == "alice"
         reloaded = AgentDefinition.load("alice")
-        assert reloaded.name == "Alice Updated"
+        assert reloaded.agent["max_steps"] == 200
 
     def test_update_agent_not_found(self, client):
         resp = client.put(
             "/api/agents/ghost",
-            json={"name": "Ghost"},
+            json={"agent": {"max_steps": 1}},
         )
         assert resp.status_code == 404
 
     def test_update_agent_partial(self, client, workspace):
         from see_agent.agent.definition import AgentDefinition
 
-        AgentDefinition.create("bob", name="Bob", role="coder")
+        AgentDefinition.create("bob")
         resp = client.put(
             "/api/agents/bob",
-            json={"tools_config": {"denied": ["shell"]}},
+            json={"tools": {"denied": ["shell"]}},
         )
         assert resp.status_code == 200
         reloaded = AgentDefinition.load("bob")
-        assert reloaded.tools_config == {"denied": ["shell"]}
-        assert reloaded.name == "Bob"
+        assert reloaded.tools == {"denied": ["shell"]}
 
 
 class TestListAgents:
@@ -93,7 +91,7 @@ class TestListAgents:
     def test_list_global(self, client, workspace):
         from see_agent.agent.definition import AgentDefinition
 
-        AgentDefinition.create("a1", name="Agent1", role="coder")
+        AgentDefinition.create("a1")
         resp = client.get("/api/agents")
         assert resp.status_code == 200
         data = resp.json()
@@ -107,8 +105,8 @@ class TestListAgents:
         from see_agent.team.definition import TeamDefinition
 
         # Create agent in global AGENTS_DIR, then create team referencing it.
-        AgentDefinition.create("t1", name="TeamAgent")
-        TeamDefinition.create("MyTeam", ["t1"], leader="t1")
+        AgentDefinition.create("t1")
+        TeamDefinition.create("MyTeam", [{"id": "t1", "role": "leader"}], leader="t1")
 
         resp = client.get("/api/agents")
         data = resp.json()
@@ -123,12 +121,11 @@ class TestGetAgent:
     def test_get_detail(self, client, workspace):
         from see_agent.agent.definition import AgentDefinition
 
-        AgentDefinition.create("alice", name="Alice", role="coder")
+        AgentDefinition.create("alice")
         resp = client.get("/api/agents/alice")
         assert resp.status_code == 200
         data = resp.json()
         assert data["id"] == "alice"
-        assert data["name"] == "Alice"
         assert data["has_soul"] is True
         assert data["team_id"] is None
 
@@ -139,7 +136,7 @@ class TestGetAgent:
     def test_get_with_soul(self, client, workspace):
         from see_agent.agent.definition import AgentDefinition
 
-        AgentDefinition.create("soul_agent", name="SoulAgent")
+        AgentDefinition.create("soul_agent")
         agents_dir = workspace / "agents"
         (agents_dir / "soul_agent" / "SOUL.md").write_text("I have a soul")
         resp = client.get("/api/agents/soul_agent")
@@ -152,12 +149,11 @@ class TestCreateAgent:
     def test_create(self, client, workspace):
         resp = client.post(
             "/api/agents",
-            json={"id": "new1", "name": "New Agent", "role": "tester"},
+            json={"id": "new1"},
         )
         assert resp.status_code == 200
         data = resp.json()
         assert data["id"] == "new1"
-        assert data["name"] == "New Agent"
         # Verify on disk
         agents_dir = workspace / "agents"
         assert (agents_dir / "new1" / "agent.json").exists()
@@ -169,23 +165,22 @@ class TestCreateAgent:
             "/api/agents",
             json={
                 "id": "cfg1",
-                "name": "Configured",
-                "config_overrides": {"max_steps": 100},
-                "tools_config": {"denied": ["shell"]},
+                "agent": {"max_steps": 100},
+                "tools": {"denied": ["shell"]},
             },
         )
         assert resp.status_code == 200
         loaded = AgentDefinition.load("cfg1")
-        assert loaded.config_overrides == {"max_steps": 100}
-        assert loaded.tools_config == {"denied": ["shell"]}
+        assert loaded.agent == {"max_steps": 100}
+        assert loaded.tools == {"denied": ["shell"]}
 
     def test_create_duplicate(self, client, workspace):
         client.post(
             "/api/agents",
-            json={"id": "dup", "name": "Dup"},
+            json={"id": "dup"},
         )
         resp = client.post(
             "/api/agents",
-            json={"id": "dup", "name": "Dup Again"},
+            json={"id": "dup"},
         )
         assert resp.status_code == 409

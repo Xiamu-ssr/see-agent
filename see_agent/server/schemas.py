@@ -13,18 +13,15 @@ from pydantic import BaseModel
 
 class AgentSummary(BaseModel):
     id: str
-    name: str
-    role: str
     team_id: str | None = None
     team_name: str | None = None
     status: str = "idle"
 
 
 class AgentDetail(AgentSummary):
-    config_overrides: dict[str, Any] = {}
-    tools_config: dict[str, Any] = {}
-    skills_config: dict[str, Any] = {}
-    mcp_config: dict[str, Any] = {}
+    tools: dict[str, Any] = {}
+    skills: dict[str, Any] = {}
+    mcp: dict[str, Any] = {}
     sandbox: dict[str, Any] = {}
     has_soul: bool = False
     location: str = ""
@@ -32,13 +29,16 @@ class AgentDetail(AgentSummary):
 
 class AgentCreateResponse(BaseModel):
     id: str
-    name: str
-    role: str
 
 
 # -------------------------------------------------------------------- #
 # Teams
 # -------------------------------------------------------------------- #
+
+
+class TeamMember(BaseModel):
+    id: str
+    role: str
 
 
 class TaskItem(BaseModel):
@@ -51,7 +51,7 @@ class TaskItem(BaseModel):
 class TeamSummary(BaseModel):
     id: str
     name: str
-    members: list[str] = []
+    members: list[TeamMember] = []
     status: str = "created"
 
 
@@ -69,7 +69,7 @@ class TeamCreateResponse(BaseModel):
 class TeamUpdateResponse(BaseModel):
     id: str
     name: str
-    members: list[str]
+    members: list[TeamMember]
     status: str
 
 

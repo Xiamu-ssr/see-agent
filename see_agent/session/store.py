@@ -1,7 +1,7 @@
-"""File-based session store under ``~/.see-agent/sessions/``.
+"""File-based session store — single session per agent.
 
-Each session is a directory containing:
-- ``meta.json``  — session metadata (id, task, status, timestamps, …)
+Each agent has a single ``session/`` directory containing:
+- ``meta.json``  — session metadata (task, status, timestamps, …)
 - ``messages.jsonl`` — one JSON object per line (no base64, screenshot file refs)
 - ``screenshots/`` — WebP files named ``step_NNN.webp``
 """
@@ -14,7 +14,6 @@ import json
 import logging
 import logging.handlers
 import shutil
-import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -29,19 +28,6 @@ logger = logging.getLogger(__name__)
 # ------------------------------------------------------------------ #
 # Data models
 # ------------------------------------------------------------------ #
-
-@dataclass
-class SessionSummary:
-    """Lightweight view returned by :meth:`SessionStore.list`."""
-
-    id: str
-    task: str
-    status: str
-    total_steps: int
-    elapsed_seconds: float
-    created_at: str
-    updated_at: str
-
 
 @dataclass
 class Session:
@@ -328,20 +314,19 @@ class Session:
 # ------------------------------------------------------------------ #
 
 class SessionStore:
-    """Pure-file session store rooted at ``~/.see-agent/sessions/``."""
+    """Pure-file session store — single session per agent directory."""
 
     @staticmethod
     def create(
         task: str,
         config: dict[str, Any],
-        root_dir: Path,
+        session_dir: Path,
     ) -> Session:
-        """Create a new session directory and return the :class:`Session`."""
-        base = root_dir
-        session_id = datetime.now().strftime("%Y%m%d_%H%M%S") + "_" + _short_id()
-        session_dir = base / session_id
+        """Create (or reset) a session in *session_dir* and return :class:`Session`."""
         session_dir.mkdir(parents=True, exist_ok=True)
         (session_dir / "screenshots").mkdir(exist_ok=True)
+
+        session_id = session_dir.name
 
         meta: dict[str, Any] = {
             "id": session_id,
@@ -354,8 +339,8 @@ class SessionStore:
             "summary": "",
             "config_snapshot": {
                 "model": config.get("llm", {}).get("model", ""),
-                "max_steps": config.get("max_steps", 50),
-                "scaling_enabled": config.get("scaling_enabled", True),
+                "max_steps": config.get("agent", {}).get("max_steps", 50),
+                "scaling_enabled": config.get("screen", {}).get("scaling_enabled", True),
             },
         }
         (session_dir / "meta.json").write_text(
@@ -364,24 +349,22 @@ class SessionStore:
         # Create empty JSONL file.
         (session_dir / "messages.jsonl").touch()
 
-        logger.info("Created session %s at %s", session_id, session_dir)
+        logger.info("Created session at %s", session_dir)
         return Session(id=session_id, task=task, status="running", dir=session_dir, meta=meta)
 
     @staticmethod
-    def load(session_id: str, root_dir: Path) -> Session:
-        """Load an existing session from disk.
+    def load(session_dir: Path) -> Session:
+        """Load an existing session from *session_dir*.
 
         Raises:
-            FileNotFoundError: If the session directory or meta.json is missing.
+            FileNotFoundError: If meta.json is missing.
         """
-        base = root_dir
-        session_dir = base / session_id
         meta_path = session_dir / "meta.json"
         if not meta_path.exists():
-            raise FileNotFoundError(f"Session not found: {session_id}")
+            raise FileNotFoundError(f"Session not found: {session_dir}")
         meta = json.loads(meta_path.read_text(encoding="utf-8"))
         return Session(
-            id=meta["id"],
+            id=meta.get("id", session_dir.name),
             task=meta.get("task", ""),
             status=meta.get("status", "unknown"),
             dir=session_dir,
@@ -389,103 +372,20 @@ class SessionStore:
         )
 
     @staticmethod
-    def list(
-        *,
-        status: str | None = None,
-        limit: int = 20,
-        root_dir: Path,
-    ) -> list[SessionSummary]:
-        """List sessions sorted by creation time (newest first)."""
-        base = root_dir
-        if not base.exists():
-            return []
-        summaries: list[SessionSummary] = []
-        for d in sorted(base.iterdir(), reverse=True):
-            meta_path = d / "meta.json"
-            if not meta_path.exists():
-                continue
-            try:
-                meta = json.loads(meta_path.read_text(encoding="utf-8"))
-            except (json.JSONDecodeError, OSError):
-                continue
-            if status and meta.get("status") != status:
-                continue
-            summaries.append(
-                SessionSummary(
-                    id=meta.get("id", d.name),
-                    task=meta.get("task", ""),
-                    status=meta.get("status", "unknown"),
-                    total_steps=meta.get("total_steps", 0),
-                    elapsed_seconds=meta.get("elapsed_seconds", 0.0),
-                    created_at=meta.get("created_at", ""),
-                    updated_at=meta.get("updated_at", ""),
-                )
-            )
-            if len(summaries) >= limit:
-                break
-        return summaries
-
-    @staticmethod
-    def delete(session_id: str, root_dir: Path) -> None:
-        """Delete a session directory entirely."""
-        base = root_dir
-        session_dir = base / session_id
+    def delete(session_dir: Path) -> None:
+        """Delete the session directory entirely."""
         if session_dir.exists():
             shutil.rmtree(session_dir)
-            logger.info("Deleted session %s", session_id)
+            logger.info("Deleted session at %s", session_dir)
 
     @staticmethod
-    def clean(
-        *,
-        keep_days: int = 7,
-        empty_only: bool = False,
-        root_dir: Path,
-    ) -> tuple[int, int]:
-        """Clean old or empty sessions.
-
-        Returns:
-            ``(deleted_count, freed_bytes)``
-        """
-        base = root_dir
-        if not base.exists():
+    def clean(session_dir: Path) -> tuple[int, int]:
+        """Clean session data. Returns ``(deleted_count, freed_bytes)``."""
+        if not session_dir.exists():
             return 0, 0
-        cutoff = time.time() - keep_days * 86400
-        deleted = 0
-        freed = 0
-        for d in list(base.iterdir()):
-            meta_path = d / "meta.json"
-            if not meta_path.exists():
-                # Orphan directory — remove.
-                size = _dir_size(d)
-                shutil.rmtree(d, ignore_errors=True)
-                deleted += 1
-                freed += size
-                continue
-            if empty_only:
-                ss_dir = d / "screenshots"
-                screenshots = (
-                    list(ss_dir.glob("*.webp")) if ss_dir.exists() else []
-                )
-                if screenshots:
-                    continue
-                size = _dir_size(d)
-                shutil.rmtree(d, ignore_errors=True)
-                deleted += 1
-                freed += size
-                continue
-            # Age-based cleanup.
-            try:
-                meta = json.loads(meta_path.read_text(encoding="utf-8"))
-                created = meta.get("created_at", "")
-                ts = datetime.fromisoformat(created).timestamp()
-            except Exception:
-                ts = d.stat().st_mtime
-            if ts < cutoff:
-                size = _dir_size(d)
-                shutil.rmtree(d, ignore_errors=True)
-                deleted += 1
-                freed += size
-        return deleted, freed
+        size = _dir_size(session_dir)
+        shutil.rmtree(session_dir, ignore_errors=True)
+        return 1, size
 
 
 # ------------------------------------------------------------------ #

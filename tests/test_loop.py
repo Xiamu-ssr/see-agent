@@ -120,7 +120,7 @@ def _build_loop(
     max_steps: int = 5,
     on_step: Any = None,
     scaling_enabled: bool = False,
-    session_root: Path | None = None,
+    session_dir: Path | None = None,
     tmp_path: Path | None = None,
 ) -> AgentLoop:
     """Construct an AgentLoop with the given mocked components."""
@@ -128,31 +128,33 @@ def _build_loop(
     if not isinstance(getattr(registry, "_tools", None), dict):
         registry._tools = dict(_DEFAULT_SCREEN_TOOLS)
     config: dict[str, Any] = {
-        "language": "en",
-        "max_steps": max_steps,
-        "max_images": 5,
-        "screenshot_interval_ms": 0,  # no real waiting in tests
-        "tool_delay_ms": 0,
-        "scaling_enabled": scaling_enabled,
+        "web": {"language": "en"},
+        "agent": {"max_steps": max_steps},
+        "screen": {
+            "max_images": 5,
+            "screenshot_interval_ms": 0,  # no real waiting in tests
+            "tool_delay_ms": 0,
+            "scaling_enabled": scaling_enabled,
+        },
     }
-    # Default session_root to tmp_path/"sessions" when not explicitly given
-    if session_root is None and tmp_path is not None:
-        session_root = tmp_path / "sessions"
-        session_root.mkdir(parents=True, exist_ok=True)
+    # Default session_dir to tmp_path/"session" when not explicitly given
+    if session_dir is None and tmp_path is not None:
+        session_dir = tmp_path / "session"
+        session_dir.mkdir(parents=True, exist_ok=True)
     return AgentLoop(
         brain=brain,
         eye=eye,
         registry=registry,
         config=config,
         on_step=on_step,
-        session_root=session_root,
+        session_dir=session_dir,
     )
 
 
 @pytest.fixture(autouse=True)
 def _setup_sessions_dir(tmp_path: Path):
-    """Ensure sessions subdir exists for every test."""
-    (tmp_path / "sessions").mkdir(exist_ok=True)
+    """Ensure session subdir exists for every test."""
+    (tmp_path / "session").mkdir(exist_ok=True)
 
 
 # -------------------------------------------------------------------- #
@@ -412,7 +414,8 @@ class TestAgentLoop:
         """Resuming must not write a duplicate system message to JSONL."""
         from see_agent.session.store import SessionStore
 
-        (tmp_path / "sessions").mkdir(exist_ok=True)
+        session_dir = tmp_path / "session"
+        session_dir.mkdir(exist_ok=True)
 
         brain = AsyncMock()
         brain.chat = AsyncMock(return_value=_make_finished_response("done"))
@@ -423,23 +426,20 @@ class TestAgentLoop:
 
         loop = _build_loop(brain, eye, registry, max_steps=10, tmp_path=tmp_path)
 
-        if True:
-            result1 = await loop.run("Task 1")
-            session_id = result1.session_id
+        result1 = await loop.run("Task 1")
+        session_id = result1.session_id
 
-            # Resume
-            brain2 = AsyncMock()
-            brain2.chat = AsyncMock(
-                return_value=_make_finished_response("done2"),
-            )
-            eye2 = AsyncMock()
-            eye2.capture = AsyncMock(return_value=_make_screenshot())
-            loop2 = _build_loop(brain2, eye2, registry, max_steps=10, tmp_path=tmp_path)
-            await loop2.run("Task 2", session_id=session_id)
+        # Resume
+        brain2 = AsyncMock()
+        brain2.chat = AsyncMock(
+            return_value=_make_finished_response("done2"),
+        )
+        eye2 = AsyncMock()
+        eye2.capture = AsyncMock(return_value=_make_screenshot())
+        loop2 = _build_loop(brain2, eye2, registry, max_steps=10, tmp_path=tmp_path)
+        await loop2.run("Task 2", session_id=session_id)
 
-            session = SessionStore.load(
-                session_id, root_dir=tmp_path / "sessions",
-            )
+        session = SessionStore.load(session_dir)
 
         messages = session.read_messages()
         system_msgs = [m for m in messages if m.get("type") == "system"]
@@ -803,16 +803,18 @@ class TestAgentLoopV2Behavior:
         registry.execute = AsyncMock(side_effect=timed_execute)
 
         config: dict[str, Any] = {
-            "language": "en",
-            "max_steps": 10,
-            "max_images": 5,
-            "screenshot_interval_ms": 0,
-            "tool_delay_ms": 100,
-            "scaling_enabled": False,
+            "web": {"language": "en"},
+            "agent": {"max_steps": 10},
+            "screen": {
+                "max_images": 5,
+                "screenshot_interval_ms": 0,
+                "tool_delay_ms": 100,
+                "scaling_enabled": False,
+            },
         }
         loop = AgentLoop(
             brain=brain, eye=eye, registry=registry,
-            config=config, session_root=tmp_path / "sessions",
+            config=config, session_dir=tmp_path / "session",
         )
 
         if True:
@@ -844,13 +846,15 @@ class TestAgentLoopV2Behavior:
         registry.get_openai_schemas.return_value = []
 
         config: dict[str, Any] = {
-            "language": "en",
-            "max_steps": 10,
-            "max_images": 5,
-            "screenshot_interval_ms": 0,
-            "tool_delay_ms": 0,
-            "scaling_enabled": False,
-            "skills_dirs": [str(tmp_path / "skills")],
+            "web": {"language": "en"},
+            "agent": {"max_steps": 10},
+            "screen": {
+                "max_images": 5,
+                "screenshot_interval_ms": 0,
+                "tool_delay_ms": 0,
+                "scaling_enabled": False,
+            },
+            "skills": {"dirs": [str(tmp_path / "skills")]},
         }
         loop = _build_loop(brain, eye, registry, max_steps=10, tmp_path=tmp_path)
         loop._config = config
@@ -904,17 +908,21 @@ class TestAgentLoopV2Behavior:
         registry.get_openai_schemas.return_value = []
 
         config: dict[str, Any] = {
-            "language": "en",
-            "max_steps": 10,
-            "max_images": 5,
-            "screenshot_interval_ms": 0,
-            "tool_delay_ms": 0,
-            "scaling_enabled": False,
-            "compact": {"enabled": False},
+            "web": {"language": "en"},
+            "agent": {
+                "max_steps": 10,
+                "compact": {"enabled": False},
+            },
+            "screen": {
+                "max_images": 5,
+                "screenshot_interval_ms": 0,
+                "tool_delay_ms": 0,
+                "scaling_enabled": False,
+            },
         }
         loop = AgentLoop(
             brain=brain, eye=eye, registry=registry,
-            config=config, session_root=tmp_path / "sessions",
+            config=config, session_dir=tmp_path / "session",
         )
 
         if True:
@@ -983,21 +991,25 @@ class TestAgentLoopV2Behavior:
 
         # Low context_window to trigger compaction after a few steps.
         config: dict[str, Any] = {
-            "language": "en",
-            "max_steps": 20,
-            "max_images": 5,
-            "screenshot_interval_ms": 0,
-            "tool_delay_ms": 0,
-            "scaling_enabled": False,
-            "compact": {
-                "enabled": True,
-                "context_window": 100,
-                "target_ratio": 0.5,
+            "web": {"language": "en"},
+            "agent": {
+                "max_steps": 20,
+                "compact": {
+                    "enabled": True,
+                    "context_window": 100,
+                    "target_ratio": 0.5,
+                },
+            },
+            "screen": {
+                "max_images": 5,
+                "screenshot_interval_ms": 0,
+                "tool_delay_ms": 0,
+                "scaling_enabled": False,
             },
         }
         loop = AgentLoop(
             brain=brain, eye=eye, registry=registry,
-            config=config, session_root=tmp_path / "sessions",
+            config=config, session_dir=tmp_path / "session",
         )
 
         if True:
@@ -1012,12 +1024,12 @@ class TestAgentLoopV2Behavior:
 
 
 # -------------------------------------------------------------------- #
-# Phase 3: agent_id and session_root propagation
+# Phase 3: agent_id and session_dir propagation
 # -------------------------------------------------------------------- #
 
 
 class TestAgentLoopTeamParams:
-    """Tests for agent_id and session_root parameters."""
+    """Tests for agent_id and session_dir parameters."""
 
     def test_agent_id_stored(self):
         """agent_id param is stored on the loop."""
@@ -1026,21 +1038,21 @@ class TestAgentLoopTeamParams:
         registry = MagicMock()
         loop = AgentLoop(
             brain=brain, eye=eye, registry=registry,
-            config={"max_steps": 1}, agent_id="alice",
+            config={"agent": {"max_steps": 1}}, agent_id="alice",
         )
         assert loop._agent_id == "alice"
 
-    def test_session_root_stored(self, tmp_path):
-        """session_root param is stored on the loop."""
+    def test_session_dir_stored(self, tmp_path):
+        """session_dir param is stored on the loop."""
         brain = AsyncMock()
         eye = AsyncMock()
         registry = MagicMock()
-        root = tmp_path / "custom_sessions"
+        sd = tmp_path / "session"
         loop = AgentLoop(
             brain=brain, eye=eye, registry=registry,
-            config={"max_steps": 1}, session_root=root,
+            config={"agent": {"max_steps": 1}}, session_dir=sd,
         )
-        assert loop._session_root == root
+        assert loop._session_dir == sd
 
     # v3.5: team_bus and user_queue params removed from AgentLoop.
     # Team communication is handled by AgentRuntime + MessageRouter.
@@ -1068,8 +1080,8 @@ class TestScreenshotSkip:
             brain=brain,
             eye=eye,
             registry=registry,
-            config={"max_steps": 5, "tool_delay_ms": 0},
-            session_root=tmp_path / "sessions",
+            config={"agent": {"max_steps": 5}, "screen": {"tool_delay_ms": 0}},
+            session_dir=tmp_path / "session",
         )
 
         if True:
@@ -1096,17 +1108,19 @@ class TestCachedEnvBlock:
         registry._tools = dict(_DEFAULT_SCREEN_TOOLS)
 
         config: dict[str, Any] = {
-            "language": "en",
-            "max_steps": 5,
-            "max_images": 5,
-            "screenshot_interval_ms": 0,
-            "tool_delay_ms": 0,
-            "scaling_enabled": False,
+            "web": {"language": "en"},
+            "agent": {"max_steps": 5},
+            "screen": {
+                "max_images": 5,
+                "screenshot_interval_ms": 0,
+                "tool_delay_ms": 0,
+                "scaling_enabled": False,
+            },
             "_cached_env_block": "Pre-collected env info",
         }
         loop = AgentLoop(
             brain=brain, eye=eye, registry=registry, config=config,
-            session_root=tmp_path / "sessions",
+            session_dir=tmp_path / "session",
         )
 
         with patch(
@@ -1158,10 +1172,10 @@ class TestFinishedAutoMarkTasks:
             brain=brain,
             eye=eye,
             registry=registry,
-            config={"max_steps": 5, "tool_delay_ms": 0},
+            config={"agent": {"max_steps": 5}, "screen": {"tool_delay_ms": 0}},
             agent_id="alice",
             task_board=board,
-            session_root=tmp_path / "sessions",
+            session_dir=tmp_path / "session",
         )
 
         if True:

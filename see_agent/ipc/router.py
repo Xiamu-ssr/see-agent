@@ -17,7 +17,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from see_agent.config import RUN_DIR, TEAMS_DIR
+from see_agent.config import TEAMS_DIR
 from see_agent.ipc.protocol import (
     BOARD_ASSIGN,
     BOARD_CLAIM,
@@ -54,8 +54,7 @@ class AgentRouter:
         self._screen = ScreenManager()
         self._eye: Any = None  # Lazy-loaded MacEye
 
-        RUN_DIR.mkdir(parents=True, exist_ok=True)
-        self._sock_path = RUN_DIR / f"{team_id}.sock"
+        self._sock_path = Path(f"/tmp/see-agent-{team_id}.sock")
         self._server: asyncio.AbstractServer | None = None
 
     @property

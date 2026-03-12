@@ -5,7 +5,7 @@ interface Props {
 }
 
 export default function AgentSkills({ agent }: Props) {
-  const skills = agent.skills_config || {}
+  const skills = agent.skills || {}
   return (
     <div>
       <p className="text-sm mb-3" style={{ color: 'var(--muted)' }}>Skills configuration for this agent.</p>

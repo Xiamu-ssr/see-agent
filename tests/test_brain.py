@@ -17,33 +17,27 @@ class TestBuildSystemPrompt:
     """Tests for the build_system_prompt function."""
 
     def test_build_system_prompt_zh(self):
-        """Chinese prompt contains identity and constraints."""
-        config = {"language": "zh", "max_steps": 30}
+        """Chinese prompt contains constraints."""
+        config = {"web": {"language": "zh"}, "agent": {"max_steps": 30}}
         prompt = build_system_prompt(config)
 
-        # Identity
-        assert "AI 助手" in prompt
-        # Constraints (inline, no XML)
         assert "30" in prompt
+        assert "最多执行" in prompt
 
     def test_build_system_prompt_en(self):
-        """English prompt contains identity and constraints."""
-        config = {"language": "en", "max_steps": 50}
+        """Even with language=en, constraints are in Chinese (unified)."""
+        config = {"web": {"language": "en"}, "agent": {"max_steps": 50}}
         prompt = build_system_prompt(config)
 
-        assert "AI assistant" in prompt
-        assert "Maximum 50 steps" in prompt
-        # Should not contain Chinese identity text
-        assert "中文" not in prompt
+        assert "50" in prompt
+        assert "最多执行" in prompt
 
-    def test_build_system_prompt_with_workspace(self, tmp_path):
-        """When agent_dir has workspace files, their content is injected."""
-        ws = tmp_path / "workspace"
-        ws.mkdir()
-        (ws / "SOUL.md").write_text("I am friendly and patient.", encoding="utf-8")
-        (ws / "AGENTS.md").write_text("# Rules\nDo stuff.", encoding="utf-8")
+    def test_build_system_prompt_with_agent_files(self, tmp_path):
+        """When agent_dir has md files, their content is injected."""
+        (tmp_path / "SOUL.md").write_text("I am friendly and patient.", encoding="utf-8")
+        (tmp_path / "AGENTS.md").write_text("# Rules\nDo stuff.", encoding="utf-8")
 
-        config = {"language": "en", "max_steps": 50}
+        config = {"web": {"language": "en"}, "agent": {"max_steps": 50}}
         prompt = build_system_prompt(config, agent_dir=tmp_path)
 
         assert "friendly and patient" in prompt
@@ -51,38 +45,38 @@ class TestBuildSystemPrompt:
 
     def test_build_system_prompt_backward_compat_agent_dir(self, tmp_path):
         """config['_agent_dir'] still works for backward compat."""
-        ws = tmp_path / "workspace"
-        ws.mkdir()
-        (ws / "IDENTITY.md").write_text("# Bot\nI am a bot.", encoding="utf-8")
+        (tmp_path / "IDENTITY.md").write_text("# Bot\nI am a bot.", encoding="utf-8")
 
-        config = {"language": "en", "max_steps": 50, "_agent_dir": str(tmp_path)}
+        config = {
+            "web": {"language": "en"},
+            "agent": {"max_steps": 50},
+            "_agent_dir": str(tmp_path),
+        }
         prompt = build_system_prompt(config)
 
         assert "I am a bot" in prompt
 
     def test_build_system_prompt_max_steps(self):
         """max_steps value appears in constraints."""
-        config = {"language": "en", "max_steps": 42}
+        config = {"web": {"language": "en"}, "agent": {"max_steps": 42}}
         prompt = build_system_prompt(config)
 
         assert "42" in prompt
-        assert "Maximum 42 steps" in prompt
+        assert "最多执行 42 步" in prompt
 
     def test_build_system_prompt_max_steps_zh(self):
         """max_steps value appears in Chinese constraints."""
-        config = {"language": "zh", "max_steps": 99}
+        config = {"web": {"language": "zh"}, "agent": {"max_steps": 99}}
         prompt = build_system_prompt(config)
 
         assert "99" in prompt
 
-    def test_workspace_truncation(self, tmp_path):
-        """Large workspace files are truncated."""
-        ws = tmp_path / "workspace"
-        ws.mkdir()
+    def test_agent_file_truncation(self, tmp_path):
+        """Large agent files are truncated."""
         # Write a file larger than per-file limit
-        (ws / "AGENTS.md").write_text("x" * 25_000, encoding="utf-8")
+        (tmp_path / "AGENTS.md").write_text("x" * 25_000, encoding="utf-8")
 
-        config = {"language": "en", "max_steps": 10}
+        config = {"web": {"language": "en"}, "agent": {"max_steps": 10}}
         prompt = build_system_prompt(config, agent_dir=tmp_path)
 
         assert "truncated" in prompt
@@ -91,9 +85,9 @@ class TestBuildSystemPrompt:
 
     def test_no_workspace_no_crash(self):
         """When no agent_dir is provided, prompt still works."""
-        config = {"language": "en", "max_steps": 10}
+        config = {"web": {"language": "en"}, "agent": {"max_steps": 10}}
         prompt = build_system_prompt(config)
-        assert "AI assistant" in prompt
+        assert "最多执行" in prompt
 
 
 # -------------------------------------------------------------------- #

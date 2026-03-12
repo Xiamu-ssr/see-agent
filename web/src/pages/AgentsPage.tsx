@@ -24,7 +24,7 @@ export default function AgentsPage() {
   const { data: agents, refresh } = usePolling<AgentSummary[]>(fetchAgents, 10000)
 
   const [showCreate, setShowCreate] = useState(false)
-  const [form, setForm] = useState<CreateAgentRequest>({ name: '', role: 'general assistant' })
+  const [form, setForm] = useState<CreateAgentRequest>({ id: '' })
   const [agent, setAgent] = useState<AgentDetail | null>(null)
   const [detailsTab, setDetailsTab] = useState<DetailsTab>('overview')
 
@@ -40,10 +40,10 @@ export default function AgentsPage() {
   }, [id])
 
   const handleCreate = async () => {
-    if (!form.name) return
+    if (!form.id) return
     await createAgent(form)
     setShowCreate(false)
-    setForm({ name: '', role: 'general assistant' })
+    setForm({ id: '' })
     refresh()
   }
 
@@ -82,7 +82,7 @@ export default function AgentsPage() {
             <div className="mb-5">
               <div className="flex items-center gap-3 mb-1">
                 <h1 className="text-xl font-semibold" style={{ color: '#e6edf3' }}>
-                  {agent.name}
+                  {agent.id}
                 </h1>
                 <span
                   className="text-xs font-medium rounded-full px-2.5 py-0.5"
@@ -94,7 +94,6 @@ export default function AgentsPage() {
                   {agent.status === 'busy' ? 'Running' : 'Idle'}
                 </span>
               </div>
-              <p className="text-sm mb-4" style={{ color: '#7d8590' }}>{agent.role}</p>
 
               {/* Details / Chat toggle */}
               <div className="flex gap-2">
@@ -184,16 +183,9 @@ export default function AgentsPage() {
             </h2>
             <div className="flex flex-col gap-3">
               <input
-                placeholder="Display name"
-                value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
-                className="rounded-[var(--radius-sm)] border px-3 py-2 text-sm outline-none"
-                style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
-              />
-              <input
-                placeholder="Role"
-                value={form.role || ''}
-                onChange={(e) => setForm({ ...form, role: e.target.value })}
+                placeholder="Agent ID"
+                value={form.id || ''}
+                onChange={(e) => setForm({ ...form, id: e.target.value })}
                 className="rounded-[var(--radius-sm)] border px-3 py-2 text-sm outline-none"
                 style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
               />

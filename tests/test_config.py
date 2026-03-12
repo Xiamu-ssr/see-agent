@@ -93,8 +93,8 @@ class TestLoadConfig:
         finally:
             cleanup()
 
-        assert "max_steps" in config
-        assert "memory" in config
+        assert "agent" in config
+        assert config["agent"]["max_steps"] == 50
 
 
 class TestWorkspaceDirs:
@@ -118,20 +118,18 @@ class TestLoadAgentConfig:
     """Tests for load_agent_config."""
 
     def test_agent_config_inheritance(self, tmp_path):
-        """Agent config_overrides merge on top of global config."""
+        """Agent-level overrides merge on top of global config."""
         agents_dir = tmp_path / "agents"
         agent_dir = agents_dir / "test-agent"
         agent_dir.mkdir(parents=True)
         (agent_dir / "agent.json").write_text(json.dumps({
             "id": "test-agent",
-            "name": "Test Agent",
-            "config_overrides": {"max_steps": 99},
+            "agent": {"max_steps": 99},
         }))
 
         config_path = tmp_path / "config.json"
         config_path.write_text(json.dumps({
             "llm": {"api_key": "k", "model": "base"},
-            "max_steps": 50,
         }))
 
         patches = _config_patches(tmp_path)
@@ -142,7 +140,7 @@ class TestLoadAgentConfig:
         finally:
             cleanup()
 
-        assert config["max_steps"] == 99
+        assert config["agent"]["max_steps"] == 99
         assert config["llm"]["model"] == "base"
 
     def test_agent_not_found(self, tmp_path):
@@ -160,6 +158,6 @@ class TestSkillsDirs:
     def test_no_openclaw_in_skills_dirs(self):
         from see_agent.config import DEFAULT_CONFIG
 
-        dirs = DEFAULT_CONFIG["skills_dirs"]
+        dirs = DEFAULT_CONFIG["skills"]["dirs"]
         for d in dirs:
             assert "openclaw" not in d

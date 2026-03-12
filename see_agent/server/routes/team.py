@@ -20,6 +20,7 @@ from see_agent.server.schemas import (
     TaskItem,
     TeamCreateResponse,
     TeamLogEntry,
+    TeamMember,
     TeamMessage,
     TeamRunResponse,
     TeamStatus,
@@ -40,7 +41,7 @@ router = APIRouter(prefix="/api/teams", tags=["teams"])
 
 class CreateTeamRequest(BaseModel):
     name: str
-    members: list[str]
+    members: list[TeamMember]
     leader: str | None = None
 
 
@@ -50,9 +51,8 @@ class RunTeamRequest(BaseModel):
 
 class UpdateTeamRequest(BaseModel):
     name: str | None = None
-    members: list[str] | None = None
+    members: list[TeamMember] | None = None
     leader: str | None = None
-    screen_mode: str | None = None
 
 
 class OwnerMessageRequest(BaseModel):
@@ -70,8 +70,9 @@ async def create_team(body: CreateTeamRequest) -> TeamCreateResponse:
     """Create a new team."""
     from see_agent.team.definition import TeamDefinition
 
+    members = [m.model_dump() for m in body.members]
     team = TeamDefinition.create(
-        body.name, body.members, leader=body.leader,
+        body.name, members, leader=body.leader,
     )
     return TeamCreateResponse(id=team.id, name=team.name, status=team.status)
 
@@ -86,7 +87,7 @@ async def list_teams() -> list[TeamSummary]:
         TeamSummary(
             id=t.id,
             name=t.name,
-            members=t.members,
+            members=[TeamMember(**m) for m in t.members],
             status=t.status,
         )
         for t in teams
@@ -108,17 +109,15 @@ async def update_team(
     if body.name is not None:
         team.name = body.name
     if body.members is not None:
-        team.members = body.members
+        team.members = [m.model_dump() for m in body.members]
     if body.leader is not None:
         team.leader = body.leader
-    if body.screen_mode is not None:
-        team.screen_mode = body.screen_mode
 
     team.save()
     return TeamUpdateResponse(
         id=team.id,
         name=team.name,
-        members=team.members,
+        members=[TeamMember(**m) for m in team.members],
         status=team.status,
     )
 
@@ -143,7 +142,8 @@ async def run_team(
     router_ = request.app.state.message_router
 
     # Start all member agents and send the task.
-    for agent_id in team_def.members:
+    for m in team_def.members:
+        agent_id = m["id"]
         supervisor.start_agent(agent_id)
         router_.on_user_message(
             agent_id, body.task, sender="user",
@@ -176,7 +176,7 @@ async def get_team_status(team_id: str) -> TeamStatus:
     return TeamStatus(
         id=team.id,
         name=team.name,
-        members=team.members,
+        members=[TeamMember(**m) for m in team.members],
         leader=team.leader,
         status=team.status,
         tasks=[
@@ -204,8 +204,8 @@ async def stop_team(
         raise HTTPException(status_code=404, detail="Team not found")
 
     supervisor = request.app.state.supervisor
-    for agent_id in team.members:
-        supervisor.stop_agent(agent_id)
+    for m in team.members:
+        supervisor.stop_agent(m["id"])
 
     team.status = "stopped"
     team.save()
@@ -389,7 +389,8 @@ async def get_agent_status(
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Team not found")
 
-    if agent_id not in team.members:
+    member_ids = [m["id"] for m in team.members]
+    if agent_id not in member_ids:
         raise HTTPException(
             status_code=404, detail="Agent not in team",
         )

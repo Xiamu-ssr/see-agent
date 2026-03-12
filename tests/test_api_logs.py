@@ -33,7 +33,7 @@ def client(workspace):
 
     config = {
         "llm": {"base_url": "http://test/v1", "api_key": "k", "model": "m"},
-        "max_steps": 5,
+        "agent": {"max_steps": 5},
     }
     (workspace / "config.json").write_text(json.dumps(config))
     with TestClient(app, raise_server_exceptions=True) as c:

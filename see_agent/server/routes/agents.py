@@ -32,23 +32,23 @@ router = APIRouter(prefix="/api/agents", tags=["agents"])
 
 class CreateAgentRequest(BaseModel):
     id: str | None = None
-    name: str
-    role: str = "general assistant"
     soul: str | None = None
-    config_overrides: dict[str, Any] | None = None
-    tools_config: dict[str, Any] | None = None
-    skills_config: dict[str, Any] | None = None
-    mcp_config: dict[str, Any] | None = None
+    llm: dict[str, Any] | None = None
+    agent: dict[str, Any] | None = None
+    screen: dict[str, Any] | None = None
+    tools: dict[str, Any] | None = None
+    skills: dict[str, Any] | None = None
+    mcp: dict[str, Any] | None = None
     sandbox: dict[str, Any] | None = None
 
 
 class UpdateAgentRequest(BaseModel):
-    name: str | None = None
-    role: str | None = None
-    config_overrides: dict[str, Any] | None = None
-    tools_config: dict[str, Any] | None = None
-    skills_config: dict[str, Any] | None = None
-    mcp_config: dict[str, Any] | None = None
+    llm: dict[str, Any] | None = None
+    agent: dict[str, Any] | None = None
+    screen: dict[str, Any] | None = None
+    tools: dict[str, Any] | None = None
+    skills: dict[str, Any] | None = None
+    mcp: dict[str, Any] | None = None
     sandbox: dict[str, Any] | None = None
 
 
@@ -81,8 +81,6 @@ async def list_agents(request: Request) -> list[AgentSummary]:
                 team_name = team_id
         results.append(AgentSummary(
             id=defn.id,
-            name=defn.name,
-            role=defn.role,
             team_id=team_id,
             team_name=team_name,
             status=status,
@@ -110,18 +108,13 @@ async def get_agent(agent_id: str) -> AgentDetail:
         except FileNotFoundError:
             team_name = team_id
 
-    has_soul = (agent_dir / "SOUL.md").exists() or (
-        agent_dir / "workspace" / "SOUL.md"
-    ).exists()
+    has_soul = (agent_dir / "SOUL.md").exists()
 
     return AgentDetail(
         id=defn.id,
-        name=defn.name,
-        role=defn.role,
-        config_overrides=defn.config_overrides,
-        tools_config=defn.tools_config,
-        skills_config=defn.skills_config,
-        mcp_config=defn.mcp_config,
+        tools=defn.tools,
+        skills=defn.skills,
+        mcp=defn.mcp,
         sandbox=defn.sandbox,
         team_id=team_id,
         team_name=team_name,
@@ -147,30 +140,20 @@ async def create_agent(body: CreateAgentRequest) -> AgentCreateResponse:
     if agent_json.exists():
         raise HTTPException(status_code=409, detail="Agent already exists")
 
-    kwargs: dict[str, Any] = {"name": body.name, "role": body.role}
-    if body.config_overrides is not None:
-        kwargs["config_overrides"] = body.config_overrides
-    if body.tools_config is not None:
-        kwargs["tools_config"] = body.tools_config
-    if body.skills_config is not None:
-        kwargs["skills_config"] = body.skills_config
-    if body.mcp_config is not None:
-        kwargs["mcp_config"] = body.mcp_config
-    if body.sandbox is not None:
-        kwargs["sandbox"] = body.sandbox
+    kwargs: dict[str, Any] = {}
+    for key in ("llm", "agent", "screen", "tools", "skills", "mcp", "sandbox"):
+        value = getattr(body, key, None)
+        if value is not None:
+            kwargs[key] = value
 
     defn = AgentDefinition.create(agent_id, **kwargs)
-    logger.info("Agent created: %s (%s)", defn.id, defn.role)
+    logger.info("Agent created: %s", defn.id)
 
     if body.soul:
         soul_path = AGENTS_DIR / agent_id / "SOUL.md"
         soul_path.write_text(body.soul, encoding="utf-8")
 
-    return AgentCreateResponse(
-        id=defn.id,
-        name=defn.name,
-        role=defn.role,
-    )
+    return AgentCreateResponse(id=defn.id)
 
 
 @router.put("/{agent_id}")
@@ -185,28 +168,14 @@ async def update_agent(
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Agent not found")
 
-    if body.name is not None:
-        defn.name = body.name
-    if body.role is not None:
-        defn.role = body.role
-    if body.config_overrides is not None:
-        defn.config_overrides = body.config_overrides
-    if body.tools_config is not None:
-        defn.tools_config = body.tools_config
-    if body.skills_config is not None:
-        defn.skills_config = body.skills_config
-    if body.mcp_config is not None:
-        defn.mcp_config = body.mcp_config
-    if body.sandbox is not None:
-        defn.sandbox = body.sandbox
+    for key in ("llm", "agent", "screen", "tools", "skills", "mcp", "sandbox"):
+        value = getattr(body, key, None)
+        if value is not None:
+            setattr(defn, key, value)
 
     defn.save_to(agent_dir.parent)
     logger.info("Agent updated: %s", defn.id)
-    return AgentCreateResponse(
-        id=defn.id,
-        name=defn.name,
-        role=defn.role,
-    )
+    return AgentCreateResponse(id=defn.id)
 
 
 # -------------------------------------------------------------------- #
@@ -299,22 +268,12 @@ async def send_agent_message(
 
 @router.get("/{agent_id}/chat")
 async def get_agent_chat(agent_id: str) -> list[ChatMessage]:
-    """Get chat history for an agent (from latest session)."""
+    """Get chat history for an agent (single session)."""
     import json
 
     from see_agent.config import AGENTS_DIR
 
-    sessions_dir = AGENTS_DIR / agent_id / "sessions"
-    if not sessions_dir.is_dir():
-        return []
-
-    # Find the most recent session directory.
-    session_dirs = sorted(sessions_dir.iterdir(), reverse=True)
-    if not session_dirs:
-        return []
-
-    latest = session_dirs[0]
-    messages_file = latest / "messages.jsonl"
+    messages_file = AGENTS_DIR / agent_id / "session" / "messages.jsonl"
     if not messages_file.exists():
         return []
 
@@ -366,17 +325,17 @@ async def stop_agent(
 
 @router.get("/{agent_id}/workspace")
 async def list_workspace_files(agent_id: str) -> list[WorkspaceFileItem]:
-    """List files in an agent's workspace directory."""
+    """List md files in an agent's directory."""
     from see_agent.config import AGENTS_DIR
 
-    workspace = AGENTS_DIR / agent_id / "workspace"
-    if not workspace.is_dir():
+    agent_dir = AGENTS_DIR / agent_id
+    if not agent_dir.is_dir():
         return []
 
     return [
         WorkspaceFileItem(name=f.name, size=f.stat().st_size)
-        for f in sorted(workspace.iterdir())
-        if f.is_file()
+        for f in sorted(agent_dir.iterdir())
+        if f.is_file() and f.suffix == ".md"
     ]
 
 
@@ -384,10 +343,10 @@ async def list_workspace_files(agent_id: str) -> list[WorkspaceFileItem]:
 async def get_workspace_file(
     agent_id: str, filename: str,
 ) -> WorkspaceFileContent:
-    """Read a workspace file."""
+    """Read an agent file."""
     from see_agent.config import AGENTS_DIR
 
-    fpath = AGENTS_DIR / agent_id / "workspace" / filename
+    fpath = AGENTS_DIR / agent_id / filename
     if not fpath.is_file():
         raise HTTPException(status_code=404, detail="File not found")
 
@@ -399,13 +358,13 @@ async def get_workspace_file(
 async def update_workspace_file(
     agent_id: str, filename: str, body: WorkspaceWriteRequest,
 ) -> StatusResponse:
-    """Write a workspace file."""
+    """Write an agent file."""
     from see_agent.config import AGENTS_DIR
 
-    workspace = AGENTS_DIR / agent_id / "workspace"
-    if not workspace.is_dir():
+    agent_dir = AGENTS_DIR / agent_id
+    if not agent_dir.is_dir():
         raise HTTPException(status_code=404, detail="Agent not found")
 
-    fpath = workspace / filename
+    fpath = agent_dir / filename
     fpath.write_text(body.content, encoding="utf-8")
     return StatusResponse(status="saved")

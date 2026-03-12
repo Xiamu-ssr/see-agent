@@ -16,9 +16,8 @@ Usage::
 from __future__ import annotations
 
 import logging
+import tempfile
 from pathlib import Path
-
-from see_agent.config import RUN_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -100,9 +99,8 @@ class SandboxProfileGenerator:
             "__SAFEHOUSE_REPLACE_ME_WITH_ABSOLUTE_HOME_DIR__", home,
         )
 
-        # Write to run dir.
-        RUN_DIR.mkdir(parents=True, exist_ok=True)
-        profile_path = RUN_DIR / f"{team_id}-{agent_id}.sb"
+        # Write to tmp dir.
+        profile_path = Path(tempfile.gettempdir()) / f"see-agent-{team_id}-{agent_id}.sb"
         profile_path.write_text(combined)
         logger.info("Sandbox profile written: %s", profile_path)
         return profile_path

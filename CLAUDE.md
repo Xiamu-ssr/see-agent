@@ -1,5 +1,10 @@
 # CLAUDE.md
 
+## ⚠️ 权威设计文档
+
+**MentalModel.md** 是 see-agent 的权威设计文档。所有代码修改必须与它保持一致。
+改代码前先读 MentalModel.md，有冲突以 MentalModel.md 为准。
+
 ## 修 Bug 规范
 
 - 修改任何 class/function 签名前，先 grep 项目里所有调用点
@@ -32,3 +37,9 @@ git commit -m "简要描述改了什么"
 git push
 ```
 每次改完都要推到远程，不要只 commit 不 push。
+
+## 实施约束
+
+- **不做兼容**：旧代码旧结构直接删，不保留向后兼容逻辑
+- **必须删旧代码**：如果新设计不需要某个字段/函数/文件，直接删除
+- **每步跑 check.sh**：每完成一个改动项就跑一次，不要攒到最后

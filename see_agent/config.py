@@ -17,30 +17,48 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "api_key": "",
         "model": "gpt-4o",
     },
-    "language": "zh",
-    "max_steps": 50,
-    "max_images": 5,
-    "screenshot_interval_ms": 800,
-    "tool_delay_ms": 200,
-    "scaling_enabled": True,
-    "scaling_match": "aspect_ratio",
-    "skills_dirs": ["~/.see-agent/skills"],
-    "context_engine": "default",
-    "memory": {
-        "enabled": True,
-        "search": {
-            "mode": "bm25",
+    "agent": {
+        "max_steps": 50,
+        "context_engine": "legacy",
+        "compact": {
+            "context_window": 200000,
+            "target_ratio": 0.75,
+            "keep_recent": 8,
+            "summary_model": "",
         },
     },
-    "compact": {
-        "enabled": False,
-        "context_window": 128000,
-        "target_ratio": 0.75,
-        "keep_recent": 8,
-        "summary_model": "",
+    "screen": {
+        "max_images": 5,
+        "screenshot_interval_ms": 800,
+        "tool_delay_ms": 200,
+        "scaling_enabled": True,
+        "scaling_match": "aspect_ratio",
+        "show_overlay": True,
+    },
+    "skills": {
+        "dirs": ["~/.see-agent/skills"],
+        "disabled": [],
+    },
+    "mcp": {
+        "servers": {},
+        "disabled": [],
+    },
+    "tools": {
+        "disabled": [],
+    },
+    "sandbox": {
+        "profile": "default",
+        "extra_read": [],
+        "extra_write": [],
+    },
+    "plugins": {
+        "enabled": True,
+        "dirs": ["~/.see-agent/plugins"],
+    },
+    "web": {
+        "language": "zh",
     },
     "env": {},
-    "mcp_servers": {},
 }
 
 WORKSPACE_DIR = Path(os.environ.get("SEE_AGENT_HOME", "~/.see-agent")).expanduser()
@@ -49,7 +67,6 @@ LOGS_DIR = WORKSPACE_DIR / "logs"
 SKILLS_DIR = WORKSPACE_DIR / "skills"
 AGENTS_DIR = WORKSPACE_DIR / "agents"
 TEAMS_DIR = WORKSPACE_DIR / "teams"
-RUN_DIR = WORKSPACE_DIR / "run"
 
 # Path to bundled workspace templates
 _TEMPLATE_DIR = Path(__file__).parent / "templates"
@@ -79,7 +96,6 @@ def ensure_workspace() -> None:
     SKILLS_DIR.mkdir(exist_ok=True)
     AGENTS_DIR.mkdir(exist_ok=True)
     TEAMS_DIR.mkdir(exist_ok=True)
-    RUN_DIR.mkdir(exist_ok=True)
 
     if not CONFIG_PATH.exists():
         CONFIG_PATH.write_text(json.dumps(DEFAULT_CONFIG, indent=4, ensure_ascii=False))
@@ -159,7 +175,9 @@ def load_agent_config(agent_id: str) -> dict[str, Any]:
     with open(agent_json) as f:
         agent_data = json.load(f)
 
-    overrides = agent_data.get("config_overrides", {})
+    # agent.json is config-shaped (same structure as config.json).
+    # Strip the ``id`` field and deep-merge the rest.
+    overrides = {k: v for k, v in agent_data.items() if k != "id"}
     return _deep_merge(global_config, overrides)
 
 

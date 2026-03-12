@@ -35,7 +35,7 @@ def client(workspace):
 
     app.state.config = {
         "llm": {"base_url": "http://test/v1", "api_key": "k", "model": "m"},
-        "max_steps": 5,
+        "agent": {"max_steps": 5},
     }
     from see_agent.server.supervisor import AgentSupervisor
     app.state.supervisor = AgentSupervisor({})
@@ -59,8 +59,8 @@ class TestDashboard:
         from see_agent.agent.definition import AgentDefinition
         from see_agent.team.definition import TeamDefinition
 
-        AgentDefinition.create("idle1", name="Idle1")
-        TeamDefinition.create("T1", ["a1"])
+        AgentDefinition.create("idle1")
+        TeamDefinition.create("T1", [{"id": "a1", "role": "worker"}])
 
         resp = client.get("/api/dashboard")
         assert resp.status_code == 200

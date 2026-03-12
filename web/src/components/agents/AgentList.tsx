@@ -45,11 +45,8 @@ export default function AgentList({ agents, selectedId, onSelect, onNewAgent }: 
                 className="text-sm font-medium"
                 style={{ color: selectedId === a.id ? 'var(--accent)' : 'var(--text-strong)' }}
               >
-                {a.name}
+                {a.id}
               </span>
-            </div>
-            <div className="flex items-center gap-2 mt-1 ml-[22px]">
-              <span className="text-xs" style={{ color: 'var(--muted)' }}>{a.role}</span>
             </div>
             <div className="flex items-center gap-1 mt-0.5 ml-[22px]">
               <span

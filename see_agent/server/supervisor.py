@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from see_agent.config import AGENTS_DIR, RUN_DIR
+from see_agent.config import AGENTS_DIR
 from see_agent.ipc.message import Message
 
 logger = logging.getLogger(__name__)
@@ -57,16 +57,17 @@ class AgentSupervisor:
             config = self._global_config.copy()
 
         agent_dir = AGENTS_DIR / agent_id
+        agent_dir.mkdir(parents=True, exist_ok=True)
         config["_agent_id"] = agent_id
-        config["_session_root"] = str(agent_dir / "sessions")
+        config["_agent_dir"] = str(agent_dir)
+        config["_session_dir"] = str(agent_dir / "session")
         config["_memory_dir"] = str(agent_dir / "memory")
 
-        run_dir = RUN_DIR / "agents" / agent_id
-        run_dir.mkdir(parents=True, exist_ok=True)
-        config_path = run_dir / "config.json"
+        # Write runtime config to agent dir.
+        config_path = agent_dir / "runtime_config.json"
         config_path.write_text(json.dumps(config, default=str))
 
-        sock_path = run_dir / "agent.sock"
+        sock_path = Path(f"/tmp/see-agent-{agent_id}.sock")
         self._sock_paths[agent_id] = sock_path
 
         # Spawn the worker process.
@@ -129,10 +130,9 @@ class AgentSupervisor:
             self.start_agent(agent_id)
 
         # Write the message to the agent's inbox file for the worker to pick up.
-        # This is a transitional mechanism; the full UDS push will come later.
-        run_dir = RUN_DIR / "agents" / agent_id
-        run_dir.mkdir(parents=True, exist_ok=True)
-        inbox = run_dir / "inbox.jsonl"
+        agent_dir = AGENTS_DIR / agent_id
+        agent_dir.mkdir(parents=True, exist_ok=True)
+        inbox = agent_dir / "inbox.jsonl"
         with open(inbox, "a", encoding="utf-8") as f:
             f.write(msg.to_json() + "\n")
 

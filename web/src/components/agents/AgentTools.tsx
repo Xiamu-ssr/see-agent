@@ -32,7 +32,7 @@ const ALL_TOOLS: ToolDef[] = [
 ]
 
 export default function AgentTools({ agent }: Props) {
-  const toolsConfig = agent.tools_config || {}
+  const toolsConfig = agent.tools || {}
   const [enabled, setEnabled] = useState<Record<string, boolean>>(() => {
     const state: Record<string, boolean> = {}
     ALL_TOOLS.forEach(t => {

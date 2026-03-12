@@ -30,7 +30,6 @@ def isolate_workspace(tmp_path: Path) -> None:  # noqa: PT004
         "see_agent.config.SKILLS_DIR": ws / "skills",
         "see_agent.config.AGENTS_DIR": ws / "agents",
         "see_agent.config.TEAMS_DIR": ws / "teams",
-        "see_agent.config.RUN_DIR": ws / "run",
     }
 
     with patch.dict("os.environ", {"SEE_AGENT_HOME": str(ws)}):

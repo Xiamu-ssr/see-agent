@@ -112,7 +112,7 @@ class AgentLoop:
         on_user_input: UserInputCallback | None = None,
         mcp_manager: Any | None = None,
         agent_id: str | None = None,
-        session_root: "Path | None" = None,
+        session_dir: "Path | None" = None,
         owner_display: str | None = None,
         task_board: Any | None = None,
     ) -> None:
@@ -125,21 +125,24 @@ class AgentLoop:
         self._mcp_manager = mcp_manager
         self._mcp_connected = False
         self._agent_id = agent_id
-        self._session_root = session_root
+        self._session_dir = session_dir
         self._owner_display = owner_display
         self._task_board = task_board
         self._active_ctx: ConversationContext | None = None
         self._inject_queue: list[Any] = []
+        self._compact_warned: bool = False
 
         # Configurable knobs with sensible defaults.
-        self._max_steps: int = int(config.get("max_steps", 50))
-        self._max_images: int = int(config.get("max_images", 5))
+        agent_cfg = config.get("agent", {})
+        screen_cfg = config.get("screen", {})
+        self._max_steps: int = int(agent_cfg.get("max_steps", 50))
+        self._max_images: int = int(screen_cfg.get("max_images", 5))
         self._screenshot_interval_ms: int = int(
-            config.get("screenshot_interval_ms", 800)
+            screen_cfg.get("screenshot_interval_ms", 800)
         )
-        self._tool_delay_ms: int = int(config.get("tool_delay_ms", 200))
-        self._scaling_enabled: bool = bool(config.get("scaling_enabled", True))
-        self._scaling_match: str = str(config.get("scaling_match", "aspect_ratio"))
+        self._tool_delay_ms: int = int(screen_cfg.get("tool_delay_ms", 200))
+        self._scaling_enabled: bool = bool(screen_cfg.get("scaling_enabled", True))
+        self._scaling_match: str = str(screen_cfg.get("scaling_match", "aspect_ratio"))
 
     # ------------------------------------------------------------------ #
     # Scaling helper
@@ -211,11 +214,9 @@ class AgentLoop:
     async def _maybe_compact(
         self, ctx: ConversationContext, session: Session,
     ) -> None:
-        """Compact conversation if over threshold (config-driven)."""
-        compact_cfg = self._config.get("compact", {})
-        if not compact_cfg.get("enabled", False):
-            return
-        context_window = compact_cfg.get("context_window", 128000)
+        """Compact conversation if over threshold (always on)."""
+        compact_cfg = self._config.get("agent", {}).get("compact", {})
+        context_window = compact_cfg.get("context_window", 200000)
         target_ratio = compact_cfg.get("target_ratio", 0.75)
         threshold = int(context_window * target_ratio)
 
@@ -224,13 +225,30 @@ class AgentLoop:
         if estimated < threshold:
             return
 
+        keep_recent = compact_cfg.get("keep_recent", 8)
+        if len(messages) <= keep_recent + 2:
+            return  # Not enough to compact.
+
+        # First hit: warn the agent so it can save important info.
+        if not self._compact_warned:
+            self._compact_warned = True
+            ctx.add_system_hint(
+                "[系统提示] 上下文即将达到窗口上限，"
+                "请立即用 write_memory 保存重要信息，"
+                "下一轮将执行上下文压缩。"
+            )
+            logger.info(
+                "Compact warning issued: ~%d tokens (threshold %d)",
+                estimated, threshold,
+            )
+            return
+
+        # Second hit: actually compact.
+        self._compact_warned = False
         logger.info(
             "Context compaction triggered: ~%d tokens (threshold %d)",
             estimated, threshold,
         )
-        keep_recent = compact_cfg.get("keep_recent", 8)
-        if len(messages) <= keep_recent + 2:
-            return  # Not enough to compact.
 
         old_messages = messages[1:-keep_recent]  # skip system, keep recent
         try:
@@ -309,17 +327,15 @@ class AgentLoop:
                 logger.warning("MCP connection failed", exc_info=True)
 
         # ── 1. Create or load session ─────────────────────────────────
-        if self._session_root is None:
-            raise ValueError("session_root is required to run AgentLoop")
+        if self._session_dir is None:
+            raise ValueError("session_dir is required to run AgentLoop")
 
         if session_id:
-            session = SessionStore.load(
-                session_id, root_dir=self._session_root,
-            )
+            session = SessionStore.load(self._session_dir)
             session.update_meta(status="running")
         else:
             session = SessionStore.create(
-                task, self._config, root_dir=self._session_root,
+                task, self._config, session_dir=self._session_dir,
             )
 
         task_dir = session.screenshots_dir
@@ -366,7 +382,7 @@ class AgentLoop:
         from see_agent.skill.loader import gate_skills, load_skills
 
         # Load skills
-        skills_dirs = self._config.get("skills_dirs", [])
+        skills_dirs = self._config.get("skills", {}).get("dirs", [])
         skills = load_skills(skills_dirs) if skills_dirs else []
         if skills:
             skills = gate_skills(skills)

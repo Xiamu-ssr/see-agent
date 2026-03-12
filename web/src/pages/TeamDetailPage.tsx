@@ -26,7 +26,7 @@ export default function TeamDetailPage() {
       setTeam(t)
       setMessages(msgs)
       if (!recipient && t.members.length > 0) {
-        setRecipient(t.leader || t.members[0])
+        setRecipient(t.leader || t.members[0].id)
       }
     } catch {
       setTeam(null)
@@ -72,7 +72,7 @@ export default function TeamDetailPage() {
     }
   }
 
-  const handleSettingsSave = async (updates: { name?: string; members?: string[]; leader?: string }) => {
+  const handleSettingsSave = async (updates: { name?: string; members?: { id: string; role: string }[]; leader?: string }) => {
     if (!id) return
     await updateTeam(id, updates)
     setShowSettings(false)
@@ -130,24 +130,27 @@ export default function TeamDetailPage() {
             <h2 className="text-lg font-semibold mb-4" style={{ color: '#e6edf3' }}>Members</h2>
             <div className="space-y-3">
               {team.members.map((m) => (
-                <div key={m} className="flex items-center gap-3 rounded-lg p-3" style={{ background: '#0d1117' }}>
+                <div key={m.id} className="flex items-center gap-3 rounded-lg p-3" style={{ background: '#0d1117' }}>
                   {/* Avatar circle */}
                   <div className="rounded-full flex items-center justify-center shrink-0"
                     style={{ width: 44, height: 44, background: '#30363d' }}>
                     <span className="text-sm font-medium" style={{ color: '#e6edf3' }}>
-                      {m.charAt(0).toUpperCase()}
+                      {m.id.charAt(0).toUpperCase()}
                     </span>
                   </div>
-                  {/* Name + Status */}
+                  {/* Name + Role */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium" style={{ color: '#e6edf3' }}>{m}</span>
-                      {m === team.leader && (
+                      <span className="text-sm font-medium" style={{ color: '#e6edf3' }}>{m.id}</span>
+                      {m.id === team.leader && (
                         <span className="text-[10px] font-bold rounded px-1.5 py-0.5"
                           style={{ background: '#ff5c5c', color: 'white' }}>
                           LEADER
                         </span>
                       )}
+                      <span className="text-[10px] rounded px-1.5 py-0.5" style={{ color: '#7d8590', background: '#21262d' }}>
+                        {m.role}
+                      </span>
                     </div>
                     <div className="flex items-center gap-1.5 mt-0.5">
                       <span className="h-1.5 w-1.5 rounded-full" style={{ background: '#3fb950' }} />
@@ -155,7 +158,7 @@ export default function TeamDetailPage() {
                     </div>
                   </div>
                   {/* View link */}
-                  <Link to={`/agents/${m}`} className="flex items-center gap-1 text-xs shrink-0"
+                  <Link to={`/agents/${m.id}`} className="flex items-center gap-1 text-xs shrink-0"
                     style={{ color: '#7d8590' }}>
                     View <ExternalLink size={12} />
                   </Link>
@@ -234,7 +237,7 @@ export default function TeamDetailPage() {
                 className="rounded-md border px-2 py-1.5 text-sm shrink-0"
                 style={{ background: '#0d1117', borderColor: '#30363d', color: '#e6edf3' }}>
                 {team.members.map((m) => (
-                  <option key={m} value={m}>{m} {m === team.leader ? '(leader)' : ''}</option>
+                  <option key={m.id} value={m.id}>{m.id} {m.id === team.leader ? '(leader)' : ''}</option>
                 ))}
               </select>
               <input value={msgInput} onChange={(e) => setMsgInput(e.target.value)}

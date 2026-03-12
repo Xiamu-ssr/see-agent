@@ -127,18 +127,6 @@ class TestScreenManager:
 
 
 @pytest.fixture
-def run_dir():
-    """Use a short path for UDS sockets (macOS 104-char limit)."""
-    import tempfile
-
-    d = Path(tempfile.mkdtemp(prefix="sa_"))
-    yield d
-    import shutil
-
-    shutil.rmtree(d, ignore_errors=True)
-
-
-@pytest.fixture
 def teams_dir(tmp_path):
     d = tmp_path / "teams"
     d.mkdir()
@@ -147,12 +135,11 @@ def teams_dir(tmp_path):
 
 class TestAgentRouter:
     @pytest.mark.asyncio
-    async def test_router_bus_send_writes_audit_log(self, run_dir, teams_dir):
+    async def test_router_bus_send_writes_audit_log(self, teams_dir):
         """v3.5: bus.send writes to audit log, drain returns empty."""
         from see_agent.ipc.router import AgentRouter
 
-        with patch("see_agent.ipc.router.RUN_DIR", run_dir), \
-             patch("see_agent.ipc.router.TEAMS_DIR", teams_dir):
+        with patch("see_agent.ipc.router.TEAMS_DIR", teams_dir):
             router = AgentRouter("test-team")
             await router.start()
 
@@ -189,11 +176,10 @@ class TestAgentRouter:
                 await router.stop()
 
     @pytest.mark.asyncio
-    async def test_router_board_operations(self, run_dir, teams_dir):
+    async def test_router_board_operations(self, teams_dir):
         from see_agent.ipc.router import AgentRouter
 
-        with patch("see_agent.ipc.router.RUN_DIR", run_dir), \
-             patch("see_agent.ipc.router.TEAMS_DIR", teams_dir):
+        with patch("see_agent.ipc.router.TEAMS_DIR", teams_dir):
             router = AgentRouter("test-team")
             await router.start()
 
@@ -236,11 +222,10 @@ class TestAgentRouter:
                 await router.stop()
 
     @pytest.mark.asyncio
-    async def test_router_screen_acquire_release(self, run_dir, teams_dir):
+    async def test_router_screen_acquire_release(self, teams_dir):
         from see_agent.ipc.router import AgentRouter
 
-        with patch("see_agent.ipc.router.RUN_DIR", run_dir), \
-             patch("see_agent.ipc.router.TEAMS_DIR", teams_dir):
+        with patch("see_agent.ipc.router.TEAMS_DIR", teams_dir):
             router = AgentRouter("test-team")
             await router.start()
 
@@ -267,11 +252,10 @@ class TestAgentRouter:
                 await router.stop()
 
     @pytest.mark.asyncio
-    async def test_router_unknown_method(self, run_dir, teams_dir):
+    async def test_router_unknown_method(self, teams_dir):
         from see_agent.ipc.router import AgentRouter
 
-        with patch("see_agent.ipc.router.RUN_DIR", run_dir), \
-             patch("see_agent.ipc.router.TEAMS_DIR", teams_dir):
+        with patch("see_agent.ipc.router.TEAMS_DIR", teams_dir):
             router = AgentRouter("test-team")
             await router.start()
 

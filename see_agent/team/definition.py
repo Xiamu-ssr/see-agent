@@ -24,9 +24,8 @@ class TeamDefinition:
 
     id: str
     name: str
-    members: list[str] = field(default_factory=list)
+    members: list[dict[str, str]] = field(default_factory=list)
     leader: str | None = None
-    screen_mode: str = "serial"
     status: str = "created"
     created_at: str = ""
 
@@ -43,7 +42,6 @@ class TeamDefinition:
             "name": self.name,
             "members": self.members,
             "leader": self.leader,
-            "screen_mode": self.screen_mode,
             "status": self.status,
             "created_at": self.created_at,
         }
@@ -55,12 +53,8 @@ class TeamDefinition:
     @staticmethod
     def create(
         name: str,
-        members: list[str],
+        members: list[dict[str, str]],
         leader: str | None = None,
-        # Deprecated params — accepted but ignored for backward compat.
-        owner: dict[str, str] | None = None,
-        overrides: dict[str, Any] | None = None,
-        seating: dict[str, int] | None = None,
     ) -> TeamDefinition:
         """Create and persist a new team."""
         team_id = secrets.token_hex(4)
@@ -92,7 +86,6 @@ class TeamDefinition:
             name=data.get("name", ""),
             members=data.get("members", []),
             leader=data.get("leader"),
-            screen_mode=data.get("screen_mode", "serial"),
             status=data.get("status", "created"),
             created_at=data.get("created_at", ""),
         )

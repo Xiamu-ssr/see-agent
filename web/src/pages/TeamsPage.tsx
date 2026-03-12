@@ -74,7 +74,11 @@ export default function TeamsPage() {
 
   const handleCreate = async () => {
     if (!teamName || selectedMembers.length === 0) return
-    await createTeam({ name: teamName, members: selectedMembers, leader: leader || undefined })
+    const memberObjs = selectedMembers.map((id) => ({
+      id,
+      role: id === leader ? 'leader' : 'worker',
+    }))
+    await createTeam({ name: teamName, members: memberObjs, leader: leader || undefined })
     setShowCreate(false)
     setTeamName('')
     setSelectedMembers([])
@@ -157,7 +161,7 @@ export default function TeamsPage() {
                         onChange={() => toggleMember(a.id)}
                         style={{ accentColor: '#ff5c5c' }}
                       />
-                      {a.name} ({a.id})
+                      {a.id}
                     </label>
                   ))}
                   {availableAgents.length === 0 && (

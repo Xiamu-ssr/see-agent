@@ -6,6 +6,7 @@ export type AgentDetail = components['schemas']['AgentDetail']
 export type AgentCreateResponse = components['schemas']['AgentCreateResponse']
 
 // Team types
+export type TeamMember = components['schemas']['TeamMember']
 export type TeamSummary = components['schemas']['TeamSummary']
 export type TeamStatus = components['schemas']['TeamStatus']
 export type TeamCreateResponse = components['schemas']['TeamCreateResponse']

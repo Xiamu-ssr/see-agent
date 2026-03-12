@@ -26,16 +26,13 @@ def workspace(tmp_path):
     """Set up a complete workspace with agents, teams, and run dirs."""
     agents_dir = tmp_path / "agents"
     teams_dir = tmp_path / "teams"
-    run_dir = tmp_path / "run"
     agents_dir.mkdir()
     teams_dir.mkdir()
-    run_dir.mkdir()
     with (
         patch("see_agent.agent.definition.AGENTS_DIR", agents_dir),
         patch("see_agent.agent.definition._TEMPLATE_DIR", _REAL_TEMPLATE_DIR),
         patch("see_agent.config.AGENTS_DIR", agents_dir),
         patch("see_agent.team.definition.TEAMS_DIR", teams_dir),
-        patch("see_agent.config.RUN_DIR", run_dir),
     ):
         yield tmp_path
 
@@ -45,29 +42,32 @@ class TestTeamIntegration:
 
     def test_agent_definitions_created(self, workspace):
         """Agent definitions round-trip through create/load."""
-        AgentDefinition.create("alice", name="Alice", role="leader")
-        AgentDefinition.create("bob", name="Bob", role="coder")
+        AgentDefinition.create("alice")
+        AgentDefinition.create("bob")
         agents = AgentDefinition.list_all()
         assert len(agents) == 2
-        names = {a.name for a in agents}
-        assert names == {"Alice", "Bob"}
+        ids = {a.id for a in agents}
+        assert ids == {"alice", "bob"}
 
     def test_team_definition_with_agents(self, workspace):
         """Team definition links to agent IDs."""
-        AgentDefinition.create("alice", name="Alice", role="leader")
-        AgentDefinition.create("bob", name="Bob", role="coder")
+        AgentDefinition.create("alice")
+        AgentDefinition.create("bob")
         team = TeamDefinition.create(
-            "Alpha", ["alice", "bob"], leader="alice",
+            "Alpha",
+            [{"id": "alice", "role": "leader"}, {"id": "bob", "role": "worker"}],
+            leader="alice",
         )
         loaded = TeamDefinition.load(team.id)
-        assert loaded.members == ["alice", "bob"]
+        expected = [{"id": "alice", "role": "leader"}, {"id": "bob", "role": "worker"}]
+        assert loaded.members == expected
         assert loaded.leader == "alice"
 
     def test_agent_get_team(self, workspace):
         """Agent.get_team() returns team id from team.json."""
-        AgentDefinition.create("alice", name="Alice", role="leader")
-        AgentDefinition.create("bob", name="Bob", role="coder")
-        TeamDefinition.create("Alpha", ["alice"], leader="alice")
+        AgentDefinition.create("alice")
+        AgentDefinition.create("bob")
+        TeamDefinition.create("Alpha", [{"id": "alice", "role": "leader"}], leader="alice")
         alice = AgentDefinition.load("alice")
         bob = AgentDefinition.load("bob")
         assert alice.get_team() is not None
@@ -75,7 +75,7 @@ class TestTeamIntegration:
 
     def test_task_board_in_team_dir(self, workspace):
         """TaskBoard persists tasks in the team directory."""
-        team_def = TeamDefinition.create("T", ["alice"])
+        team_def = TeamDefinition.create("T", [{"id": "alice", "role": "worker"}])
         teams_dir = workspace / "teams"
         board = TaskBoard(teams_dir / team_def.id)
         board.create_task("Fix bug", created_by="system")
@@ -86,14 +86,13 @@ class TestTeamIntegration:
         data = json.loads(tasks_file.read_text())
         assert len(data) == 1
 
-    def test_agent_workspace_template(self, workspace):
-        """Agent creation sets up workspace with template files."""
-        AgentDefinition.create("alice", name="Alice", role="leader")
+    def test_agent_template_files(self, workspace):
+        """Agent creation sets up template files in agent dir."""
+        AgentDefinition.create("alice")
         agents_dir = workspace / "agents"
-        ws = agents_dir / "alice" / "workspace"
-        assert ws.is_dir()
-        assert (ws / "AGENTS.md").exists()
-        assert (ws / "SOUL.md").exists()
+        agent_dir = agents_dir / "alice"
+        assert (agent_dir / "AGENTS.md").exists()
+        assert (agent_dir / "SOUL.md").exists()
 
     def test_agent_sandbox_field(self, workspace):
         """Agent definition stores sandbox config."""
@@ -104,9 +103,7 @@ class TestTeamIntegration:
             "extra_read": [],
             "extra_write": [],
         }
-        AgentDefinition.create(
-            "alice", name="Alice", role="leader", sandbox=sandbox,
-        )
+        AgentDefinition.create("alice", sandbox=sandbox)
         loaded = AgentDefinition.load("alice")
         assert loaded.sandbox["enabled"] is True
         assert loaded.sandbox["screen_access"] is True

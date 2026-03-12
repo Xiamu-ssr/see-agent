@@ -22,7 +22,7 @@ async def list_skills(request: Request) -> list[SkillInfo]:
     from see_agent.skill.loader import gate_skills, load_skills
 
     config = request.app.state.config
-    skills_dirs = config.get("skills_dirs", [])
+    skills_dirs = config.get("skills", {}).get("dirs", [])
     skills = load_skills(skills_dirs) if skills_dirs else []
     gated = gate_skills(skills) if skills else []
 

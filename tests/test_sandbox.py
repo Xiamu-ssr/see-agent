@@ -9,34 +9,27 @@ import pytest
 from see_agent.sandbox.manager import SandboxProfileGenerator
 
 
-@pytest.fixture
-def run_dir(tmp_path):
-    d = tmp_path / "run"
-    d.mkdir()
-    return d
-
-
 class TestSandboxProfileGenerator:
-    def test_generate_creates_profile(self, tmp_path, run_dir):
+    def test_generate_creates_profile(self, tmp_path):
         team_dir = tmp_path / "teams" / "t1"
         team_dir.mkdir(parents=True)
         (team_dir / "agents" / "alice").mkdir(parents=True)
         (team_dir / "shared").mkdir()
 
-        with patch("see_agent.sandbox.manager.RUN_DIR", run_dir):
-            gen = SandboxProfileGenerator()
-            path = gen.generate(
-                agent_id="alice",
-                team_id="t1",
-                team_dir=team_dir,
-                sandbox_cfg={
-                    "enabled": True,
-                    "network": True,
-                    "screen_access": True,
-                },
-            )
+        gen = SandboxProfileGenerator()
+        path = gen.generate(
+            agent_id="alice",
+            team_id="t1",
+            team_dir=team_dir,
+            sandbox_cfg={
+                "enabled": True,
+                "network": True,
+                "screen_access": True,
+            },
+        )
 
         assert path.exists()
+        assert str(path).startswith("/tmp/") or str(path).startswith("/var/")
         content = path.read_text()
         # Should contain base deny default.
         assert "(deny default)" in content
@@ -45,22 +38,21 @@ class TestSandboxProfileGenerator:
         # Should contain HOME replacement.
         assert "__SAFEHOUSE_REPLACE_ME__" not in content
 
-    def test_no_network_skips_network_profile(self, tmp_path, run_dir):
+    def test_no_network_skips_network_profile(self, tmp_path):
         team_dir = tmp_path / "teams" / "t2"
         team_dir.mkdir(parents=True)
 
-        with patch("see_agent.sandbox.manager.RUN_DIR", run_dir):
-            gen = SandboxProfileGenerator()
-            path = gen.generate(
-                agent_id="bob",
-                team_id="t2",
-                team_dir=team_dir,
-                sandbox_cfg={
-                    "enabled": True,
-                    "network": False,
-                    "screen_access": False,
-                },
-            )
+        gen = SandboxProfileGenerator()
+        path = gen.generate(
+            agent_id="bob",
+            team_id="t2",
+            team_dir=team_dir,
+            sandbox_cfg={
+                "enabled": True,
+                "network": False,
+                "screen_access": False,
+            },
+        )
 
         content = path.read_text()
         # Should NOT contain network profile content.
@@ -69,22 +61,21 @@ class TestSandboxProfileGenerator:
         # Should NOT contain GUI/clipboard profiles.
         assert "macos-gui" not in content
 
-    def test_extra_read_write_paths(self, tmp_path, run_dir):
+    def test_extra_read_write_paths(self, tmp_path):
         team_dir = tmp_path / "teams" / "t3"
         team_dir.mkdir(parents=True)
 
-        with patch("see_agent.sandbox.manager.RUN_DIR", run_dir):
-            gen = SandboxProfileGenerator()
-            path = gen.generate(
-                agent_id="charlie",
-                team_id="t3",
-                team_dir=team_dir,
-                sandbox_cfg={
-                    "enabled": True,
-                    "extra_read": ["/tmp/test-read"],
-                    "extra_write": ["/tmp/test-write"],
-                },
-            )
+        gen = SandboxProfileGenerator()
+        path = gen.generate(
+            agent_id="charlie",
+            team_id="t3",
+            team_dir=team_dir,
+            sandbox_cfg={
+                "enabled": True,
+                "extra_read": ["/tmp/test-read"],
+                "extra_write": ["/tmp/test-write"],
+            },
+        )
 
         content = path.read_text()
         assert "/tmp/test-read" in content
@@ -139,8 +130,6 @@ class TestSandboxAPI:
         agents_dir.mkdir()
         teams_dir = tmp_path / "teams"
         teams_dir.mkdir()
-        run_dir = tmp_path / "run"
-        run_dir.mkdir()
         config_path = tmp_path / "config.json"
         config_path.write_text(json.dumps({
             "llm": {"api_key": "test", "model": "test"},
@@ -150,7 +139,6 @@ class TestSandboxAPI:
             patch("see_agent.agent.definition.AGENTS_DIR", agents_dir),
             patch("see_agent.config.AGENTS_DIR", agents_dir),
             patch("see_agent.config.TEAMS_DIR", teams_dir),
-            patch("see_agent.config.RUN_DIR", run_dir),
             patch("see_agent.config.CONFIG_PATH", config_path),
         ):
             yield TestClient(app)
@@ -160,7 +148,7 @@ class TestSandboxAPI:
 
         agents_dir = tmp_path / "agents"
         with patch("see_agent.agent.definition.AGENTS_DIR", agents_dir):
-            AgentDefinition.create("alice", name="Alice", role="tester")
+            AgentDefinition.create("alice")
 
             with (
                 patch("see_agent.agent.definition.AGENTS_DIR", agents_dir),

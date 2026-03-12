@@ -27,7 +27,6 @@ def _workspace_patches(tmp_path):
         patch("see_agent.config.SKILLS_DIR", tmp_path / "skills"),
         patch("see_agent.config.AGENTS_DIR", tmp_path / "agents"),
         patch("see_agent.config.TEAMS_DIR", tmp_path / "teams"),
-        patch("see_agent.config.RUN_DIR", tmp_path / "run"),
     ]
 
 
@@ -45,7 +44,7 @@ def _apply_patches(patches):
 
 def _setup_workspace(tmp_path, config_data=None):
     """Create a minimal workspace with config.json."""
-    for d in ["sessions", "logs", "skills", "agents", "teams", "run"]:
+    for d in ["logs", "skills", "agents", "teams"]:
         (tmp_path / d).mkdir(parents=True, exist_ok=True)
     if config_data is None:
         config_data = {

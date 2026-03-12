@@ -13,9 +13,13 @@ from fastapi.testclient import TestClient
 def workspace(tmp_path):
     teams_dir = tmp_path / "teams"
     teams_dir.mkdir()
+    agents_dir = tmp_path / "agents"
+    agents_dir.mkdir()
     with (
         patch("see_agent.team.definition.TEAMS_DIR", teams_dir),
         patch("see_agent.config.TEAMS_DIR", teams_dir),
+        patch("see_agent.server.supervisor.AGENTS_DIR", agents_dir),
+        patch("see_agent.config.AGENTS_DIR", agents_dir),
     ):
         yield teams_dir
 
@@ -26,7 +30,7 @@ def client(workspace):
 
     app.state.config = {
         "llm": {"base_url": "http://test/v1", "api_key": "k", "model": "m"},
-        "max_steps": 5,
+        "agent": {"max_steps": 5},
     }
     from see_agent.server.supervisor import AgentSupervisor
     app.state.supervisor = AgentSupervisor({})
@@ -39,7 +43,7 @@ def client(workspace):
 def _create_team(client: TestClient) -> str:
     resp = client.post(
         "/api/teams",
-        json={"name": "T", "members": ["alice"], "leader": "alice"},
+        json={"name": "T", "members": [{"id": "alice", "role": "worker"}], "leader": "alice"},
     )
     return resp.json()["id"]
 

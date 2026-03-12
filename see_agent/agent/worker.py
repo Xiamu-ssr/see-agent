@@ -145,9 +145,9 @@ async def _run_worker(
             registry.register(MemorySearchTool(mem_backend), source="memory")
             registry.register(WriteMemoryTool(mem_backend), source="memory")
 
-        # Session root.
-        session_root = Path(config["_session_root"])
-        session_root.mkdir(parents=True, exist_ok=True)
+        # Session directory.
+        session_dir = Path(config["_session_dir"])
+        session_dir.mkdir(parents=True, exist_ok=True)
 
         # Eye — we need a dummy eye for AgentLoop signature.
         # In subprocess mode, screenshots go through RemoteScreenshotTool,
@@ -164,7 +164,7 @@ async def _run_worker(
             registry=registry,
             config=config,
             agent_id=agent_id,
-            session_root=session_root,
+            session_dir=session_dir,
             owner_display=config.get("_owner_display"),
             task_board=remote_board,
         )

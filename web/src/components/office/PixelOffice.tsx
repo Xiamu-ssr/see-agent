@@ -4,7 +4,7 @@ import { OfficeScene } from "./OfficeScene";
 import { pickLayout } from "./office-config";
 
 interface PixelOfficeProps {
-  members: string[];
+  members: { id: string; role: string }[];
   seating: Record<string, number>;
   onAgentClick: (agentId: string) => void;
 }
@@ -22,7 +22,8 @@ export default function PixelOffice({
   useEffect(() => {
     if (!containerRef.current) return;
 
-    const layout = pickLayout(members.length);
+    const memberIds = members.map((m) => m.id);
+    const layout = pickLayout(memberIds.length);
 
     const game = new Phaser.Game({
       type: Phaser.AUTO,
@@ -43,7 +44,7 @@ export default function PixelOffice({
     // OfficeScene.create() receives { members, seating, onAgentClick } via
     // scene data automatically (passed in the Scene constructor config).
     // We wait for the scene to finish its create() then grab the reference.
-    game.scene.start("OfficeScene", { members, seating, onAgentClick });
+    game.scene.start("OfficeScene", { members: memberIds, seating, onAgentClick });
     const checkScene = () => {
       const scene = game.scene.getScene("OfficeScene") as OfficeScene;
       if (scene && scene.scene.isActive()) {
@@ -67,7 +68,7 @@ export default function PixelOffice({
   useEffect(() => {
     const scene = sceneRef.current;
     if (scene && scene.scene.isActive()) {
-      scene.updateAgents(members, seating);
+      scene.updateAgents(members.map((m) => m.id), seating);
     }
   }, [members, seating]);
 

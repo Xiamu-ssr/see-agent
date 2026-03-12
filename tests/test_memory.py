@@ -79,22 +79,20 @@ class TestMarkdownMemoryBackend:
 class TestMemoryPromptIntegration:
     """Memory-related prompt injection via workspace files."""
 
-    def test_memory_rule_from_workspace(self, tmp_path: Path):
+    def test_memory_rule_from_agent_files(self, tmp_path: Path):
         from see_agent.brain.prompts import build_system_prompt
 
-        ws = tmp_path / "workspace"
-        ws.mkdir()
-        (ws / "AGENTS.md").write_text(
+        (tmp_path / "AGENTS.md").write_text(
             "# Rules\n- Use memory_search to find info\n- Use write_memory to save",
             encoding="utf-8",
         )
-        config = {"language": "en", "max_steps": 10}
+        config = {"web": {"language": "en"}, "agent": {"max_steps": 10}}
         prompt = build_system_prompt(config, agent_dir=tmp_path)
         assert "memory_search" in prompt
 
     def test_no_legacy_memory_section(self):
         from see_agent.brain.prompts import build_system_prompt
 
-        config = {"language": "en", "max_steps": 10}
+        config = {"web": {"language": "en"}, "agent": {"max_steps": 10}}
         prompt = build_system_prompt(config)
         assert "<MEMORY>" not in prompt

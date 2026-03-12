@@ -32,8 +32,10 @@ class InstallMcpRequest(BaseModel):
 async def install_mcp(body: InstallMcpRequest, request: Request) -> McpInstallResponse:
     """Install and configure an MCP server."""
     config = request.app.state.config
-    if "mcp_servers" not in config:
-        config["mcp_servers"] = {}
+    if "mcp" not in config:
+        config["mcp"] = {}
+    if "servers" not in config["mcp"]:
+        config["mcp"]["servers"] = {}
 
     server_cfg: dict[str, Any]
 
@@ -84,7 +86,7 @@ async def install_mcp(body: InstallMcpRequest, request: Request) -> McpInstallRe
     else:
         raise HTTPException(status_code=400, detail=f"Unknown install_type: {body.install_type}")
 
-    config["mcp_servers"][body.name] = server_cfg
+    config["mcp"]["servers"][body.name] = server_cfg
     save_config(config)
     request.app.state.config = config
     return McpInstallResponse(status="ok", name=body.name, config=server_cfg)

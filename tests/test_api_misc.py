@@ -36,8 +36,8 @@ def client(workspace):
             "api_key": "sk-testkey1234567890",
             "model": "m",
         },
-        "max_steps": 5,
-        "skills_dirs": [],
+        "agent": {"max_steps": 5},
+        "skills": {"dirs": []},
     }
     (workspace / "config.json").write_text(json.dumps(config))
     with TestClient(app, raise_server_exceptions=True) as c:
@@ -78,13 +78,13 @@ class TestConfigAPI:
     def test_update_config(self, client, workspace):
         resp = client.put(
             "/api/config",
-            json={"config": {"max_steps": 99}},
+            json={"config": {"agent": {"max_steps": 99}}},
         )
         assert resp.status_code == 200
         assert resp.json()["status"] == "updated"
         # Verify updated in app state.
         resp2 = client.get("/api/config")
-        assert resp2.json()["max_steps"] == 99
+        assert resp2.json()["agent"]["max_steps"] == 99
 
 
 class TestSchemaAPI:

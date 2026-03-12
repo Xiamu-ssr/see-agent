@@ -1,16 +1,18 @@
 import React, { useState, useEffect, useCallback } from "react";
 
+type TeamMember = { id: string; role: string };
+
 interface TeamSettingsProps {
   open: boolean;
   onClose: () => void;
   team: {
     id: string;
     name: string;
-    members: string[];
+    members: TeamMember[];
     leader?: string | null;
     status: string;
   };
-  onSave: (updates: { name?: string; members?: string[]; leader?: string }) => void;
+  onSave: (updates: { name?: string; members?: TeamMember[]; leader?: string }) => void;
 }
 
 const overlayStyle: React.CSSProperties = {
@@ -36,7 +38,7 @@ const drawerStyle: React.CSSProperties = {
 
 export default function TeamSettings({ open, onClose, team, onSave }: TeamSettingsProps) {
   const [name, setName] = useState(team.name);
-  const [members, setMembers] = useState<string[]>(team.members);
+  const [members, setMembers] = useState<TeamMember[]>(team.members);
   const [leader, setLeader] = useState(team.leader ?? "");
   const [newMember, setNewMember] = useState("");
 
@@ -46,21 +48,21 @@ export default function TeamSettings({ open, onClose, team, onSave }: TeamSettin
     setLeader(team.leader ?? "");
   }, [team]);
 
-  const handleRemoveMember = useCallback((member: string) => {
-    setMembers((prev) => prev.filter((m) => m !== member));
-    setLeader((prev) => (prev === member ? "" : prev));
+  const handleRemoveMember = useCallback((memberId: string) => {
+    setMembers((prev) => prev.filter((m) => m.id !== memberId));
+    setLeader((prev) => (prev === memberId ? "" : prev));
   }, []);
 
   const handleAddMember = useCallback(() => {
     const trimmed = newMember.trim();
-    if (trimmed && !members.includes(trimmed)) {
-      setMembers((prev) => [...prev, trimmed]);
+    if (trimmed && !members.some((m) => m.id === trimmed)) {
+      setMembers((prev) => [...prev, { id: trimmed, role: "worker" }]);
       setNewMember("");
     }
   }, [newMember, members]);
 
   const handleSave = useCallback(() => {
-    const updates: { name?: string; members?: string[]; leader?: string } = {};
+    const updates: { name?: string; members?: TeamMember[]; leader?: string } = {};
     if (name !== team.name) updates.name = name;
     if (JSON.stringify(members) !== JSON.stringify(team.members)) updates.members = members;
     if (leader && leader !== (team.leader ?? "")) updates.leader = leader;
@@ -159,7 +161,7 @@ export default function TeamSettings({ open, onClose, team, onSave }: TeamSettin
             <ul style={{ listStyle: "none", margin: 0, padding: 0, marginBottom: 8 }}>
               {members.map((member) => (
                 <li
-                  key={member}
+                  key={member.id}
                   style={{
                     display: "flex",
                     alignItems: "center",
@@ -172,9 +174,9 @@ export default function TeamSettings({ open, onClose, team, onSave }: TeamSettin
                     color: "var(--text-strong)",
                   }}
                 >
-                  <span>{member}</span>
+                  <span>{member.id} <span style={{ color: "var(--muted)", fontSize: 12 }}>({member.role})</span></span>
                   <button
-                    onClick={() => handleRemoveMember(member)}
+                    onClick={() => handleRemoveMember(member.id)}
                     style={{
                       background: "none",
                       border: "none",
@@ -184,7 +186,7 @@ export default function TeamSettings({ open, onClose, team, onSave }: TeamSettin
                       lineHeight: 1,
                       padding: "0 2px",
                     }}
-                    aria-label={`Remove ${member}`}
+                    aria-label={`Remove ${member.id}`}
                   >
                     &times;
                   </button>
@@ -244,8 +246,8 @@ export default function TeamSettings({ open, onClose, team, onSave }: TeamSettin
             >
               <option value="">Select a leader</option>
               {members.map((member) => (
-                <option key={member} value={member}>
-                  {member}
+                <option key={member.id} value={member.id}>
+                  {member.id}
                 </option>
               ))}
             </select>

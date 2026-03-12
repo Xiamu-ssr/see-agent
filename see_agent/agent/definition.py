@@ -1,7 +1,7 @@
 """Agent definition — data model for agent identity and configuration.
 
 Each agent lives in ``~/.see-agent/agents/{id}/`` with ``agent.json``,
-a ``workspace/`` directory for prompt injection files, and ``memory/``
+prompt injection files (IDENTITY.md, AGENTS.md, SOUL.md), and ``memory/``
 for daily notes.
 """
 
@@ -21,17 +21,21 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class AgentDefinition:
-    """Serialisable definition of a single agent."""
+    """Serialisable definition of a single agent.
+
+    ``agent.json`` is config-shaped (same structure as ``config.json``).
+    Only the ``id`` field is agent-specific; all other keys are optional
+    config overrides that deep-merge on top of the global config.
+    """
 
     id: str
-    name: str
-    role: str = "general assistant"
-    config_overrides: dict[str, Any] = field(default_factory=dict)
-    tools_config: dict[str, Any] = field(default_factory=dict)
-    skills_config: dict[str, Any] = field(default_factory=dict)
-    mcp_config: dict[str, Any] = field(default_factory=dict)
+    llm: dict[str, Any] = field(default_factory=dict)
+    agent: dict[str, Any] = field(default_factory=dict)
+    screen: dict[str, Any] = field(default_factory=dict)
+    tools: dict[str, Any] = field(default_factory=dict)
+    skills: dict[str, Any] = field(default_factory=dict)
+    mcp: dict[str, Any] = field(default_factory=dict)
     sandbox: dict[str, Any] = field(default_factory=dict)
-    soul_path: Path | None = None
 
     # ------------------------------------------------------------------ #
     # Persistence
@@ -42,23 +46,11 @@ class AgentDefinition:
         agent_dir = base_dir / self.id
         agent_dir.mkdir(parents=True, exist_ok=True)
 
-        data: dict[str, Any] = {
-            "id": self.id,
-            "name": self.name,
-            "role": self.role,
-        }
-        if self.config_overrides:
-            data["config_overrides"] = self.config_overrides
-        if self.tools_config:
-            data["tools_config"] = self.tools_config
-        if self.skills_config:
-            data["skills_config"] = self.skills_config
-        if self.mcp_config:
-            data["mcp_config"] = self.mcp_config
-        if self.sandbox:
-            data["sandbox"] = self.sandbox
-        if self.soul_path is not None:
-            data["soul_path"] = str(self.soul_path)
+        data: dict[str, Any] = {"id": self.id}
+        for key in ("llm", "agent", "screen", "tools", "skills", "mcp", "sandbox"):
+            value = getattr(self, key)
+            if value:
+                data[key] = value
 
         (agent_dir / "agent.json").write_text(
             json.dumps(data, indent=2, ensure_ascii=False),
@@ -74,24 +66,38 @@ class AgentDefinition:
         """Load an agent definition from *base_dir/{agent_id}/agent.json*.
 
         Raises ``FileNotFoundError`` when the agent does not exist.
+        Also migrates legacy workspace/ files to agent root if present.
         """
-        agent_json = base_dir / agent_id / "agent.json"
+        agent_dir = base_dir / agent_id
+        agent_json = agent_dir / "agent.json"
         if not agent_json.exists():
             raise FileNotFoundError(
                 f"Agent not found: {agent_id}"
             )
+
+        # Migrate legacy workspace/ remnants.
+        ws_dir = agent_dir / "workspace"
+        if ws_dir.is_dir():
+            for f in ws_dir.iterdir():
+                target = agent_dir / f.name
+                if not target.exists():
+                    f.rename(target)
+            # Remove empty workspace dir.
+            try:
+                ws_dir.rmdir()
+            except OSError:
+                pass
+
         data = json.loads(agent_json.read_text(encoding="utf-8"))
-        soul_path_raw = data.get("soul_path")
         return AgentDefinition(
             id=data["id"],
-            name=data.get("name", agent_id),
-            role=data.get("role", "general assistant"),
-            config_overrides=data.get("config_overrides", {}),
-            tools_config=data.get("tools_config", {}),
-            skills_config=data.get("skills_config", {}),
-            mcp_config=data.get("mcp_config", {}),
+            llm=data.get("llm", {}),
+            agent=data.get("agent", {}),
+            screen=data.get("screen", {}),
+            tools=data.get("tools", {}),
+            skills=data.get("skills", {}),
+            mcp=data.get("mcp", {}),
             sandbox=data.get("sandbox", {}),
-            soul_path=Path(soul_path_raw) if soul_path_raw else None,
         )
 
     @staticmethod
@@ -104,7 +110,7 @@ class AgentDefinition:
         """Create and persist a new agent definition.
 
         Also sets up the agent directory with:
-        - ``workspace/`` subdirectory with template files
+        - Template files (IDENTITY.md, AGENTS.md, SOUL.md)
         - ``memory/`` subdirectory
         """
         defn = AgentDefinition(id=agent_id, **kwargs)
@@ -113,21 +119,8 @@ class AgentDefinition:
         agent_dir = AGENTS_DIR / agent_id
         (agent_dir / "memory").mkdir(exist_ok=True)
 
-        # Create workspace directory with template files.
-        ws_dir = agent_dir / "workspace"
-        ws_dir.mkdir(exist_ok=True)
-
-        for template_name in (
-            "AGENTS.md", "SOUL.md", "IDENTITY.md", "TOOLS.md", "USER.md",
-        ):
-            target = ws_dir / template_name
-            source = _TEMPLATE_DIR / template_name
-            if not target.exists() and source.exists():
-                shutil.copy2(source, target)
-
-        # Backward compat: also copy AGENTS.md/SOUL.md to agent root
-        # (v3.2 code reads from agent_dir directly).
-        for template_name in ("AGENTS.md", "SOUL.md"):
+        # Copy template files directly to agent_dir.
+        for template_name in ("IDENTITY.md", "AGENTS.md", "SOUL.md"):
             target = agent_dir / template_name
             source = _TEMPLATE_DIR / template_name
             if not target.exists() and source.exists():
@@ -170,7 +163,7 @@ class AgentDefinition:
         from see_agent.team.definition import TeamDefinition
 
         for team in TeamDefinition.list_all():
-            if self.id in team.members:
+            if self.id in [m["id"] for m in team.members]:
                 return team.id
         return None
 

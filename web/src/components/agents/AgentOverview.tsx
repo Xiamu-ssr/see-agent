@@ -22,16 +22,13 @@ function InfoCard({ title, value, accent }: { title: string; value: string; acce
 
 export default function AgentOverview({ agent }: Props) {
   const status = agent.status || 'idle'
-  const overrides = agent.config_overrides as Record<string, Record<string, string>> | undefined
-  const model = overrides?.llm?.model || 'default'
+  const model = (agent as any).llm?.model || 'default'
 
   return (
     <div className="space-y-6">
       {/* Info grid */}
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
         <InfoCard title="ID" value={agent.id} />
-        <InfoCard title="Name" value={agent.name} />
-        <InfoCard title="Role" value={agent.role} />
         <InfoCard title="Status" value={status} accent={status === 'running' || status === 'busy'} />
         <InfoCard title="Team" value={agent.team_name || '—'} />
         <InfoCard title="Model" value={model} />
@@ -46,7 +43,7 @@ export default function AgentOverview({ agent }: Props) {
           className="rounded-lg border p-3 text-sm"
           style={{ background: '#0d1117', borderColor: '#30363d', color: '#e6edf3', fontFamily: 'var(--mono, monospace)' }}
         >
-          ~/.see-agent/agents/{agent.id}/workspace/
+          ~/.see-agent/agents/{agent.id}/
         </div>
       </div>
 

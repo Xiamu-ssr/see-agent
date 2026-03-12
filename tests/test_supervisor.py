@@ -12,7 +12,7 @@ from see_agent.server.supervisor import AgentSupervisor
 
 FAKE_CONFIG = {
     "llm": {"base_url": "http://x", "api_key": "k", "model": "m"},
-    "max_steps": 5,
+    "agent": {"max_steps": 5},
 }
 
 
@@ -20,13 +20,9 @@ FAKE_CONFIG = {
 def dirs(tmp_path):
     agents = tmp_path / "agents"
     agents.mkdir()
-    run = tmp_path / "run"
-    run.mkdir()
     with (
         patch("see_agent.server.supervisor.AGENTS_DIR", agents),
-        patch("see_agent.server.supervisor.RUN_DIR", run),
         patch("see_agent.config.AGENTS_DIR", agents),
-        patch("see_agent.config.RUN_DIR", run),
     ):
         yield tmp_path
 
@@ -63,12 +59,11 @@ class TestAgentSupervisorProcessLifecycle:
         with patch("see_agent.server.supervisor.subprocess.Popen", return_value=mock_proc):
             sock = sup.start_agent("alice")
 
-        # Should return a sock path.
-        assert sock.name == "agent.sock"
-        assert "alice" in str(sock)
+        # Should return a sock path in /tmp/.
+        assert "see-agent-alice" in str(sock)
 
-        # Config file should be written.
-        config_path = dirs / "run" / "agents" / "alice" / "config.json"
+        # Config file should be written in agents dir.
+        config_path = dirs / "agents" / "alice" / "runtime_config.json"
         assert config_path.exists()
         data = json.loads(config_path.read_text())
         assert data["_agent_id"] == "alice"
@@ -168,7 +163,7 @@ class TestAgentSupervisorMessaging:
             msg = Message(source="user", sender="lanxuan", content="hello agent")
             sup.send_to("alice", msg)
 
-        inbox = dirs / "run" / "agents" / "alice" / "inbox.jsonl"
+        inbox = dirs / "agents" / "alice" / "inbox.jsonl"
         assert inbox.exists()
         lines = inbox.read_text().strip().splitlines()
         assert len(lines) == 1
@@ -199,7 +194,7 @@ class TestAgentSupervisorMessaging:
             for i in range(3):
                 sup.send_to("alice", Message(source="user", sender="u", content=f"msg{i}"))
 
-        inbox = dirs / "run" / "agents" / "alice" / "inbox.jsonl"
+        inbox = dirs / "agents" / "alice" / "inbox.jsonl"
         lines = inbox.read_text().strip().splitlines()
         assert len(lines) == 3
         contents = [json.loads(line)["content"] for line in lines]

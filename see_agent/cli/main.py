@@ -21,7 +21,7 @@ from pathlib import Path
 
 import typer
 
-from see_agent.config import RUN_DIR, ensure_workspace, load_config
+from see_agent.config import ensure_workspace, load_config
 
 app = typer.Typer(
     name="see-agent",
@@ -291,9 +291,9 @@ def stop() -> None:
     PLIST_PATH.unlink(missing_ok=True)
 
     # Clean up UDS sockets.
-    if RUN_DIR.exists():
-        for sock in RUN_DIR.glob("*.sock"):
-            sock.unlink(missing_ok=True)
+    import glob
+    for sock in glob.glob("/tmp/see-agent-*.sock"):
+        Path(sock).unlink(missing_ok=True)
 
 
 @app.command()
