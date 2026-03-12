@@ -153,12 +153,9 @@ async def _run_worker(agent_id: str, sock_path: str) -> None:
     runtime = AgentRuntime(agent_id, loop)
 
     # ── Wake event — set by SIGUSR1 from Supervisor ──
+    # Use asyncio-safe signal handler to avoid interrupting httpx IO.
     wake_event = asyncio.Event()
-
-    def _on_sigusr1(*_: Any) -> None:
-        wake_event.set()
-
-    signal.signal(signal.SIGUSR1, _on_sigusr1)
+    asyncio.get_running_loop().add_signal_handler(signal.SIGUSR1, wake_event.set)
 
     logger.info("Agent process ready, entering inbox drain loop: agent=%s", agent_id)
 

@@ -451,6 +451,70 @@ class AgentLoop:
         finally:
             session.teardown_logging()
 
+    # ── Persistent session support ────────────────────────────────────
+
+    _active_session: "Session | None" = None
+
+    async def _ensure_session(self) -> None:
+        """Initialize session + context if not already active."""
+        if self._active_ctx is not None:
+            return
+
+        if self._session_dir is None:
+            raise ValueError("session_dir is required")
+
+        from see_agent.brain.prompts import build_system_prompt
+        from see_agent.config import AGENTS_DIR
+        from see_agent.skill.loader import gate_skills, load_skills
+
+        # MCP
+        if self._mcp_manager is not None and not self._mcp_connected:
+            try:
+                await self._mcp_manager.connect_all()
+                await self._mcp_manager.register_tools(self._registry)
+                self._mcp_connected = True
+            except Exception:
+                logger.warning("MCP connection failed", exc_info=True)
+
+        # Session
+        session = SessionStore.create(
+            "conversation", self._config, session_dir=self._session_dir,
+        )
+        session.setup_logging()
+
+        # Skills
+        skills_dirs = self._config.get("skills", {}).get("dirs", [])
+        skills = load_skills(skills_dirs) if skills_dirs else []
+        if skills:
+            skills = gate_skills(skills)
+
+        # Agent dir
+        agent_dir = None
+        if self._agent_id:
+            candidate = AGENTS_DIR / self._agent_id
+            if candidate.is_dir():
+                agent_dir = candidate
+
+        # System prompt
+        system_prompt = build_system_prompt(
+            self._config,
+            skills=skills or None,
+            team_context=self._config.get("_team_context", ""),
+            agent_dir=agent_dir,
+        )
+        session.log_system_prompt(system_prompt)
+
+        # Context
+        ctx = ConversationContext(
+            system_prompt,
+            max_images=self._max_images,
+            on_append=session.append_message,
+        )
+
+        self._active_ctx = ctx
+        self._active_session = session
+        logger.info("Session initialized for agent %s", self._agent_id)
+
     async def run_one_turn(
         self,
         messages: list[Any] | None = None,
@@ -484,15 +548,80 @@ class AgentLoop:
         combined = "\n".join(parts)
 
         # If we have a running session context, inject messages.
-        # Otherwise this is the first turn — use run() with the first message.
+        # Otherwise this is the first turn — initialize session.
         if self._active_ctx is None:
-            # First turn — initialize via run().
-            m0 = messages[0]
-            first_content = m0.content if hasattr(m0, "content") else str(m0)
-            await self.run(first_content)
+            await self._ensure_session()
+            # Inject the first message as user task.
+            self._active_ctx.add_user_task_text_only(combined)
+            # Run one LLM cycle.
+            session = self._active_session
+            tools_schema = self._registry.get_openai_schemas()
+            try:
+                response = await self._brain.chat(
+                    self._active_ctx.to_messages(), tools_schema,
+                )
+                self._active_ctx.add_assistant(
+                    response.content, response.tool_calls_raw,
+                )
+                session.append_message({
+                    "type": "assistant",
+                    "content": response.content or "",
+                })
+                # Execute tool calls if any.
+                if response.tool_calls:
+                    for tc in response.tool_calls:
+                        try:
+                            result = await self._registry.execute(
+                                tc.name, tc.arguments,
+                            )
+                            self._active_ctx.add_tool_result(tc.id, str(result))
+                            session.append_message({
+                                "type": "tool_result",
+                                "tool_call_id": tc.id,
+                                "result": str(result),
+                            })
+                        except Exception:
+                            logger.exception("Tool %s failed", tc.name)
+                            self._active_ctx.add_tool_result(
+                                tc.id, f"Error: tool {tc.name} failed",
+                            )
+            except Exception:
+                logger.exception("LLM call failed for agent %s", self._agent_id)
         else:
             # Subsequent turns — inject into existing context.
             self._active_ctx.add_user_reply(combined)
+            # Run one LLM cycle.
+            tools_schema = self._registry.get_openai_schemas()
+            try:
+                response = await self._brain.chat(
+                    self._active_ctx.to_messages(), tools_schema,
+                )
+                self._active_ctx.add_assistant(
+                    response.content, response.tool_calls_raw,
+                )
+                self._active_session.append_message({
+                    "type": "assistant",
+                    "content": response.content or "",
+                })
+                if response.tool_calls:
+                    for tc in response.tool_calls:
+                        try:
+                            result = await self._registry.execute(
+                                tc.name, tc.arguments,
+                            )
+                            self._active_ctx.add_tool_result(tc.id, str(result))
+                            self._active_session.append_message({
+                                "type": "tool_result",
+                                "tool_call_id": tc.id,
+                                "result": str(result),
+                            })
+                        except Exception:
+                            logger.exception("Tool %s failed", tc.name)
+                            self._active_ctx.add_tool_result(
+                                tc.id, f"Error: tool {tc.name} failed",
+                            )
+            except Exception:
+                logger.exception("LLM call failed for agent %s", self._agent_id)
 
     async def _run_loop(
         self,
