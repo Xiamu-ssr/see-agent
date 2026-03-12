@@ -52,10 +52,14 @@ class AgentSupervisor:
         sock_path = Path(f"/tmp/see-agent-{agent_id}.sock")
         self._sock_paths[agent_id] = sock_path
 
+        # Use the venv python, not sys.executable (which may be system python).
+        venv_python = Path(__file__).parent.parent.parent / ".venv" / "bin" / "python"
+        python_exe = str(venv_python) if venv_python.exists() else sys.executable
+
         # Spawn the worker process — worker reads config itself.
         proc = subprocess.Popen(
             [
-                sys.executable, "-m", "see_agent.agent.worker",
+                python_exe, "-m", "see_agent.agent.worker",
                 agent_id, str(sock_path),
             ],
             stdout=subprocess.PIPE,
