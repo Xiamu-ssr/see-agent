@@ -578,12 +578,8 @@ class AgentLoop:
                 logger.exception("LLM call failed at step %d", step + 1)
                 break  # Break ReAct loop, back to idle. Do NOT exit process.
 
-            # Add assistant response to context.
+            # Add assistant response to context (on_append writes to JSONL).
             self._active_ctx.add_assistant(response.raw)
-            session.append_message({
-                "type": "assistant",
-                "content": response.content or "",
-            })
 
             # If no tool calls, LLM is done. Break ReAct loop.
             if not response.tool_calls:
@@ -601,11 +597,6 @@ class AgentLoop:
                     result_str = f"Error: {exc}"
 
                 self._active_ctx.add_tool_result(tc.id, result_str)
-                session.append_message({
-                    "type": "tool_result",
-                    "tool_call_id": tc.id,
-                    "result": result_str[:500],
-                })
 
                 # Check if finished tool was called.
                 if tc.name == "finished":

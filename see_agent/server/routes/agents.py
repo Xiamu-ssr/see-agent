@@ -325,11 +325,22 @@ async def get_agent_chat(agent_id: str) -> list[ChatMessage]:
             continue
         try:
             entry = json.loads(line)
-            results.append(ChatMessage(
-                role=entry.get("role", "unknown"),
-                content=entry.get("content"),
-                timestamp=entry.get("timestamp"),
-            ))
+            msg_type = entry.get("type", "")
+            # Only show user messages and assistant replies in chat.
+            if msg_type in ("user_task", "user_reply"):
+                results.append(ChatMessage(
+                    role="user",
+                    content=entry.get("content") or "(no content)",
+                    timestamp=entry.get("timestamp"),
+                ))
+            elif msg_type == "assistant":
+                content = entry.get("content")
+                if content:  # Skip empty assistant messages (tool-only).
+                    results.append(ChatMessage(
+                        role="assistant",
+                        content=content,
+                        timestamp=entry.get("timestamp"),
+                    ))
         except json.JSONDecodeError:
             continue
 
