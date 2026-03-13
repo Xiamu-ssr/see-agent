@@ -532,6 +532,10 @@ class AgentLoop:
         """
         self._inject_queue = inject_queue or []
         self._drain_interrupts = drain_interrupts
+        logger.debug(
+            "run_one_turn: drain_interrupts=%s",
+            "SET" if drain_interrupts else "NONE",
+        )
 
         if not messages:
             return
@@ -577,9 +581,12 @@ class AgentLoop:
         for step in range(self._max_steps):
             logger.info("=== ReAct step %d / %d ===", step + 1, self._max_steps)
 
-            # Poll inbox for steer messages before each LLM call.
+            # Poll for interrupt (steer) messages before each LLM call.
             if self._drain_interrupts:
                 steer_msgs = self._drain_interrupts()
+                logger.debug(
+                    "drain_interrupts returned %d message(s)", len(steer_msgs),
+                )
                 for inj in steer_msgs:
                     content = inj.content if hasattr(inj, "content") else str(inj)
                     prefix = inj.format_prefix() if hasattr(inj, "format_prefix") else ""

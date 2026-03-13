@@ -194,17 +194,20 @@ async def _run_worker(agent_id: str, sock_path: str) -> None:
     runtime.drain_interrupts = _drain_interrupts
 
     def _drain_and_enqueue() -> None:
-        """Read all new inbox messages and enqueue them (sync, no await)."""
+        """Read all new inbox messages and enqueue collect ones.
+
+        Steer messages are skipped here — they're handled by
+        drain_interrupts() inside the ReAct loop.
+        """
         nonlocal cursor
         messages, new_cursor = _drain_inbox(agent_dir, cursor)
         if not messages:
             return
         cursor = new_cursor
         _write_cursor(agent_dir, cursor)
-        # Keep steer cursor in sync.
-        if cursor > _steer_cursor[0]:
-            _steer_cursor[0] = cursor
         for msg in messages:
+            if msg.is_steer:
+                continue  # Handled by drain_interrupts.
             runtime.enqueue(msg)
 
     async def _maybe_flush() -> None:
