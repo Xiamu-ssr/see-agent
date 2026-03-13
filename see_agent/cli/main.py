@@ -29,6 +29,46 @@ app = typer.Typer(
     add_completion=False,
 )
 
+
+def _maybe_build_frontend() -> None:
+    """Rebuild frontend if source files are newer than dist."""
+    project_root = Path(__file__).parent.parent.parent
+    web_dir = project_root / "web"
+    src_dir = web_dir / "src"
+    dist_dir = web_dir / "dist"
+
+    if not src_dir.is_dir():
+        return  # No frontend source — packaged distribution.
+
+    # Get dist timestamp (0 if dist doesn't exist yet).
+    dist_mtime = dist_dir.stat().st_mtime if dist_dir.is_dir() else 0
+
+    # Find the newest file under web/src/.
+    src_newest = max(
+        (f.stat().st_mtime for f in src_dir.rglob("*") if f.is_file()),
+        default=0,
+    )
+
+    if src_newest <= dist_mtime:
+        return  # dist is up to date.
+
+    typer.echo("Frontend source changed, rebuilding...")
+    npx = shutil.which("npx")
+    if npx is None:
+        typer.echo("Warning: npx not found, skipping frontend build.", err=True)
+        return
+
+    result = subprocess.run(
+        [npx, "vite", "build"],
+        cwd=str(web_dir),
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode == 0:
+        typer.echo("Frontend built successfully.")
+    else:
+        typer.echo(f"Frontend build failed:\n{result.stderr}", err=True)
+
 # ---------------------------------------------------------------------------
 # launchd constants
 # ---------------------------------------------------------------------------
@@ -205,6 +245,8 @@ def start(
     ),
 ) -> None:
     """Start the see-agent server."""
+    _maybe_build_frontend()
+
     ensure_workspace()
     config = load_config()
     _validate_api_key(config)
@@ -298,6 +340,8 @@ def restart(
     ),
 ) -> None:
     """Restart the see-agent server."""
+    _maybe_build_frontend()
+
     if _is_running():
         subprocess.run(
             [
