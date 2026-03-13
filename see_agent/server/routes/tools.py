@@ -35,13 +35,10 @@ async def list_tools(request: Request) -> list[ToolInfo]:
 async def get_agent_tools(agent_id: str) -> dict[str, Any]:
     """Return tool list with per-agent disabled status.
 
-    Reads the actual tool manifest written by the agent worker
-    (tools.json), falling back to create_registry() if not available.
+    Derives the tool set from agent config (deterministic),
+    no need to query the subprocess.
     """
-    import json as _json
-
     from see_agent.agent.definition import AgentDefinition
-    from see_agent.config import AGENTS_DIR
 
     try:
         defn = AgentDefinition.load(agent_id)
@@ -50,27 +47,26 @@ async def get_agent_tools(agent_id: str) -> dict[str, Any]:
 
     disabled: list[str] = defn.tools.get("disabled", [])
 
-    # Prefer actual tool manifest from worker.
-    manifest_path = AGENTS_DIR / agent_id / "tools.json"
-    if manifest_path.exists():
-        manifest = _json.loads(manifest_path.read_text())
-        tools = [
-            {**t, "disabled": t["name"] in disabled}
-            for t in manifest
-        ]
-    else:
-        # Fallback: full registry (may include tools not used by worker).
-        from see_agent.hand.tools import create_registry
+    # Base tools every agent has.
+    base_tools = [
+        {"name": "shell", "description": "执行终端命令。"},
+        {"name": "wait", "description": "等待指定秒数。"},
+        {"name": "finished", "description": "任务完成，必须调用此工具表示任务结束。"},
+        {"name": "memory_search", "description": "搜索记忆中的相关信息。"},
+        {"name": "memory_write", "description": "将重要信息写入记忆。"},
+    ]
 
-        registry = create_registry()
-        tools = [
-            {
-                "name": name,
-                "description": tool.description,
-                "disabled": name in disabled,
-            }
-            for name, tool in registry._tools.items()
-        ]
+    # Team tool.
+    team_id = defn.get_team()
+    if team_id:
+        base_tools.append(
+            {"name": "send_message", "description": "给队友发消息。"},
+        )
+
+    tools = [
+        {**t, "disabled": t["name"] in disabled}
+        for t in base_tools
+    ]
 
     return {"tools": tools, "disabled": disabled}
 

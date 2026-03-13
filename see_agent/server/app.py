@@ -116,8 +116,13 @@ if _frontend_dir.is_dir():
     app.mount("/assets", StaticFiles(directory=str(_frontend_dir / "assets")), name="assets")
 
     @app.get("/{full_path:path}")
-    async def spa_fallback(full_path: str):  # noqa: ARG001
-        """Serve index.html for all non-API routes (SPA fallback)."""
+    async def spa_fallback(full_path: str):
+        """Serve static files from dist/ root, or fall back to index.html for SPA."""
         from fastapi.responses import FileResponse
+
+        # Try serving as a static file first (favicon.ico, .png, etc.)
+        candidate = _frontend_dir / full_path
+        if full_path and candidate.is_file() and ".." not in full_path:
+            return FileResponse(str(candidate))
 
         return FileResponse(str(_index_html))
