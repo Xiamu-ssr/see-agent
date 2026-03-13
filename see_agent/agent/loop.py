@@ -504,12 +504,53 @@ class AgentLoop:
             if candidate.is_dir():
                 agent_dir = candidate
 
+        # Build team context from agent.json team_id.
+        team_context = ""
+        team_id = self._config.get("team_id")
+        if team_id:
+            team_context = self._build_team_context(team_id)
+
         return build_system_prompt(
             self._config,
             skills=skills or None,
-            team_context=self._config.get("_team_context", ""),
+            team_context=team_context,
             agent_dir=agent_dir,
         )
+
+    def _build_team_context(self, team_id: str) -> str:
+        """Build team context string from team definition."""
+        from see_agent.team.definition import TeamDefinition
+
+        try:
+            team = TeamDefinition.load(team_id)
+        except FileNotFoundError:
+            return ""
+
+        lines = [
+            f"你是团队「{team.name}」的成员。",
+        ]
+
+        role = self._config.get("team_role", "worker")
+        if role == "leader":
+            lines.append("你是团队 **Leader**，负责协调分工。")
+        else:
+            lines.append(f"你的角色是 **{role}**。")
+
+        lines.append("\n**团队成员：**")
+        for m in team.members:
+            mid = m.get("id", "?")
+            mrole = m.get("role", "worker")
+            is_self = mid == self._agent_id
+            label = f"{mid} ({'你自己' if is_self else mrole})"
+            if m.get("id") == team.leader:
+                label += " ⭐Leader"
+            lines.append(f"- {label}")
+
+        lines.append(
+            "\n你可以用 `send_message` 工具给队友发消息协作。"
+        )
+
+        return "\n".join(lines)
 
     async def run_one_turn(
         self,
@@ -576,7 +617,28 @@ class AgentLoop:
                     self._active_ctx.add_user_reply(str(msg))
 
         # 4. ReAct loop
+        # Build tools schema (hot-reload disabled list from agent.json).
         tools_schema = self._registry.get_openai_schemas()
+        if self._agent_id:
+            try:
+                import json as _json
+
+                from see_agent.config import AGENTS_DIR
+
+                _aj = AGENTS_DIR / self._agent_id / "agent.json"
+                if _aj.exists():
+                    _ad = _json.loads(_aj.read_text())
+                    _disabled = set(
+                        _ad.get("tools", {}).get("disabled", []),
+                    )
+                    if _disabled:
+                        tools_schema = [
+                            t for t in tools_schema
+                            if t.get("function", {}).get("name")
+                            not in _disabled
+                        ]
+            except Exception:
+                pass  # Fall back to unfiltered schema.
 
         for step in range(self._max_steps):
             logger.info("=== ReAct step %d / %d ===", step + 1, self._max_steps)

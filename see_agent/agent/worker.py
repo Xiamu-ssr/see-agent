@@ -136,7 +136,31 @@ async def _run_worker(agent_id: str, sock_path: str) -> None:
     registry.register(MemorySearchTool(mem_backend), source="memory")
     registry.register(WriteMemoryTool(mem_backend), source="memory")
 
-    # Apply tool filtering.
+    # Team tools (only if agent belongs to a team).
+    team_id = config.get("team_id")
+    if team_id:
+        from see_agent.hand.tools.send_message import SendMessageTool
+        from see_agent.team.definition import TeamDefinition
+
+        try:
+            team_def = TeamDefinition.load(team_id)
+            teammate_ids = [m["id"] for m in team_def.members]
+            registry.register(
+                SendMessageTool(agent_id, teammate_ids, AGENTS_DIR),
+                source="team",
+            )
+            logger.info(
+                "Registered team tool send_message for agent %s"
+                " (team=%s, members=%s)",
+                agent_id, team_id, teammate_ids,
+            )
+        except FileNotFoundError:
+            logger.warning(
+                "Agent %s has team_id=%s but team not found",
+                agent_id, team_id,
+            )
+
+    # Apply tool filtering (re-read agent.json for hot-reload).
     denied_tools = config.get("tools", {}).get("disabled", [])
     for name in denied_tools:
         registry._tools.pop(name, None)

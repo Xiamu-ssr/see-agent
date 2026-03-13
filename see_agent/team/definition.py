@@ -67,7 +67,29 @@ class TeamDefinition:
             created_at=now,
         )
         defn.save()
+        # Write team_id into each member's agent.json.
+        defn._sync_member_team_ids()
         return defn
+
+    def _sync_member_team_ids(self) -> None:
+        """Write this team's ID into each member's agent.json."""
+        from see_agent.config import AGENTS_DIR
+
+        for m in self.members:
+            agent_json = AGENTS_DIR / m["id"] / "agent.json"
+            if not agent_json.exists():
+                continue
+            data = json.loads(agent_json.read_text(encoding="utf-8"))
+            if data.get("team_id") != self.id:
+                data["team_id"] = self.id
+                data["team_role"] = m.get("role", "worker")
+                agent_json.write_text(
+                    json.dumps(data, indent=2, ensure_ascii=False),
+                    encoding="utf-8",
+                )
+                logger.info(
+                    "Set team_id=%s on agent %s", self.id, m["id"],
+                )
 
     @staticmethod
     def load(team_id: str) -> TeamDefinition:

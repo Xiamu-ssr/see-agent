@@ -114,6 +114,7 @@ async def update_team(
         team.leader = body.leader
 
     team.save()
+    team._sync_member_team_ids()
     return TeamUpdateResponse(
         id=team.id,
         name=team.name,
