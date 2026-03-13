@@ -86,8 +86,15 @@ class AgentRuntime:
                 )
             finally:
                 self._running = False
-                # Clear inject queue — steer messages consumed.
-                self._inject.clear()
+                # Move any unconsumed inject messages to pending
+                # so they get processed in the next turn.
+                if self._inject:
+                    logger.info(
+                        "Moving %d unconsumed steer message(s) to pending",
+                        len(self._inject),
+                    )
+                    self._pending.extend(self._inject)
+                    self._inject.clear()
 
         # If messages arrived while running, start another turn.
         if self._pending:

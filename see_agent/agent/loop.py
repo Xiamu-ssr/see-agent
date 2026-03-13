@@ -588,8 +588,16 @@ class AgentLoop:
             # Add assistant response to context (on_append writes to JSONL).
             self._active_ctx.add_assistant(response.raw)
 
-            # If no tool calls, LLM is done. Break ReAct loop.
+            # If no tool calls, LLM is done — but check for steer
+            # messages that arrived during the LLM call.
             if not response.tool_calls:
+                if self._inject_queue:
+                    logger.info(
+                        "LLM finished but %d steer message(s) pending"
+                        " — continuing loop.",
+                        len(self._inject_queue),
+                    )
+                    continue  # Next step will drain inject + call LLM.
                 logger.info("LLM finished (no tool calls). Back to idle.")
                 break
 
