@@ -412,38 +412,45 @@ async def stop_agent(
 
 @router.get("/{agent_id}/workspace")
 async def list_workspace_files(agent_id: str) -> list[WorkspaceFileItem]:
-    """List md files in an agent's directory."""
+    """Recursively list files in an agent's directory."""
     from see_agent.config import AGENTS_DIR
 
     agent_dir = AGENTS_DIR / agent_id
     if not agent_dir.is_dir():
         return []
 
-    return [
-        WorkspaceFileItem(name=f.name, size=f.stat().st_size)
-        for f in sorted(agent_dir.iterdir())
-        if f.is_file() and f.suffix == ".md"
-    ]
+    items: list[WorkspaceFileItem] = []
+    skip = {"__pycache__", ".git", "node_modules"}
+    for p in sorted(agent_dir.rglob("*")):
+        if any(part in skip for part in p.parts):
+            continue
+        rel = str(p.relative_to(agent_dir))
+        if p.is_dir():
+            items.append(WorkspaceFileItem(name=rel, size=0, is_dir=True))
+        elif p.is_file():
+            items.append(WorkspaceFileItem(name=rel, size=p.stat().st_size))
+    return items
 
 
-@router.get("/{agent_id}/workspace/{filename}")
+@router.get("/{agent_id}/workspace/{filepath:path}")
+@router.get("/{agent_id}/workspace/{filepath:path}")
 async def get_workspace_file(
-    agent_id: str, filename: str,
+    agent_id: str, filepath: str,
 ) -> WorkspaceFileContent:
     """Read an agent file."""
     from see_agent.config import AGENTS_DIR
 
-    fpath = AGENTS_DIR / agent_id / filename
+    fpath = AGENTS_DIR / agent_id / filepath
     if not fpath.is_file():
         raise HTTPException(status_code=404, detail="File not found")
 
     content = fpath.read_text(encoding="utf-8")
-    return WorkspaceFileContent(name=filename, content=content)
+    return WorkspaceFileContent(name=filepath, content=content)
 
 
-@router.put("/{agent_id}/workspace/{filename}")
+@router.put("/{agent_id}/workspace/{filepath:path}")
 async def update_workspace_file(
-    agent_id: str, filename: str, body: WorkspaceWriteRequest,
+    agent_id: str, filepath: str, body: WorkspaceWriteRequest,
 ) -> StatusResponse:
     """Write an agent file."""
     from see_agent.config import AGENTS_DIR
@@ -452,6 +459,7 @@ async def update_workspace_file(
     if not agent_dir.is_dir():
         raise HTTPException(status_code=404, detail="Agent not found")
 
-    fpath = agent_dir / filename
+    fpath = agent_dir / filepath
+    fpath.parent.mkdir(parents=True, exist_ok=True)
     fpath.write_text(body.content, encoding="utf-8")
     return StatusResponse(status="saved")

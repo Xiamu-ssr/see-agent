@@ -8,10 +8,10 @@ export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
   return (
-    <div className="min-h-screen" style={{ background: 'var(--bg)' }}>
+    <div className="h-screen flex flex-col" style={{ background: 'var(--bg)' }}>
       <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-      <main className="lg:pl-[72px]">
-        <div className="p-4 lg:p-6">
+      <main className="lg:pl-[72px] flex-1 min-h-0 flex flex-col">
+        <div className="flex-1 min-h-0">
           <Outlet />
         </div>
       </main>

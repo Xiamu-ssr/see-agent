@@ -431,7 +431,7 @@ export interface paths {
         };
         /**
          * List Workspace Files
-         * @description List md files in an agent's directory.
+         * @description Recursively list files in an agent's directory.
          */
         get: operations["list_workspace_files_api_agents__agent_id__workspace_get"];
         put?: never;
@@ -442,7 +442,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/agents/{agent_id}/workspace/{filename}": {
+    "/api/agents/{agent_id}/workspace/{filepath}": {
         parameters: {
             query?: never;
             header?: never;
@@ -453,12 +453,12 @@ export interface paths {
          * Get Workspace File
          * @description Read an agent file.
          */
-        get: operations["get_workspace_file_api_agents__agent_id__workspace__filename__get"];
+        get: operations["get_workspace_file_api_agents__agent_id__workspace__filepath__get"];
         /**
          * Update Workspace File
          * @description Write an agent file.
          */
-        put: operations["update_workspace_file_api_agents__agent_id__workspace__filename__put"];
+        put: operations["update_workspace_file_api_agents__agent_id__workspace__filepath__put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -1297,6 +1297,11 @@ export interface components {
             name: string;
             /** Size */
             size: number;
+            /**
+             * Is Dir
+             * @default false
+             */
+            is_dir: boolean;
         };
         /** WorkspaceWriteRequest */
         WorkspaceWriteRequest: {
@@ -2056,13 +2061,13 @@ export interface operations {
             };
         };
     };
-    get_workspace_file_api_agents__agent_id__workspace__filename__get: {
+    get_workspace_file_api_agents__agent_id__workspace__filepath__get: {
         parameters: {
             query?: never;
             header?: never;
             path: {
                 agent_id: string;
-                filename: string;
+                filepath: string;
             };
             cookie?: never;
         };
@@ -2088,13 +2093,13 @@ export interface operations {
             };
         };
     };
-    update_workspace_file_api_agents__agent_id__workspace__filename__put: {
+    update_workspace_file_api_agents__agent_id__workspace__filepath__put: {
         parameters: {
             query?: never;
             header?: never;
             path: {
                 agent_id: string;
-                filename: string;
+                filepath: string;
             };
             cookie?: never;
         };

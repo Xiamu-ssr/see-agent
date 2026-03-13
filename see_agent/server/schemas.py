@@ -199,8 +199,9 @@ class ScreenLeaseStatus(BaseModel):
 
 
 class WorkspaceFileItem(BaseModel):
-    name: str
+    name: str  # relative path from agent dir, e.g. "memory/2026-03-12.md"
     size: int
+    is_dir: bool = False
 
 
 class WorkspaceFileContent(BaseModel):

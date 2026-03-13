@@ -28,7 +28,6 @@ export default function AgentsPage() {
   const [agent, setAgent] = useState<AgentDetail | null>(null)
   const [detailsTab, setDetailsTab] = useState<DetailsTab>('overview')
 
-  // Load agent detail when id changes
   useEffect(() => {
     if (!id) {
       setAgent(null)
@@ -56,7 +55,7 @@ export default function AgentsPage() {
   ]
 
   return (
-    <div className="flex h-[calc(100vh-96px)]">
+    <div className="flex h-full">
       {/* Left panel: Agent list */}
       <AgentList
         agents={agents ?? undefined}
@@ -65,10 +64,10 @@ export default function AgentsPage() {
         onNewAgent={() => setShowCreate(true)}
       />
 
-      {/* Right panel */}
-      <div className="flex-1 overflow-y-auto p-6">
+      {/* Right panel — fill remaining space */}
+      <div className="flex-1 flex flex-col min-h-0 min-w-0 p-4">
         {!id ? (
-          <div className="flex items-center justify-center h-full">
+          <div className="flex items-center justify-center flex-1">
             <div className="text-center">
               <Bot size={48} style={{ color: 'var(--muted)', margin: '0 auto 12px' }} />
               <p className="text-sm" style={{ color: 'var(--muted)' }}>Select an agent</p>
@@ -78,24 +77,11 @@ export default function AgentsPage() {
           <div style={{ color: 'var(--muted)' }}>Loading...</div>
         ) : (
           <>
-            {/* Agent header + toggle on same line */}
-            <div className="flex items-center gap-3 mb-4">
-              <h1 className="text-xl font-semibold" style={{ color: '#e6edf3' }}>
-                {agent.id}
-              </h1>
-              <span
-                className="text-xs font-medium rounded-full px-2.5 py-0.5"
-                style={{
-                  background: agent.status === 'busy' ? 'rgba(63, 185, 80, 0.15)' : 'rgba(125, 133, 144, 0.15)',
-                  color: agent.status === 'busy' ? '#3fb950' : '#7d8590',
-                }}
-              >
-                {agent.status === 'busy' ? 'Running' : 'Idle'}
-              </span>
-
-              {/* Toggle switch */}
+            {/* Agent header: toggle (left) + name + status */}
+            <div className="flex items-center gap-3 mb-3 shrink-0">
+              {/* Toggle switch — left side for easy reach */}
               <div
-                className="flex rounded-full p-0.5 ml-auto"
+                className="flex rounded-full p-0.5 shrink-0"
                 style={{ background: '#21262d', border: '1px solid #30363d' }}
               >
                 <button
@@ -119,19 +105,33 @@ export default function AgentsPage() {
                   Chat
                 </button>
               </div>
+
+              <h1 className="text-xl font-semibold" style={{ color: '#e6edf3' }}>
+                {agent.id}
+              </h1>
+              <span
+                className="text-xs font-medium rounded-full px-2.5 py-0.5"
+                style={{
+                  background: agent.status === 'busy' ? 'rgba(63, 185, 80, 0.15)' : 'rgba(125, 133, 144, 0.15)',
+                  color: agent.status === 'busy' ? '#3fb950' : '#7d8590',
+                }}
+              >
+                {agent.status === 'busy' ? 'Running' : 'Idle'}
+              </span>
             </div>
 
             {isChat ? (
+              /* Chat fills all remaining vertical space */
               <div
-                className="rounded-[var(--radius-lg)] border p-5"
-                style={{ background: 'var(--card)', borderColor: 'var(--border)', height: 'calc(100% - 60px)' }}
+                className="flex-1 min-h-0 rounded-[var(--radius-lg)] border p-4 flex flex-col"
+                style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
               >
                 <AgentChat agentId={id} />
               </div>
             ) : (
               <>
                 {/* Details tabs */}
-                <div className="flex gap-0 mb-4" style={{ borderBottom: '1px solid #30363d' }}>
+                <div className="flex gap-0 mb-3 shrink-0" style={{ borderBottom: '1px solid #30363d' }}>
                   {detailsTabs.map((t) => (
                     <button
                       key={t.key}
@@ -153,9 +153,9 @@ export default function AgentsPage() {
                   ))}
                 </div>
 
-                {/* Tab content */}
+                {/* Tab content fills remaining space */}
                 <div
-                  className="rounded-[var(--radius-lg)] border p-5"
+                  className="flex-1 min-h-0 overflow-y-auto rounded-[var(--radius-lg)] border p-5"
                   style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
                 >
                   {detailsTab === 'overview' && <AgentOverview agent={agent} />}
