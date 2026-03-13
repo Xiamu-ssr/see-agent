@@ -846,6 +846,10 @@ export interface components {
             timestamp?: string | null;
             /** Tool Calls */
             tool_calls?: components["schemas"]["ChatToolCall"][] | null;
+            /** Sender */
+            sender?: string | null;
+            /** Priority */
+            priority?: string | null;
         };
         /** ChatToolCall */
         ChatToolCall: {

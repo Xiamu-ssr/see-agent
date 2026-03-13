@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { getWorkspaceFiles, getWorkspaceFile, updateWorkspaceFile } from '@/api/agents'
 import type { WorkspaceFileItem } from '@/types'
-import { Save, ChevronRight, ChevronDown, File, Folder, FolderOpen } from 'lucide-react'
+import { Save, ChevronRight, ChevronDown, File, Folder, FolderOpen, Copy, WrapText, Check } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import CodeEditor from '@/components/ui/CodeEditor'
@@ -123,6 +123,8 @@ export default function AgentFiles({ agentId }: Props) {
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState('')
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const [wordWrap, setWordWrap] = useState(true)
+  const [copied, setCopied] = useState(false)
 
   const loadFiles = useCallback(async () => {
     const f = await getWorkspaceFiles(agentId)
@@ -211,8 +213,29 @@ export default function AgentFiles({ agentId }: Props) {
         {selected ? (
           <>
             <div className="flex items-center justify-between px-4 py-2 border-b border-[var(--border)] bg-[var(--bg)] shrink-0">
-              <span className="text-sm font-mono truncate text-[var(--text-strong)]">{selected}</span>
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="text-sm font-mono truncate text-[var(--text-strong)]">{selected}</span>
+                <button
+                  onClick={() => {
+                    const fullPath = `~/.see-agent/agents/${agentId}/${selected}`
+                    navigator.clipboard.writeText(fullPath)
+                    setCopied(true)
+                    setTimeout(() => setCopied(false), 1500)
+                  }}
+                  className="shrink-0 p-1 rounded hover:bg-[var(--accent-subtle)] transition-colors"
+                  title="Copy full path"
+                >
+                  {copied ? <Check size={12} className="text-[var(--ok)]" /> : <Copy size={12} className="text-[var(--muted)]" />}
+                </button>
+              </div>
               <div className="flex items-center gap-2 shrink-0">
+                <button
+                  onClick={() => setWordWrap(!wordWrap)}
+                  className={`p-1 rounded transition-colors ${wordWrap ? 'bg-[var(--accent-subtle)]' : ''}`}
+                  title={wordWrap ? 'Disable word wrap' : 'Enable word wrap'}
+                >
+                  <WrapText size={14} style={{ color: wordWrap ? 'var(--accent)' : 'var(--muted)' }} />
+                </button>
                 {msg && (
                   <span className={`text-xs ${msg === 'Saved' ? 'text-[var(--ok)]' : 'text-[var(--danger)]'}`}>
                     {msg}
@@ -228,6 +251,7 @@ export default function AgentFiles({ agentId }: Props) {
                 value={content}
                 onChange={(v) => { setContent(v); setDirty(true); setMsg('') }}
                 filename={selected}
+                wordWrap={wordWrap}
               />
             </div>
           </>

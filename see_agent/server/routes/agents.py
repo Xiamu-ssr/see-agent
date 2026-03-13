@@ -331,15 +331,20 @@ async def get_agent_chat(agent_id: str) -> list[ChatMessage]:
 
             if msg_type in ("user_task", "user_reply"):
                 user_content = entry.get("content") or entry.get("text") or ""
-                # Strip "[user]: " prefix from display.
-                if user_content.startswith("[user]: "):
-                    user_content = user_content[8:]
+                # Strip sender prefix like "[user]: " or "[alice]: "
+                sender = entry.get("sender", "user")
+                if "]:" in user_content and user_content.startswith("["):
+                    bracket_end = user_content.index("]:")
+                    sender = user_content[1:bracket_end]
+                    user_content = user_content[bracket_end + 2:].strip()
                 if not user_content.strip():
                     continue
                 results.append(ChatMessage(
                     role="user",
                     content=user_content,
                     timestamp=entry.get("ts"),
+                    sender=sender,
+                    priority=entry.get("priority"),
                 ))
             elif msg_type == "assistant":
                 # Parse tool_calls if present.

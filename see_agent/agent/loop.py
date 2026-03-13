@@ -537,10 +537,16 @@ class AgentLoop:
         system_prompt = self._build_system_prompt()
 
         # 3. Build/update context
+        # Combine messages, preserving sender metadata from first message.
         parts = []
-        for msg in messages:
+        first_sender = "user"
+        first_priority = "collect"
+        for i, msg in enumerate(messages):
             if hasattr(msg, "format_prefix"):
                 parts.append(f"{msg.format_prefix()}: {msg.content}")
+                if i == 0:
+                    first_sender = msg.sender
+                    first_priority = msg.priority
             else:
                 parts.append(str(msg))
         combined = "\n".join(parts)
@@ -551,10 +557,14 @@ class AgentLoop:
                 max_images=self._max_images,
                 on_append=session.append_message,
             )
-            self._active_ctx.add_user_task_text_only(combined)
+            self._active_ctx.add_user_task_text_only(
+                combined, sender=first_sender, priority=first_priority,
+            )
         else:
             self._active_ctx.update_system_prompt(system_prompt)
-            self._active_ctx.add_user_reply(combined)
+            self._active_ctx.add_user_reply(
+                combined, sender=first_sender, priority=first_priority,
+            )
 
         # 4. ReAct loop
         tools_schema = self._registry.get_openai_schemas()

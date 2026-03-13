@@ -37,6 +37,7 @@ interface CodeEditorProps {
   language?: string
   readOnly?: boolean
   filename?: string
+  wordWrap?: boolean
 }
 
 export default function CodeEditor({
@@ -45,6 +46,7 @@ export default function CodeEditor({
   language,
   readOnly = false,
   filename,
+  wordWrap = true,
 }: CodeEditorProps) {
   const lang = language || detectLanguage(filename)
 
@@ -61,7 +63,7 @@ export default function CodeEditor({
         fontSize: 13,
         lineNumbers: "on",
         scrollBeyondLastLine: false,
-        wordWrap: "on",
+        wordWrap: wordWrap ? "on" : "off",
         tabSize: 2,
         renderWhitespace: "none",
         overviewRulerLanes: 0,

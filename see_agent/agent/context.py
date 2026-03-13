@@ -86,7 +86,9 @@ class ConversationContext:
                 "detail": detail,
             })
 
-    def add_user_task_text_only(self, text: str) -> None:
+    def add_user_task_text_only(
+        self, text: str, *, sender: str = "user", priority: str = "collect",
+    ) -> None:
         """Append a text-only user task message (no screenshot).
 
         Used for agents that have no screen tools.
@@ -94,7 +96,9 @@ class ConversationContext:
         self._messages.append({"role": "user", "content": text})
         logger.debug("Added text-only user task")
         if self._on_append:
-            self._on_append({"type": "user_task", "text": text})
+            entry = {"type": "user_task", "text": text,
+                     "sender": sender, "priority": priority}
+            self._on_append(entry)
 
     def add_assistant(self, message: Any) -> None:
         """Append the raw assistant message returned by the LLM.
@@ -212,7 +216,9 @@ class ConversationContext:
         if self._messages and self._messages[0]["role"] == "system":
             self._messages[0]["content"] = new_prompt
 
-    def add_user_reply(self, text: str) -> None:
+    def add_user_reply(
+        self, text: str, *, sender: str = "user", priority: str = "collect",
+    ) -> None:
         """Append a plain-text user reply (e.g. after ``call_user``).
 
         Parameters:
@@ -221,7 +227,9 @@ class ConversationContext:
         self._messages.append({"role": "user", "content": text})
         logger.debug("Added user reply")
         if self._on_append:
-            self._on_append({"type": "user_reply", "text": text})
+            entry = {"type": "user_reply", "text": text,
+                     "sender": sender, "priority": priority}
+            self._on_append(entry)
 
     def add_system_hint(self, text: str) -> None:
         """Inject a system-level hint into the conversation.

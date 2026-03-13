@@ -221,3 +221,5 @@ class ChatMessage(BaseModel):
     content: str | None = None
     timestamp: str | None = None
     tool_calls: list[ChatToolCall] | None = None
+    sender: str | None = None        # "user", agent_id, or "system"
+    priority: str | None = None      # "collect" or "steer"
