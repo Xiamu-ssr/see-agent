@@ -56,7 +56,7 @@ export default function AgentsPage() {
         <AgentList
           agents={agents ?? undefined}
           selectedId={id}
-          onSelect={(agentId) => navigate(`/agents/${agentId}`)}
+          onSelect={(agentId) => navigate(`/agents/${agentId}/chat`)}
           onNewAgent={() => setShowCreate(true)}
         />
       </div>

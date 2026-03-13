@@ -191,9 +191,30 @@ async def create_agent(body: CreateAgentRequest) -> AgentCreateResponse:
 """
     (agent_dir / "IDENTITY.md").write_text(identity_content, encoding="utf-8")
 
+    # Create standard directories.
+    (agent_dir / "memory").mkdir(exist_ok=True)
+    (agent_dir / "session").mkdir(exist_ok=True)
+    (agent_dir / "workspace").mkdir(exist_ok=True)
+
+    # Write default AGENTS.md if not present.
+    agents_md = agent_dir / "AGENTS.md"
+    if not agents_md.exists():
+        agents_md.write_text(
+            "# AGENTS.md\n\n你是一个 AI 助手。\n",
+            encoding="utf-8",
+        )
+
+    # Write default SOUL.md if not present.
     if body.soul:
         soul_path = agent_dir / "SOUL.md"
         soul_path.write_text(body.soul, encoding="utf-8")
+    else:
+        soul_path = agent_dir / "SOUL.md"
+        if not soul_path.exists():
+            soul_path.write_text(
+                f"# SOUL.md\n\n我是{identity_name} {identity_emoji}\n",
+                encoding="utf-8",
+            )
 
     return AgentCreateResponse(id=defn.id, name=identity_name, emoji=identity_emoji)
 
@@ -353,11 +374,14 @@ async def get_agent_chat(agent_id: str) -> list[ChatMessage]:
                 if raw_tc:
                     tool_calls = []
                     for tc in raw_tc:
+                        # Support both formats:
+                        # flat: {id, name, args}
+                        # OpenAI: {id, function: {name, arguments}}
                         fn = tc.get("function", {})
                         tool_calls.append(ChatToolCall(
                             id=tc.get("id", ""),
-                            name=fn.get("name", ""),
-                            arguments=fn.get("arguments", ""),
+                            name=fn.get("name") or tc.get("name", ""),
+                            arguments=fn.get("arguments") or tc.get("args", ""),
                         ))
                 results.append(ChatMessage(
                     role="assistant",
@@ -372,6 +396,17 @@ async def get_agent_chat(agent_id: str) -> list[ChatMessage]:
                 if isinstance(result_text, dict):
                     result_text = result_text.get("text", str(result_text))
                 result_text = str(result_text) if result_text else ""
+                # Strip ToolResult repr wrapper if present.
+                if result_text.startswith("ToolResult(text='"):
+                    # Parse "ToolResult(text='...', images=[...])"
+                    import re
+                    m = re.match(
+                        r"ToolResult\(text='(.*?)'(?:,\s*images=.*)?\)$",
+                        result_text,
+                        re.DOTALL,
+                    )
+                    if m:
+                        result_text = m.group(1)
                 # Walk backwards to find matching tool_call.
                 for prev in reversed(results):
                     if prev.role == "assistant" and prev.tool_calls:

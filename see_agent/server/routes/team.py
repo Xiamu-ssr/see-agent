@@ -78,20 +78,29 @@ async def create_team(body: CreateTeamRequest) -> TeamCreateResponse:
 
 
 @router.get("")
-async def list_teams() -> list[TeamSummary]:
+async def list_teams(request: Request) -> list[TeamSummary]:
     """List all teams."""
     from see_agent.team.definition import TeamDefinition
 
     teams = TeamDefinition.list_all()
-    return [
-        TeamSummary(
+    supervisor = getattr(request.app.state, "supervisor", None)
+
+    results: list[TeamSummary] = []
+    for t in teams:
+        # Derive team status from member agents.
+        status = "idle"
+        if supervisor:
+            for m in t.members:
+                if supervisor.is_running(m["id"]):
+                    status = "active"
+                    break
+        results.append(TeamSummary(
             id=t.id,
             name=t.name,
             members=[TeamMember(**m) for m in t.members],
-            status=t.status,
-        )
-        for t in teams
-    ]
+            status=status,
+        ))
+    return results
 
 
 @router.put("/{team_id}")
