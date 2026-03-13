@@ -537,34 +537,31 @@ class AgentLoop:
         system_prompt = self._build_system_prompt()
 
         # 3. Build/update context
-        # Combine messages, preserving sender metadata from first message.
-        parts = []
-        first_sender = "user"
-        first_priority = "collect"
-        for i, msg in enumerate(messages):
-            if hasattr(msg, "format_prefix"):
-                parts.append(f"{msg.format_prefix()}: {msg.content}")
-                if i == 0:
-                    first_sender = msg.sender
-                    first_priority = msg.priority
-            else:
-                parts.append(str(msg))
-        combined = "\n".join(parts)
-
+        # Append each message individually to context (not merged).
         if self._active_ctx is None:
             self._active_ctx = ConversationContext(
                 system_prompt,
                 max_images=self._max_images,
                 on_append=session.append_message,
             )
-            self._active_ctx.add_user_task_text_only(
-                combined, sender=first_sender, priority=first_priority,
-            )
+            for msg in messages:
+                if hasattr(msg, "format_prefix"):
+                    text = f"{msg.format_prefix()}: {msg.content}"
+                    self._active_ctx.add_user_task_text_only(
+                        text, sender=msg.sender, priority=msg.priority,
+                    )
+                else:
+                    self._active_ctx.add_user_task_text_only(str(msg))
         else:
             self._active_ctx.update_system_prompt(system_prompt)
-            self._active_ctx.add_user_reply(
-                combined, sender=first_sender, priority=first_priority,
-            )
+            for msg in messages:
+                if hasattr(msg, "format_prefix"):
+                    text = f"{msg.format_prefix()}: {msg.content}"
+                    self._active_ctx.add_user_reply(
+                        text, sender=msg.sender, priority=msg.priority,
+                    )
+                else:
+                    self._active_ctx.add_user_reply(str(msg))
 
         # 4. ReAct loop
         tools_schema = self._registry.get_openai_schemas()

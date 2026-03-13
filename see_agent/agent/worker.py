@@ -162,9 +162,10 @@ async def _run_worker(agent_id: str, sock_path: str) -> None:
     # ── Main loop: drain inbox → batch enqueue → flush → sleep ──
     cursor = _read_cursor(agent_dir)
     heartbeat_seconds = 300  # 5 min idle heartbeat
+    _turn_task: asyncio.Task[None] | None = None
 
-    async def _drain_and_flush() -> None:
-        """Read all new inbox messages, enqueue, then flush."""
+    def _drain_and_enqueue() -> None:
+        """Read all new inbox messages and enqueue them (sync, no await)."""
         nonlocal cursor
         messages, new_cursor = _drain_inbox(agent_dir, cursor)
         if not messages:
@@ -173,13 +174,24 @@ async def _run_worker(agent_id: str, sock_path: str) -> None:
         _write_cursor(agent_dir, cursor)
         for msg in messages:
             runtime.enqueue(msg)
-        await runtime.flush()
 
-    # Background task: watch for SIGUSR1 and drain inbox.
-    # This runs concurrently with any active turn, so steer
-    # messages can be injected mid-turn.
+    async def _maybe_flush() -> None:
+        """Start a turn task if not already running."""
+        nonlocal _turn_task
+        if _turn_task and not _turn_task.done():
+            return  # Turn already running; steer was injected by enqueue.
+        _turn_task = asyncio.create_task(_run_flush())
+
+    async def _run_flush() -> None:
+        """Run flush in a loop until no more pending messages."""
+        try:
+            while runtime.pending_count > 0:
+                await runtime.flush()
+        except Exception:
+            logger.exception("Error in turn for agent %s", agent_id)
+
     async def _inbox_watcher() -> None:
-        """Continuously watch for wake signals and drain inbox."""
+        """Continuously watch for SIGUSR1 and drain inbox."""
         while True:
             wake_event.clear()
             try:
@@ -188,18 +200,19 @@ async def _run_worker(agent_id: str, sock_path: str) -> None:
                 )
             except asyncio.TimeoutError:
                 logger.debug("Heartbeat: agent=%s idle", agent_id)
-            # Signal or timeout — drain inbox.
+            # Signal or timeout — drain inbox and kick off turn.
             try:
-                await _drain_and_flush()
+                _drain_and_enqueue()
+                await _maybe_flush()
             except Exception:
                 logger.exception(
                     "Error draining inbox for agent %s", agent_id,
                 )
 
     try:
-        # Initial drain on startup (process any messages queued
-        # before we were alive).
-        await _drain_and_flush()
+        # Initial drain on startup.
+        _drain_and_enqueue()
+        await _maybe_flush()
 
         # Then run the watcher forever.
         await _inbox_watcher()
