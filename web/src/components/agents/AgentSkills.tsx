@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import type { AgentDetail } from '@/types'
 import { Sparkles } from 'lucide-react'
+import Toggle from '@/components/ui/Toggle'
 
 interface Props {
   agent: AgentDetail
@@ -56,52 +57,29 @@ export default function AgentSkills({ agent }: Props) {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-1">
       {saving && (
-        <div className="text-xs" style={{ color: 'var(--muted)' }}>Saving...</div>
+        <div className="text-xs mb-2" style={{ color: 'var(--muted)' }}>Saving...</div>
       )}
-      <div className="space-y-1">
-        {skills.map(skill => {
-          const enabled = !disabledList.includes(skill.name)
-          return (
-            <div
-              key={skill.name}
-              className="flex items-center justify-between rounded-lg px-3 py-2.5 transition-colors"
-              style={{ background: 'var(--bg-deeper)' }}
-            >
-              <div className="flex items-center gap-3">
-                <Sparkles size={16} style={{ color: enabled ? 'var(--accent)' : 'var(--muted)' }} />
-                <div>
-                  <span className="text-sm font-medium" style={{ color: 'var(--text-strong)' }}>
-                    {skill.name}
-                  </span>
-                  <span className="text-xs ml-2" style={{ color: 'var(--muted)' }}>
-                    {skill.description}
-                  </span>
-                </div>
-              </div>
-              <button
-                onClick={() => toggle(skill.name)}
-                className="relative rounded-full transition-colors"
-                style={{
-                  width: 36,
-                  height: 20,
-                  background: enabled ? 'var(--accent)' : 'var(--border)',
-                }}
-              >
-                <span
-                  className="absolute top-0.5 rounded-full bg-white transition-transform"
-                  style={{
-                    width: 16,
-                    height: 16,
-                    transform: enabled ? 'translateX(18px)' : 'translateX(2px)',
-                  }}
-                />
-              </button>
-            </div>
-          )
-        })}
-      </div>
+      {skills.map(skill => {
+        const enabled = !disabledList.includes(skill.name)
+        return (
+          <div
+            key={skill.name}
+            className="flex items-center gap-3 rounded-lg px-3 py-2 transition-colors"
+            style={{ background: 'var(--bg-deeper)' }}
+          >
+            <Sparkles size={15} style={{ color: enabled ? 'var(--accent)' : 'var(--muted)', flexShrink: 0 }} />
+            <span className="text-sm font-medium" style={{ color: 'var(--text-strong)' }}>
+              {skill.name}
+            </span>
+            <span className="text-xs flex-1 min-w-0 truncate" style={{ color: 'var(--muted)' }}>
+              {skill.description}
+            </span>
+            <Toggle enabled={enabled} onChange={() => toggle(skill.name)} />
+          </div>
+        )
+      })}
     </div>
   )
 }
