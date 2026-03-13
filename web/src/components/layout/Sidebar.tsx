@@ -6,8 +6,28 @@ import {
   Plug,
   SlidersHorizontal,
   FileText,
+  Sun,
+  Moon,
+  Monitor,
 } from 'lucide-react'
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip'
+import { useTheme } from '@/hooks/useTheme'
+
+type Theme = 'dark' | 'light' | 'system'
+
+const themeIcons: Record<Theme, typeof Sun> = {
+  dark: Moon,
+  light: Sun,
+  system: Monitor,
+}
+
+const themeLabels: Record<Theme, string> = {
+  dark: 'Dark',
+  light: 'Light',
+  system: 'System',
+}
+
+const themeOrder: Theme[] = ['dark', 'light', 'system']
 
 interface SidebarProps {
   open: boolean
@@ -24,6 +44,15 @@ const navItems = [
 ]
 
 export default function Sidebar({ open, onClose }: SidebarProps) {
+  const { theme, setTheme } = useTheme()
+
+  const nextTheme = () => {
+    const idx = themeOrder.indexOf(theme)
+    setTheme(themeOrder[(idx + 1) % themeOrder.length])
+  }
+
+  const ThemeIcon = themeIcons[theme]
+
   return (
     <TooltipProvider delayDuration={300}>
       {open && (
@@ -83,6 +112,27 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
             </Tooltip>
           ))}
         </nav>
+
+        {/* Theme toggle */}
+        <div className="pb-4 pt-2">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={nextTheme}
+                className="flex flex-col items-center justify-center rounded-lg transition-all duration-150 w-14 h-11 hover:bg-[var(--bg-hover)]"
+                style={{ color: 'var(--muted)' }}
+              >
+                <ThemeIcon size={17} strokeWidth={1.5} />
+                <span className="text-[10px] mt-0.5">
+                  {themeLabels[theme]}
+                </span>
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="right">
+              Theme: {themeLabels[theme]}
+            </TooltipContent>
+          </Tooltip>
+        </div>
       </aside>
     </TooltipProvider>
   )

@@ -33,24 +33,45 @@ async def list_tools(request: Request) -> list[ToolInfo]:
 
 @router.get("/agents/{agent_id}/tools")
 async def get_agent_tools(agent_id: str) -> dict[str, Any]:
-    """Return tool list with per-agent disabled status."""
+    """Return tool list with per-agent disabled status.
+
+    Reads the actual tool manifest written by the agent worker
+    (tools.json), falling back to create_registry() if not available.
+    """
+    import json as _json
+
     from see_agent.agent.definition import AgentDefinition
-    from see_agent.hand.tools import create_registry
+    from see_agent.config import AGENTS_DIR
 
     try:
         defn = AgentDefinition.load(agent_id)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Agent not found")
 
-    registry = create_registry()
     disabled: list[str] = defn.tools.get("disabled", [])
-    tools = []
-    for name, tool in registry._tools.items():
-        tools.append({
-            "name": name,
-            "description": tool.description,
-            "disabled": name in disabled,
-        })
+
+    # Prefer actual tool manifest from worker.
+    manifest_path = AGENTS_DIR / agent_id / "tools.json"
+    if manifest_path.exists():
+        manifest = _json.loads(manifest_path.read_text())
+        tools = [
+            {**t, "disabled": t["name"] in disabled}
+            for t in manifest
+        ]
+    else:
+        # Fallback: full registry (may include tools not used by worker).
+        from see_agent.hand.tools import create_registry
+
+        registry = create_registry()
+        tools = [
+            {
+                "name": name,
+                "description": tool.description,
+                "disabled": name in disabled,
+            }
+            for name, tool in registry._tools.items()
+        ]
+
     return {"tools": tools, "disabled": disabled}
 
 

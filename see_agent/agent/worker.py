@@ -166,6 +166,16 @@ async def _run_worker(agent_id: str, sock_path: str) -> None:
         registry._tools.pop(name, None)
         registry._sources.pop(name, None)
 
+    # Write actual tool list to disk for API to read.
+    tools_manifest = [
+        {"name": t.name, "description": t.description}
+        for t in registry._tools.values()
+    ]
+    (agent_dir / "tools.json").write_text(
+        json.dumps(tools_manifest, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
     # ── Session directory ──
     session_dir = Path(config["_session_dir"])
     session_dir.mkdir(parents=True, exist_ok=True)
