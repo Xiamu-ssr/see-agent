@@ -515,8 +515,15 @@ class AgentLoop:
         self,
         messages: list[Any] | None = None,
         inject_queue: list[Any] | None = None,
+        poll_steer: Any | None = None,
     ) -> None:
         """Process incoming messages with a full ReAct loop.
+
+        Args:
+            messages: Batch of messages to process.
+            inject_queue: (legacy) List ref for steer injection.
+            poll_steer: Callable() -> list[Message] that polls inbox
+                        for new steer messages. Called before each LLM step.
 
         1. Ensure session exists.
         2. Rebuild system prompt (hot-reload).
@@ -524,6 +531,7 @@ class AgentLoop:
         4. ReAct loop: LLM -> tool -> LLM -> ... until no more tool_calls.
         """
         self._inject_queue = inject_queue or []
+        self._poll_steer = poll_steer
 
         if not messages:
             return
@@ -569,7 +577,21 @@ class AgentLoop:
         for step in range(self._max_steps):
             logger.info("=== ReAct step %d / %d ===", step + 1, self._max_steps)
 
-            # Drain steer messages before each LLM call.
+            # Poll inbox for steer messages before each LLM call.
+            if self._poll_steer:
+                steer_msgs = self._poll_steer()
+                for inj in steer_msgs:
+                    content = inj.content if hasattr(inj, "content") else str(inj)
+                    prefix = inj.format_prefix() if hasattr(inj, "format_prefix") else ""
+                    text = f"{prefix}: {content}" if prefix else content
+                    self._active_ctx.add_user_reply(
+                        text,
+                        sender=getattr(inj, "sender", "user"),
+                        priority=getattr(inj, "priority", "steer"),
+                    )
+                    logger.info("Steer message consumed: %s", prefix)
+
+            # Legacy inject queue (for tests / backward compat).
             while self._inject_queue:
                 inj = self._inject_queue.pop(0)
                 content = inj.content if hasattr(inj, "content") else str(inj)
@@ -588,16 +610,24 @@ class AgentLoop:
             # Add assistant response to context (on_append writes to JSONL).
             self._active_ctx.add_assistant(response.raw)
 
-            # If no tool calls, LLM is done — but check for steer
+            # If no tool calls, LLM is done — but check for new steer
             # messages that arrived during the LLM call.
             if not response.tool_calls:
-                if self._inject_queue:
+                has_steer = bool(self._inject_queue)
+                if not has_steer and self._poll_steer:
+                    # Peek: call poll_steer to check for new steer.
+                    # If found, they'll be consumed at the top of next step.
+                    peeked = self._poll_steer()
+                    if peeked:
+                        # Put them into inject queue so next step picks them up.
+                        self._inject_queue.extend(peeked)
+                        has_steer = True
+                if has_steer:
                     logger.info(
-                        "LLM finished but %d steer message(s) pending"
+                        "LLM finished but steer message(s) pending"
                         " — continuing loop.",
-                        len(self._inject_queue),
                     )
-                    continue  # Next step will drain inject + call LLM.
+                    continue
                 logger.info("LLM finished (no tool calls). Back to idle.")
                 break
 

@@ -45,8 +45,15 @@ def _write_cursor(agent_dir: Path, last_read_id: int) -> None:
     cursor_path.write_text(json.dumps({"last_read_id": last_read_id}))
 
 
-def _drain_inbox(agent_dir: Path, cursor: int) -> tuple[list[Message], int]:
-    """Read all messages from inbox.jsonl with msg_id > cursor.
+def _drain_inbox(
+    agent_dir: Path, cursor: int, *, steer_only: bool = False,
+) -> tuple[list[Message], int]:
+    """Read messages from inbox.jsonl with msg_id > cursor.
+
+    Args:
+        steer_only: If True, only return steer-priority messages.
+                    Cursor still only advances to the last *returned*
+                    message (so non-steer messages are not skipped).
 
     Returns (messages, new_cursor).
     """
@@ -67,7 +74,10 @@ def _drain_inbox(agent_dir: Path, cursor: int) -> tuple[list[Message], int]:
         msg_id = data.get("msg_id", 0)
         if msg_id <= cursor:
             continue
-        messages.append(Message.from_json(line))
+        msg = Message.from_json(line)
+        if steer_only and not msg.is_steer:
+            continue  # Skip but don't advance cursor past it.
+        messages.append(msg)
         new_cursor = max(new_cursor, msg_id)
 
     return messages, new_cursor
@@ -164,6 +174,25 @@ async def _run_worker(agent_id: str, sock_path: str) -> None:
     heartbeat_seconds = 300  # 5 min idle heartbeat
     _turn_task: asyncio.Task[None] | None = None
 
+    def _poll_steer() -> list[Message]:
+        """Poll inbox for steer messages (called by ReAct loop each step).
+
+        Does NOT advance cursor — that's _drain_and_enqueue's job.
+        Uses a separate steer_cursor to avoid re-reading steer messages.
+        """
+        steer_msgs, new_sc = _drain_inbox(
+            agent_dir, _steer_cursor[0], steer_only=True,
+        )
+        if new_sc > _steer_cursor[0]:
+            _steer_cursor[0] = new_sc
+        return steer_msgs
+
+    # Separate cursor for steer polling (list for nonlocal mutability).
+    _steer_cursor = [_read_cursor(agent_dir)]
+
+    # Wire poll_steer into runtime → loop.
+    runtime.poll_steer = _poll_steer
+
     def _drain_and_enqueue() -> None:
         """Read all new inbox messages and enqueue them (sync, no await)."""
         nonlocal cursor
@@ -172,6 +201,9 @@ async def _run_worker(agent_id: str, sock_path: str) -> None:
             return
         cursor = new_cursor
         _write_cursor(agent_dir, cursor)
+        # Keep steer cursor in sync.
+        if cursor > _steer_cursor[0]:
+            _steer_cursor[0] = cursor
         for msg in messages:
             runtime.enqueue(msg)
 
