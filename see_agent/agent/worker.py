@@ -215,6 +215,24 @@ def main() -> None:
     agent_id = sys.argv[1]
     sock_path = sys.argv[2]
 
+    # Catch ALL unhandled exceptions and log to stderr before dying.
+    def _excepthook(exc_type, exc_value, exc_tb):  # type: ignore[no-untyped-def]
+        import traceback
+        msg = "".join(traceback.format_exception(exc_type, exc_value, exc_tb))
+        print(f"[AGENT {agent_id}] UNHANDLED EXCEPTION:\n{msg}", file=sys.stderr, flush=True)
+
+    sys.excepthook = _excepthook
+
+    # Log signals that would kill us.
+    import signal as _sig
+    for sig_name in ("SIGTERM", "SIGHUP", "SIGINT"):
+        sig = getattr(_sig, sig_name, None)
+        if sig:
+            _sig.signal(sig, lambda s, f, _n=sig_name: (
+                print(f"[AGENT {agent_id}] Received {_n} — exiting", file=sys.stderr, flush=True),
+                sys.exit(128 + s),
+            ))
+
     asyncio.run(_run_worker(agent_id, sock_path))
 
 

@@ -59,7 +59,7 @@ class AgentSupervisor:
 
         # Worker stderr goes to a log file for debugging.
         stderr_log = agent_dir / "worker_stderr.log"
-        stderr_fh = open(stderr_log, "w")
+        stderr_fh = open(stderr_log, "a")
 
         logger.info(
             "Spawning worker: agent=%s python=%s cwd=%s",
@@ -80,6 +80,20 @@ class AgentSupervisor:
         )
         self._processes[agent_id] = proc
         logger.info("Started agent %s (pid=%d)", agent_id, proc.pid)
+
+        # Quick sanity check: is the process still alive?
+        import time
+        time.sleep(0.5)
+        rc = proc.poll()
+        if rc is not None:
+            logger.error(
+                "Agent %s (pid=%d) died immediately! exit_code=%s",
+                agent_id, proc.pid, rc,
+            )
+            stderr_log = agent_dir / "worker_stderr.log"
+            if stderr_log.exists():
+                tail = stderr_log.read_text()[-1000:]
+                logger.error("Agent %s stderr: %s", agent_id, tail)
 
         return sock_path
 
@@ -102,6 +116,26 @@ class AgentSupervisor:
         """Stop all running agent subprocesses."""
         for agent_id in list(self._processes):
             self.stop_agent(agent_id)
+
+    def start_all(self) -> None:
+        """Auto-start all configured agents (called on server boot)."""
+        from see_agent.config import AGENTS_DIR
+
+        if not AGENTS_DIR.is_dir():
+            return
+        for agent_dir in sorted(AGENTS_DIR.iterdir()):
+            if not agent_dir.is_dir():
+                continue
+            agent_json = agent_dir / "agent.json"
+            if not agent_json.exists():
+                continue
+            agent_id = agent_dir.name
+            # TODO: respect a "frozen" flag in agent.json to skip startup
+            try:
+                self.start_agent(agent_id)
+                logger.info("Auto-started agent %s on server boot", agent_id)
+            except Exception:
+                logger.exception("Failed to auto-start agent %s", agent_id)
 
     def is_running(self, agent_id: str) -> bool:
         """Check if an agent subprocess is currently running."""
@@ -167,6 +201,16 @@ class AgentSupervisor:
                 os.kill(proc.pid, _signal.SIGUSR1)
             except OSError:
                 logger.warning("Failed to signal worker %s", agent_id)
+        elif proc:
+            logger.error(
+                "Agent %s (pid=%d) died before SIGUSR1! exit_code=%s",
+                agent_id, proc.pid, proc.returncode,
+            )
+            # Read stderr log for clues.
+            stderr_log = agent_dir / "worker_stderr.log"
+            if stderr_log.exists():
+                tail = stderr_log.read_text()[-500:]
+                logger.error("Agent %s stderr tail: %s", agent_id, tail)
 
         logger.debug("Message sent to %s (msg_id=%d): %s", agent_id, msg_id, msg.format_prefix())
 

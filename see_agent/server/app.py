@@ -41,6 +41,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         - Log a shutdown message.
     """
     # ── Startup ────────────────────────────────────────────────────────
+    from see_agent.config import setup_logging
+    setup_logging()
+
     config = load_config()
     app.state.config = config
 
@@ -53,6 +56,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     supervisor = AgentSupervisor(config)
     app.state.supervisor = supervisor
     app.state.message_router = MessageRouter(supervisor)
+
+    # Auto-start all configured agents.
+    supervisor.start_all()
 
     logger.info(
         "see-agent server started  model=%s  max_steps=%s",

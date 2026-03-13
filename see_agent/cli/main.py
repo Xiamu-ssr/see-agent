@@ -134,7 +134,7 @@ def _generate_plist(port: int) -> str:
         <false/>
     </dict>
     <key>AbandonProcessGroup</key>
-    <false/>
+    <true/>
     <key>StandardOutPath</key>
     <string>{LOG_PATH}</string>
     <key>StandardErrorPath</key>
