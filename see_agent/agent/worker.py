@@ -174,11 +174,11 @@ async def _run_worker(agent_id: str, sock_path: str) -> None:
     heartbeat_seconds = 300  # 5 min idle heartbeat
     _turn_task: asyncio.Task[None] | None = None
 
-    def _poll_steer() -> list[Message]:
-        """Poll inbox for steer messages (called by ReAct loop each step).
+    def _drain_interrupts() -> list[Message]:
+        """Return any new interrupt (steer) messages since last check.
 
-        Does NOT advance cursor — that's _drain_and_enqueue's job.
-        Uses a separate steer_cursor to avoid re-reading steer messages.
+        Called by the ReAct loop before each LLM step. The loop doesn't
+        need to know *where* interrupts come from — this is the seam.
         """
         steer_msgs, new_sc = _drain_inbox(
             agent_dir, _steer_cursor[0], steer_only=True,
@@ -190,8 +190,8 @@ async def _run_worker(agent_id: str, sock_path: str) -> None:
     # Separate cursor for steer polling (list for nonlocal mutability).
     _steer_cursor = [_read_cursor(agent_dir)]
 
-    # Wire poll_steer into runtime → loop.
-    runtime.poll_steer = _poll_steer
+    # Wire drain_interrupts into runtime → loop.
+    runtime.drain_interrupts = _drain_interrupts
 
     def _drain_and_enqueue() -> None:
         """Read all new inbox messages and enqueue them (sync, no await)."""

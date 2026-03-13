@@ -515,14 +515,14 @@ class AgentLoop:
         self,
         messages: list[Any] | None = None,
         inject_queue: list[Any] | None = None,
-        poll_steer: Any | None = None,
+        drain_interrupts: Any | None = None,
     ) -> None:
         """Process incoming messages with a full ReAct loop.
 
         Args:
             messages: Batch of messages to process.
             inject_queue: (legacy) List ref for steer injection.
-            poll_steer: Callable() -> list[Message] that polls inbox
+            drain_interrupts: Callable() -> list[Message] that polls inbox
                         for new steer messages. Called before each LLM step.
 
         1. Ensure session exists.
@@ -531,7 +531,7 @@ class AgentLoop:
         4. ReAct loop: LLM -> tool -> LLM -> ... until no more tool_calls.
         """
         self._inject_queue = inject_queue or []
-        self._poll_steer = poll_steer
+        self._drain_interrupts = drain_interrupts
 
         if not messages:
             return
@@ -578,8 +578,8 @@ class AgentLoop:
             logger.info("=== ReAct step %d / %d ===", step + 1, self._max_steps)
 
             # Poll inbox for steer messages before each LLM call.
-            if self._poll_steer:
-                steer_msgs = self._poll_steer()
+            if self._drain_interrupts:
+                steer_msgs = self._drain_interrupts()
                 for inj in steer_msgs:
                     content = inj.content if hasattr(inj, "content") else str(inj)
                     prefix = inj.format_prefix() if hasattr(inj, "format_prefix") else ""
@@ -614,10 +614,10 @@ class AgentLoop:
             # messages that arrived during the LLM call.
             if not response.tool_calls:
                 has_steer = bool(self._inject_queue)
-                if not has_steer and self._poll_steer:
-                    # Peek: call poll_steer to check for new steer.
+                if not has_steer and self._drain_interrupts:
+                    # Peek: call drain_interrupts to check for new steer.
                     # If found, they'll be consumed at the top of next step.
-                    peeked = self._poll_steer()
+                    peeked = self._drain_interrupts()
                     if peeked:
                         # Put them into inject queue so next step picks them up.
                         self._inject_queue.extend(peeked)

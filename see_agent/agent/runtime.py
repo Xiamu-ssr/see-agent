@@ -38,7 +38,7 @@ class AgentRuntime:
         self._inject: list[Message] = []
         self._running = False
         self._turn_lock = asyncio.Lock()
-        self.poll_steer: Any | None = None  # Set by worker.
+        self.drain_interrupts: Any | None = None  # Set by worker.
 
     def enqueue(self, msg: Message) -> None:
         """Route a message without starting a turn.
@@ -84,7 +84,7 @@ class AgentRuntime:
                 await self._loop.run_one_turn(
                     messages=batch,
                     inject_queue=self._inject,
-                    poll_steer=self.poll_steer,
+                    drain_interrupts=self.drain_interrupts,
                 )
             finally:
                 self._running = False
