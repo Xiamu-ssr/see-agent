@@ -32,7 +32,7 @@ export default function LogsPage() {
   const filtered = filter === 'ALL' ? logs : logs.filter(l => l.level === filter)
 
   return (
-    <div>
+    <div className="px-3 py-3 md:px-4 md:py-4">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-xl font-semibold text-[var(--text-strong)]">Logs</h1>
         <div className="flex items-center gap-2">
@@ -54,13 +54,13 @@ export default function LogsPage() {
       {loading ? (
         <div className="text-[var(--muted)]">Loading...</div>
       ) : (
-        <Card className="overflow-hidden">
-          <table className="w-full text-xs font-mono">
+        <Card className="overflow-x-auto">
+          <table className="w-full text-[11px] md:text-xs font-mono">
             <thead>
               <tr className="bg-[var(--bg-elevated)]">
-                <th className="text-left px-3 py-2.5 font-medium text-[var(--muted)]" style={{ width: 180 }}>Timestamp</th>
+                <th className="text-left px-3 py-2.5 font-medium text-[var(--muted)] hidden md:table-cell" style={{ width: 180 }}>Timestamp</th>
                 <th className="text-left px-3 py-2.5 font-medium text-[var(--muted)]" style={{ width: 70 }}>Level</th>
-                <th className="text-left px-3 py-2.5 font-medium text-[var(--muted)]" style={{ width: 120 }}>Source</th>
+                <th className="text-left px-3 py-2.5 font-medium text-[var(--muted)] hidden md:table-cell" style={{ width: 120 }}>Source</th>
                 <th className="text-left px-3 py-2.5 font-medium text-[var(--muted)]">Message</th>
               </tr>
             </thead>
@@ -71,11 +71,11 @@ export default function LogsPage() {
                   className="border-t border-[var(--border)]"
                   style={{ background: i % 2 === 0 ? 'var(--bg)' : 'var(--bg-elevated)' }}
                 >
-                  <td className="px-3 py-2 text-[var(--muted)]">{log.time}</td>
+                  <td className="px-3 py-2 text-[var(--muted)] hidden md:table-cell">{log.time}</td>
                   <td className="px-3 py-2">
                     <Badge variant={levelVariant[log.level] || 'secondary'}>{log.level}</Badge>
                   </td>
-                  <td className="px-3 py-2 text-[var(--text-strong)]">{log.logger || 'server'}</td>
+                  <td className="px-3 py-2 text-[var(--text-strong)] hidden md:table-cell">{log.logger || 'server'}</td>
                   <td className="px-3 py-2 text-[var(--text-strong)]">{log.message}</td>
                 </tr>
               ))}

@@ -3,7 +3,7 @@ import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import { usePolling } from '@/hooks/usePolling'
 import { listAgents, createAgent, getAgent } from '@/api/agents'
 import type { AgentSummary, AgentDetail, CreateAgentRequest } from '@/types'
-import { Bot } from 'lucide-react'
+import { Bot, ArrowLeft } from 'lucide-react'
 import AgentList from '@/components/agents/AgentList'
 import AgentOverview from '@/components/agents/AgentOverview'
 import AgentFiles from '@/components/agents/AgentFiles'
@@ -51,14 +51,18 @@ export default function AgentsPage() {
 
   return (
     <div className="flex h-full">
-      <AgentList
-        agents={agents ?? undefined}
-        selectedId={id}
-        onSelect={(agentId) => navigate(`/agents/${agentId}`)}
-        onNewAgent={() => setShowCreate(true)}
-      />
+      {/* Agent list — hidden on mobile when viewing detail */}
+      <div className={`${id ? 'hidden md:flex' : 'flex'} flex-col h-full md:w-[200px] w-full shrink-0 md:border-r border-[var(--border)]`}>
+        <AgentList
+          agents={agents ?? undefined}
+          selectedId={id}
+          onSelect={(agentId) => navigate(`/agents/${agentId}`)}
+          onNewAgent={() => setShowCreate(true)}
+        />
+      </div>
 
-      <div className="flex-1 flex flex-col min-h-0 min-w-0 p-4">
+      {/* Detail panel — hidden on mobile when no agent selected */}
+      <div className={`${!id ? 'hidden md:flex' : 'flex'} flex-1 flex-col min-h-0 min-w-0 px-3 py-3 md:px-4 md:py-4`}>
         {!id ? (
           <div className="flex items-center justify-center flex-1">
             <div className="text-center">
@@ -72,6 +76,14 @@ export default function AgentsPage() {
           <>
             {/* Agent header */}
             <div className="flex items-center gap-3 mb-3 shrink-0">
+              {/* Mobile back button */}
+              <button
+                onClick={() => navigate('/agents')}
+                className="md:hidden p-1 -ml-1 rounded-lg hover:bg-[var(--bg-hover)] transition-colors"
+              >
+                <ArrowLeft size={18} style={{ color: 'var(--muted)' }} />
+              </button>
+
               <div className="flex rounded-full p-0.5 shrink-0 bg-[var(--bg-elevated)] border border-[var(--border)]">
                 <Button
                   onClick={() => navigate(`/agents/${id}`)}
@@ -91,7 +103,7 @@ export default function AgentsPage() {
                 </Button>
               </div>
 
-              <h1 className="text-xl font-semibold text-[var(--text-strong)]">
+              <h1 className="text-lg font-semibold text-[var(--text-strong)] truncate">
                 {agent.id}
               </h1>
               <Badge variant={agent.status === 'busy' ? 'success' : 'secondary'}>
@@ -101,12 +113,12 @@ export default function AgentsPage() {
             </div>
 
             {isChat ? (
-              <Card className="flex-1 min-h-0 p-4 flex flex-col">
+              <Card className="flex-1 min-h-0 p-3 md:p-4 flex flex-col">
                 <AgentChat agentId={id} />
               </Card>
             ) : (
               <Tabs defaultValue="overview" className="flex-1 flex flex-col min-h-0">
-                <TabsList className="shrink-0">
+                <TabsList className="shrink-0 overflow-x-auto">
                   <TabsTrigger value="overview">Overview</TabsTrigger>
                   <TabsTrigger value="files">Files</TabsTrigger>
                   <TabsTrigger value="tools">Tools</TabsTrigger>
@@ -114,7 +126,7 @@ export default function AgentsPage() {
                   <TabsTrigger value="safehouse">Safehouse</TabsTrigger>
                 </TabsList>
                 <TabsContent value="overview" className="overflow-y-auto">
-                  <Card className="p-5"><AgentOverview agent={agent} /></Card>
+                  <Card className="p-4"><AgentOverview agent={agent} /></Card>
                 </TabsContent>
                 <TabsContent value="files">
                   <Card className="h-full min-h-0 overflow-hidden">
@@ -122,13 +134,13 @@ export default function AgentsPage() {
                   </Card>
                 </TabsContent>
                 <TabsContent value="tools" className="overflow-y-auto">
-                  <Card className="p-5"><AgentTools agent={agent} /></Card>
+                  <Card className="p-4"><AgentTools agent={agent} /></Card>
                 </TabsContent>
                 <TabsContent value="skills" className="overflow-y-auto">
-                  <Card className="p-5"><AgentSkills agent={agent} /></Card>
+                  <Card className="p-4"><AgentSkills agent={agent} /></Card>
                 </TabsContent>
                 <TabsContent value="safehouse" className="overflow-y-auto">
-                  <Card className="p-5"><AgentSafehouse agent={agent} /></Card>
+                  <Card className="p-4"><AgentSafehouse agent={agent} /></Card>
                 </TabsContent>
               </Tabs>
             )}

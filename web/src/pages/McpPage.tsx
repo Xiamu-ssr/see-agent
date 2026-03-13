@@ -95,10 +95,10 @@ export default function McpPage() {
     })
   }
 
-  if (loading) return <div className="text-[var(--muted)]">Loading...</div>
+  if (loading) return <div className="px-3 py-3 md:px-4 md:py-4 text-[var(--muted)]">Loading...</div>
 
   return (
-    <div>
+    <div className="px-3 py-3 md:px-4 md:py-4">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-xl font-semibold text-[var(--text-strong)]">
           MCP Servers
@@ -109,27 +109,27 @@ export default function McpPage() {
         </Button>
       </div>
 
-      <Card className="overflow-hidden">
+      <Card className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-[var(--bg-elevated)]">
               <th className="text-left px-4 py-2.5 font-medium text-[var(--muted)]">Name</th>
-              <th className="text-left px-4 py-2.5 font-medium text-[var(--muted)]">Type</th>
-              <th className="text-left px-4 py-2.5 font-medium text-[var(--muted)]">Command</th>
+              <th className="text-left px-4 py-2.5 font-medium text-[var(--muted)] hidden md:table-cell">Type</th>
+              <th className="text-left px-4 py-2.5 font-medium text-[var(--muted)] hidden md:table-cell">Command</th>
               <th className="text-right px-4 py-2.5 font-medium text-[var(--muted)]">Actions</th>
             </tr>
           </thead>
           <tbody>
             {servers.map((s) => (
-              <tr key={s.name} className="border-t border-[var(--border)] hover:bg-[var(--bg-hover)]">
+              <tr key={s.name} className="border-t border-[var(--border)] hover:bg-[var(--bg-hover)] transition-colors">
                 <td className="px-4 py-2.5">
                   <div className="flex items-center gap-2">
                     <Plug size={14} className="text-[var(--accent-2)]" />
                     <span className="text-[var(--text-strong)]">{s.name}</span>
                   </div>
                 </td>
-                <td className="px-4 py-2.5 text-[var(--muted)]">{s.type}</td>
-                <td className="px-4 py-2.5 text-[var(--text-strong)] font-mono">
+                <td className="px-4 py-2.5 text-[var(--muted)] hidden md:table-cell">{s.type}</td>
+                <td className="px-4 py-2.5 text-[var(--text-strong)] font-mono hidden md:table-cell">
                   {s.command} {s.args?.join(' ')}
                 </td>
                 <td className="px-4 py-2.5 text-right">

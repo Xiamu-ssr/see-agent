@@ -58,7 +58,7 @@ export default function TeamSettings({ open, onClose, team, onSave }: TeamSettin
       <div className="fixed inset-0 z-[999] bg-black/50" onClick={onClose} />
 
       <div
-        className="fixed top-0 right-0 bottom-0 w-[380px] z-[1000] flex flex-col bg-[var(--bg-elevated)] border-l border-[var(--border)] transition-transform duration-250"
+        className="fixed top-0 right-0 bottom-0 w-full md:w-[380px] z-[1000] flex flex-col bg-[var(--bg-elevated)] border-l border-[var(--border)] transition-transform duration-250"
         style={{ transform: open ? "translateX(0)" : "translateX(100%)" }}
       >
         {/* Header */}

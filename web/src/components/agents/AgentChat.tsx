@@ -4,7 +4,7 @@ import type { ChatMessage } from '@/types'
 import { Send, ChevronRight, ChevronDown, Wrench, ArrowDown } from 'lucide-react'
 import Markdown from 'react-markdown'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import { Switch } from '@/components/ui/switch'
 
 interface Props {
@@ -36,6 +36,7 @@ export default function AgentChat({ agentId }: Props) {
   const [isNearBottom, setIsNearBottom] = useState(true)
   const scrollRef = useRef<HTMLDivElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   const loadChat = useCallback(async () => {
     const msgs = await getAgentChat(agentId)
@@ -75,6 +76,26 @@ export default function AgentChat({ agentId }: Props) {
     setInput('')
     setIsNearBottom(true)
     loadChat()
+    // Reset textarea height
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto'
+    }
+  }
+
+  const handleTextareaInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setInput(e.target.value)
+    // Auto-resize textarea
+    const el = e.target
+    el.style.height = 'auto'
+    const maxHeight = 6 * 24 // ~6 lines
+    el.style.height = `${Math.min(el.scrollHeight, maxHeight)}px`
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault()
+      handleSend()
+    }
   }
 
   const toggleTool = (toolId: string) => {
@@ -92,7 +113,7 @@ export default function AgentChat({ agentId }: Props) {
       <div
         ref={scrollRef}
         onScroll={handleScroll}
-        className="flex-1 overflow-y-auto space-y-3 mb-4 px-2 relative"
+        className="flex-1 overflow-y-auto space-y-2 mb-3 px-1 md:px-2 relative"
       >
         {messages.length === 0 && (
           <p className="text-sm text-[var(--muted)]">No messages yet.</p>
@@ -108,7 +129,7 @@ export default function AgentChat({ agentId }: Props) {
           return (
             <div key={i} className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
               <div
-                className={`text-sm rounded-[var(--radius)] max-w-[80%] ${
+                className={`text-sm rounded-[var(--radius)] max-w-[85%] md:max-w-[80%] ${
                   isSteer
                     ? 'bg-[rgba(255,92,92,0.12)] border border-[rgba(255,92,92,0.3)]'
                     : isUser
@@ -117,7 +138,7 @@ export default function AgentChat({ agentId }: Props) {
                 } text-[var(--text)]`}
               >
                 {/* Sender + time header */}
-                <div className="flex items-center gap-2 px-4 pt-2 pb-0">
+                <div className="flex items-center gap-2 px-3 md:px-4 pt-2 pb-0">
                   {sender && (
                     <span className="text-[11px] font-medium" style={{
                       color: isUser ? 'var(--accent)' : '#58a6ff',
@@ -138,7 +159,7 @@ export default function AgentChat({ agentId }: Props) {
 
                 {/* Text content with markdown */}
                 {m.content && (
-                  <div className="px-4 py-2 prose prose-invert prose-sm max-w-none text-[14px] leading-[1.6]">
+                  <div className="px-3 md:px-4 py-2 prose prose-invert prose-sm max-w-none text-[14px] leading-[1.6]">
                     <Markdown>{m.content}</Markdown>
                   </div>
                 )}
@@ -212,22 +233,28 @@ export default function AgentChat({ agentId }: Props) {
         </div>
       )}
 
-      {/* Input */}
-      <div className="flex items-center gap-2 border-t border-[var(--border)] pt-3">
-        <Input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && (e.metaKey || e.ctrlKey) && handleSend()}
-          placeholder="Type a message... (⌘+Enter to send)"
-          className="flex-1"
-        />
-        <label className="flex items-center gap-1.5 text-xs whitespace-nowrap text-[var(--muted)]">
-          <Switch checked={steer} onCheckedChange={setSteer} />
-          Steer
-        </label>
-        <Button onClick={handleSend} size="sm">
-          <Send size={14} /> Send
-        </Button>
+      {/* Input area — textarea with controls */}
+      <div className="border-t border-[var(--border)] pt-3">
+        <div className="relative">
+          <Textarea
+            ref={textareaRef}
+            value={input}
+            onChange={handleTextareaInput}
+            onKeyDown={handleKeyDown}
+            placeholder="Type a message... (⌘+Enter to send)"
+            className="min-h-[52px] max-h-[144px] resize-none pr-28 text-sm"
+            rows={2}
+          />
+          <div className="absolute bottom-2 right-2 flex items-center gap-2">
+            <label className="flex items-center gap-1.5 text-xs whitespace-nowrap text-[var(--muted)]">
+              <Switch checked={steer} onCheckedChange={setSteer} />
+              Steer
+            </label>
+            <Button onClick={handleSend} size="sm" className="h-7 px-2.5">
+              <Send size={14} />
+            </Button>
+          </div>
+        </div>
       </div>
     </div>
   )

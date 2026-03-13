@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { getWorkspaceFiles, getWorkspaceFile, updateWorkspaceFile } from '@/api/agents'
 import type { WorkspaceFileItem } from '@/types'
-import { Save, ChevronRight, ChevronDown, File, Folder, FolderOpen, Copy, WrapText, Check } from 'lucide-react'
+import { Save, ChevronRight, ChevronDown, File, Folder, FolderOpen, Copy, WrapText, Check, ArrowLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import CodeEditor from '@/components/ui/CodeEditor'
@@ -187,9 +187,13 @@ export default function AgentFiles({ agentId }: Props) {
 
   const tree = buildTree(files)
 
+  // Detect extension for language label
+  const ext = selected?.split('.').pop() ?? ''
+
   return (
     <div className="flex gap-0 h-full min-h-0">
-      <ScrollArea className="w-[200px] shrink-0 border-r border-[var(--border)] py-2 px-1">
+      {/* File tree — full width on mobile when no file selected, hidden when editing */}
+      <ScrollArea className={`${selected ? 'hidden md:block' : 'w-full'} md:w-[220px] shrink-0 border-r border-[var(--border)] py-2 px-1`}>
         <p className="text-[10px] font-medium uppercase tracking-wide mb-1 px-1 text-[var(--muted)]">
           ~/.see-agent/agents/{agentId}
         </p>
@@ -209,12 +213,25 @@ export default function AgentFiles({ agentId }: Props) {
         )}
       </ScrollArea>
 
-      <div className="flex-1 flex flex-col min-h-0 min-w-0">
+      {/* Editor — full width on mobile when file selected */}
+      <div className={`${!selected ? 'hidden md:flex' : 'flex'} flex-1 flex-col min-h-0 min-w-0`}>
         {selected ? (
           <>
-            <div className="flex items-center justify-between px-4 py-2 border-b border-[var(--border)] bg-[var(--bg)] shrink-0">
+            <div className="flex items-center justify-between px-3 md:px-4 py-2 border-b border-[var(--border)] bg-[var(--bg)] shrink-0">
               <div className="flex items-center gap-2 min-w-0">
+                {/* Mobile back to tree */}
+                <button
+                  onClick={() => setSelected(null)}
+                  className="md:hidden p-1 -ml-1 rounded hover:bg-[var(--bg-hover)] transition-colors"
+                >
+                  <ArrowLeft size={14} className="text-[var(--muted)]" />
+                </button>
                 <span className="text-sm font-mono truncate text-[var(--text-strong)]">{selected}</span>
+                {ext && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-hover)] text-[var(--muted)] shrink-0 hidden md:inline">
+                    {ext}
+                  </span>
+                )}
                 <button
                   onClick={() => {
                     const fullPath = `~/.see-agent/agents/${agentId}/${selected}`

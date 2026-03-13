@@ -31,10 +31,10 @@ export default function SkillsPage() {
     } finally { setInstalling(false) }
   }
 
-  if (loading) return <div className="text-[var(--muted)]">Loading...</div>
+  if (loading) return <div className="px-3 py-3 md:px-4 md:py-4 text-[var(--muted)]">Loading...</div>
 
   return (
-    <div>
+    <div className="px-3 py-3 md:px-4 md:py-4">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-xl font-semibold text-[var(--text-strong)]">Skills</h1>
         <Button onClick={() => { setShowInstall(true); setInstallMsg('') }} size="sm">
@@ -42,7 +42,7 @@ export default function SkillsPage() {
         </Button>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
         {skills.map((s) => (
           <Card key={s.name} className="p-4">
             <div className="flex items-center gap-2 mb-2">

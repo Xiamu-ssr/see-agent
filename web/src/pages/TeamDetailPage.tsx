@@ -85,8 +85,8 @@ export default function TeamDetailPage() {
     loadData()
   }
 
-  if (loading) return <div className="text-[var(--muted)]">Loading...</div>
-  if (!team) return <div className="text-[var(--danger)]">Team not found</div>
+  if (loading) return <div className="px-3 py-3 md:px-4 md:py-4 text-[var(--muted)]">Loading...</div>
+  if (!team) return <div className="px-3 py-3 md:px-4 md:py-4 text-[var(--danger)]">Team not found</div>
 
   const statusVariant = team.status === 'running' ? 'success' as const : team.status === 'failed' ? 'destructive' as const : 'secondary' as const
 
@@ -97,19 +97,19 @@ export default function TeamDetailPage() {
   }
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
+    <div className="px-3 py-3 md:px-4 md:py-4">
+      <div className="flex items-center justify-between mb-4 md:mb-6">
+        <div className="flex items-center gap-2 md:gap-3 min-w-0">
           <Button variant="ghost" size="icon" onClick={() => navigate('/teams')}>
             <ArrowLeft size={16} />
           </Button>
-          <h1 className="text-2xl font-bold text-[var(--text-strong)]">{team.name}</h1>
+          <h1 className="text-xl font-semibold text-[var(--text-strong)] truncate">{team.name}</h1>
           <Badge variant={statusVariant}>
-            <span className="h-2 w-2 rounded-full bg-current" />
-            [{team.status}]
+            <span className="h-1.5 w-1.5 rounded-full bg-current" />
+            {team.status}
           </Badge>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 shrink-0">
           <Button variant="ghost" size="icon" onClick={() => setShowSettings(true)}>
             <Settings size={16} />
           </Button>
@@ -121,21 +121,21 @@ export default function TeamDetailPage() {
         </div>
       </div>
 
-      <div className="flex gap-4" style={{ minHeight: 'calc(100vh - 200px)' }}>
-        {/* LEFT: Members */}
-        <div className="w-[40%] shrink-0">
-          <Card className="p-5">
-            <h2 className="text-lg font-semibold mb-4 text-[var(--text-strong)]">Members</h2>
-            <div className="space-y-3">
+      <div className="flex flex-col md:flex-row gap-4" style={{ minHeight: 'calc(100vh - 200px)' }}>
+        {/* Members */}
+        <div className="w-full md:w-[40%] shrink-0">
+          <Card className="p-4">
+            <h2 className="text-base font-semibold mb-3 text-[var(--text-strong)]">Members</h2>
+            <div className="space-y-2">
               {team.members.map((m) => (
                 <div key={m.id} className="flex items-center gap-3 rounded-lg p-3 bg-[var(--bg)]">
-                  <div className="rounded-full flex items-center justify-center shrink-0 w-11 h-11 bg-[var(--border-strong)]">
+                  <div className="rounded-full flex items-center justify-center shrink-0 w-10 h-10 bg-[var(--border-strong)]">
                     <span className="text-sm font-medium text-[var(--text-strong)]">
                       {m.id.charAt(0).toUpperCase()}
                     </span>
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-sm font-medium text-[var(--text-strong)]">{m.id}</span>
                       {m.id === team.leader && (
                         <Badge>LEADER</Badge>
@@ -159,16 +159,16 @@ export default function TeamDetailPage() {
           </Card>
         </div>
 
-        {/* RIGHT */}
+        {/* Right: task board + messages */}
         <div className="flex-1 flex flex-col gap-4">
-          <Card className="p-5">
+          <Card className="p-4">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-[var(--text-strong)]">Task Board</h2>
+              <h2 className="text-base font-semibold text-[var(--text-strong)]">Task Board</h2>
               <Button variant="outline" size="sm" onClick={() => setShowTaskModal(true)}>
                 <Plus size={14} /> Send Task
               </Button>
             </div>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               {(['todo', 'doing', 'done'] as const).map((col) => (
                 <div key={col}>
                   <p className="text-xs font-medium uppercase tracking-wide mb-2 text-[var(--muted)]">
@@ -194,8 +194,8 @@ export default function TeamDetailPage() {
             </div>
           </Card>
 
-          <Card className="p-5 flex-1 flex flex-col">
-            <h2 className="text-lg font-semibold mb-3 text-[var(--text-strong)]">Team Messages</h2>
+          <Card className="p-4 flex-1 flex flex-col">
+            <h2 className="text-base font-semibold mb-3 text-[var(--text-strong)]">Team Messages</h2>
             <div className="flex-1 overflow-y-auto space-y-2 mb-4 min-h-[80px]">
               {messages.map((m, i) => (
                 <p key={i} className="text-sm text-[var(--text-strong)]">
@@ -208,7 +208,7 @@ export default function TeamDetailPage() {
               )}
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <span className="text-sm shrink-0 text-[var(--muted)]">To:</span>
               <select value={recipient} onChange={(e) => setRecipient(e.target.value)}
                 className="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg)] px-2 py-1.5 text-sm text-[var(--text-strong)] shrink-0">
@@ -219,7 +219,7 @@ export default function TeamDetailPage() {
               <Input value={msgInput} onChange={(e) => setMsgInput(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleSend()}
                 placeholder="Type a message..."
-                className="flex-1" />
+                className="flex-1 min-w-[120px]" />
               <label className="flex items-center gap-1.5 text-xs shrink-0 text-[var(--muted)]">
                 <Switch checked={steer} onCheckedChange={setSteer} />
                 Steer

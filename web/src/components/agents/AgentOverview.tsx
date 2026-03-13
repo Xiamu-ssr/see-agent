@@ -11,7 +11,7 @@ function InfoCard({ title, value, accent }: { title: string; value: string; acce
       <p className="text-[11px] font-medium uppercase tracking-wide mb-1.5 text-[var(--muted)]">
         {title}
       </p>
-      <p className={`text-sm font-medium ${accent ? 'text-[var(--accent)]' : 'text-[var(--text-strong)]'}`}>
+      <p className={`text-sm font-medium break-all ${accent ? 'text-[var(--accent)]' : 'text-[var(--text-strong)]'}`}>
         {value}
       </p>
     </Card>
@@ -24,9 +24,9 @@ export default function AgentOverview({ agent }: Props) {
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
         <InfoCard title="ID" value={agent.id} />
-        <InfoCard title="Status" value={status} accent={status === 'running' || status === 'busy'} />
+        <InfoCard title="Status" value={status === 'busy' ? 'Running' : 'Idle'} accent={status === 'running' || status === 'busy'} />
         <InfoCard title="Team" value={agent.team_name || '—'} />
         <InfoCard title="Model" value={model} />
       </div>
@@ -35,7 +35,7 @@ export default function AgentOverview({ agent }: Props) {
         <h3 className="text-xs font-medium uppercase tracking-wide mb-2 text-[var(--muted)]">
           Workspace
         </h3>
-        <Card className="p-3 text-sm font-mono text-[var(--text-strong)]">
+        <Card className="p-3 text-sm font-mono break-all text-[var(--text-strong)]">
           ~/.see-agent/agents/{agent.id}/
         </Card>
       </div>

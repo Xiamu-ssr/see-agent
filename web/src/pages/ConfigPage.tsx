@@ -40,13 +40,13 @@ export default function ConfigPage() {
   }
 
   if (!config || !schema) {
-    return <div className="text-[var(--muted)]">Loading...</div>
+    return <div className="px-3 py-3 md:px-4 md:py-4 text-[var(--muted)]">Loading...</div>
   }
 
   const properties = (schema as { properties?: Record<string, Record<string, unknown>> }).properties || {}
 
   return (
-    <div>
+    <div className="px-3 py-3 md:px-4 md:py-4">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-xl font-semibold text-[var(--text-strong)]">
           Config
@@ -65,7 +65,7 @@ export default function ConfigPage() {
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <Card className="p-5 space-y-4">
+        <Card className="p-4 space-y-4">
           {Object.entries(properties).map(([key, prop]) => (
             <ConfigField
               key={key}
@@ -81,7 +81,7 @@ export default function ConfigPage() {
           ))}
         </Card>
 
-        <Card className="p-5">
+        <Card className="p-4">
           <div className="flex items-center justify-between mb-3">
             <span className="text-sm font-medium text-[var(--text-strong)]">
               JSON
@@ -99,11 +99,11 @@ export default function ConfigPage() {
             <textarea
               value={jsonText}
               onChange={(e) => setJsonText(e.target.value)}
-              className="w-full h-[500px] text-xs rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg)] p-3 outline-none resize-none text-[var(--text-strong)] font-mono"
+              className="w-full h-[400px] md:h-[500px] text-xs rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg)] p-3 outline-none resize-none text-[var(--text-strong)] font-mono"
               spellCheck={false}
             />
           ) : (
-            <pre className="text-xs overflow-auto max-h-[500px] text-[var(--text-strong)] font-mono">
+            <pre className="text-xs overflow-auto max-h-[400px] md:max-h-[500px] text-[var(--text-strong)] font-mono">
               {jsonText}
             </pre>
           )}
@@ -136,7 +136,7 @@ function ConfigField({
         <label className="block text-xs font-medium mb-1 text-[var(--muted)]">
           {name}
         </label>
-        <pre className="text-xs p-2 rounded bg-[var(--bg)] text-[var(--text-strong)] font-mono">
+        <pre className="text-xs p-2 rounded bg-[var(--bg)] text-[var(--text-strong)] font-mono overflow-x-auto">
           {JSON.stringify(value, null, 2)}
         </pre>
       </div>

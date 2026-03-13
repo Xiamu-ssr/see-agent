@@ -19,7 +19,7 @@ function StatCard({
   color: string
 }) {
   return (
-    <Card className="p-5">
+    <Card className="p-4">
       <div className="flex items-center gap-3 mb-3">
         <div className="rounded-lg p-2" style={{ background: `${color}15` }}>
           <Icon size={18} style={{ color }} />
@@ -40,14 +40,14 @@ export default function DashboardPage() {
   const fetchDashboard = useCallback(() => getDashboard(), [])
   const { data, loading } = usePolling<DashboardResponse>(fetchDashboard, 10000)
 
-  if (loading && !data) return <div className="text-[var(--muted)]">Loading...</div>
+  if (loading && !data) return <div className="px-3 py-3 md:px-4 md:py-4 text-[var(--muted)]">Loading...</div>
   const d = data!
 
   return (
-    <div>
+    <div className="px-3 py-3 md:px-4 md:py-4">
       <h1 className="text-xl font-semibold mb-6 text-[var(--text-strong)]">Dashboard</h1>
-      
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-8">
+
+      <div className="grid gap-3 grid-cols-2 lg:grid-cols-4 mb-8">
         <StatCard icon={Bot} title="Agents" value={d.agents_in_team + d.agents_idle} details={`${d.agents_in_team} in team, ${d.agents_idle} idle`} color="#ff5c5c" />
         <StatCard icon={Users} title="Teams" value={d.teams_count} details={formatStatus(d.teams_by_status)} color="#3fb950" />
         <StatCard icon={ClipboardList} title="Tasks" value={d.total_tasks} details={formatStatus(d.tasks_by_status)} color="#d29922" />

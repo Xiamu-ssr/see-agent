@@ -43,7 +43,7 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
         `}
       >
         {/* Logo */}
-        <div className="flex flex-col items-center pt-4 pb-4">
+        <div className="flex flex-col items-center pt-4 pb-3">
           <div className="flex items-center justify-center rounded-lg w-9 h-9 bg-[var(--accent)]">
             <span className="text-white text-base font-bold">S</span>
           </div>
@@ -53,14 +53,14 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
         </div>
 
         {/* Nav items */}
-        <nav className="flex flex-col items-center gap-1 flex-1 pt-2">
+        <nav className="flex flex-col items-center gap-0.5 flex-1 pt-1">
           {navItems.map((item) => (
             <Tooltip key={item.to}>
               <TooltipTrigger asChild>
                 <NavLink
                   to={item.to}
                   onClick={onClose}
-                  className="flex flex-col items-center justify-center rounded-lg transition-all w-14 h-[52px]"
+                  className="flex flex-col items-center justify-center rounded-lg transition-all duration-150 w-14 h-11"
                   style={({ isActive }) => ({
                     background: isActive ? 'var(--accent-subtle)' : 'transparent',
                     color: isActive ? 'var(--accent)' : 'var(--muted)',
@@ -68,9 +68,9 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
                 >
                   {({ isActive }) => (
                     <>
-                      <item.icon size={18} strokeWidth={isActive ? 2 : 1.5} />
+                      <item.icon size={17} strokeWidth={isActive ? 2 : 1.5} />
                       <span
-                        className="text-[10px] mt-[3px]"
+                        className="text-[10px] mt-0.5"
                         style={{ fontWeight: isActive ? 500 : 400 }}
                       >
                         {item.label}
@@ -83,11 +83,6 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
             </Tooltip>
           ))}
         </nav>
-
-        {/* Bottom: Avatar */}
-        <div className="flex flex-col items-center gap-2 pb-4">
-          <div className="rounded-full w-7 h-7 bg-[var(--border-strong)]" />
-        </div>
       </aside>
     </TooltipProvider>
   )

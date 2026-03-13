@@ -23,7 +23,7 @@ const statusVariant: Record<string, 'success' | 'secondary' | 'destructive' | 'w
 function TeamCard({ team, onClick }: { team: TeamSummary; onClick: () => void }) {
   return (
     <Card
-      className="p-5 cursor-pointer transition-all hover:border-[var(--accent)]/30"
+      className="p-4 cursor-pointer transition-all duration-150 hover:border-[var(--accent)]/30"
       onClick={onClick}
     >
       <div className="flex items-center justify-between mb-3">
@@ -87,7 +87,7 @@ export default function TeamsPage() {
   }
 
   return (
-    <div>
+    <div className="px-3 py-3 md:px-4 md:py-4">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-xl font-semibold text-[var(--text-strong)]">
           Teams
@@ -101,7 +101,7 @@ export default function TeamsPage() {
       {loading && !teams ? (
         <div className="text-[var(--muted)]">Loading...</div>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
           {teams?.map((t) => (
             <TeamCard key={t.id} team={t} onClick={() => navigate(`/teams/${t.id}`)} />
           ))}
