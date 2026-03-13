@@ -8,6 +8,7 @@ agents and send messages to them.
 from __future__ import annotations
 
 import logging
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -66,6 +67,27 @@ class AgentSupervisor:
             agent_id, python_exe, project_root,
         )
 
+        # Build a clean environment for the agent subprocess.
+        # Remove conda/virtualenv vars that might pollute the child,
+        # and ensure .venv/bin is at the front of PATH.
+        clean_env = os.environ.copy()
+        for key in (
+            "CONDA_PREFIX", "CONDA_DEFAULT_ENV", "CONDA_PYTHON_EXE",
+            "CONDA_SHLVL", "CONDA_PROMPT_MODIFIER",
+            "VIRTUAL_ENV", "PYTHONHOME",
+        ):
+            clean_env.pop(key, None)
+        venv_bin = str(Path(python_exe).parent)
+        path_parts = clean_env.get("PATH", "").split(os.pathsep)
+        # Remove any existing conda/venv paths, put our venv first.
+        path_parts = [
+            p for p in path_parts
+            if "conda" not in p.lower() and "envs" not in p.lower()
+        ]
+        if venv_bin not in path_parts:
+            path_parts.insert(0, venv_bin)
+        clean_env["PATH"] = os.pathsep.join(path_parts)
+
         # Spawn the agent process — detach from parent session to prevent
         # uvicorn/asyncio from reaping it.
         proc = subprocess.Popen(
@@ -77,6 +99,7 @@ class AgentSupervisor:
             stderr=stderr_fh,
             cwd=str(project_root),
             start_new_session=True,
+            env=clean_env,
         )
         self._processes[agent_id] = proc
         logger.info("Started agent %s (pid=%d)", agent_id, proc.pid)
@@ -156,7 +179,6 @@ class AgentSupervisor:
         2. Send SIGUSR1 to wake the agent process (notification).
         """
         import json
-        import os
         import signal as _signal
 
         logger.info("send_to called: agent=%s running=%s", agent_id, self.is_running(agent_id))
