@@ -159,31 +159,50 @@ async def _run_worker(agent_id: str, sock_path: str) -> None:
 
     logger.info("Agent process ready, entering inbox drain loop: agent=%s", agent_id)
 
-    # ── Main loop: drain inbox → dispatch → sleep ──
+    # ── Main loop: drain inbox → batch enqueue → flush → sleep ──
     cursor = _read_cursor(agent_dir)
     heartbeat_seconds = 300  # 5 min idle heartbeat
 
-    try:
+    async def _drain_and_flush() -> None:
+        """Read all new inbox messages, enqueue, then flush."""
+        nonlocal cursor
+        messages, new_cursor = _drain_inbox(agent_dir, cursor)
+        if not messages:
+            return
+        cursor = new_cursor
+        _write_cursor(agent_dir, cursor)
+        for msg in messages:
+            runtime.enqueue(msg)
+        await runtime.flush()
+
+    # Background task: watch for SIGUSR1 and drain inbox.
+    # This runs concurrently with any active turn, so steer
+    # messages can be injected mid-turn.
+    async def _inbox_watcher() -> None:
+        """Continuously watch for wake signals and drain inbox."""
         while True:
             wake_event.clear()
+            try:
+                await asyncio.wait_for(
+                    wake_event.wait(), timeout=heartbeat_seconds,
+                )
+            except asyncio.TimeoutError:
+                logger.debug("Heartbeat: agent=%s idle", agent_id)
+            # Signal or timeout — drain inbox.
+            try:
+                await _drain_and_flush()
+            except Exception:
+                logger.exception(
+                    "Error draining inbox for agent %s", agent_id,
+                )
 
-            # Drain inbox.
-            messages, new_cursor = _drain_inbox(agent_dir, cursor)
+    try:
+        # Initial drain on startup (process any messages queued
+        # before we were alive).
+        await _drain_and_flush()
 
-            if messages:
-                cursor = new_cursor
-                _write_cursor(agent_dir, cursor)
-                for msg in messages:
-                    try:
-                        await runtime.handle_message(msg)
-                    except Exception:
-                        logger.exception("Error handling message for agent %s", agent_id)
-            else:
-                # No messages — idle wait for SIGUSR1 or heartbeat timeout.
-                try:
-                    await asyncio.wait_for(wake_event.wait(), timeout=heartbeat_seconds)
-                except asyncio.TimeoutError:
-                    logger.debug("Heartbeat: agent=%s idle", agent_id)
+        # Then run the watcher forever.
+        await _inbox_watcher()
     except Exception:
         logger.exception("FATAL: agent process %s crashed in main loop", agent_id)
     finally:
