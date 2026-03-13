@@ -6,37 +6,45 @@ import json
 import logging
 from pathlib import Path
 
-from see_agent.hand.tool import BaseTool, ToolResult
+from see_agent.hand.tool import Tool, ToolResult
 
 logger = logging.getLogger(__name__)
 
 
-class SendMessageTool(BaseTool):
+class SendMessageTool(Tool):
     """Send a message to another agent in the same team.
 
     Writes to the target agent's inbox.jsonl so the message
     is picked up by their inbox drain loop.
     """
 
-    name = "send_message"
-    description = (
-        "Send a message to a teammate agent. "
-        "Use this to coordinate, delegate tasks, or share findings."
-    )
-    parameters = {
-        "type": "object",
-        "properties": {
-            "to": {
-                "type": "string",
-                "description": "Target agent ID (must be a teammate).",
+    @property
+    def name(self) -> str:
+        return "send_message"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Send a message to a teammate agent. "
+            "Use this to coordinate, delegate tasks, or share findings."
+        )
+
+    @property
+    def parameters(self) -> dict:
+        return {
+            "type": "object",
+            "properties": {
+                "to": {
+                    "type": "string",
+                    "description": "Target agent ID (must be a teammate).",
+                },
+                "message": {
+                    "type": "string",
+                    "description": "Message content to send.",
+                },
             },
-            "message": {
-                "type": "string",
-                "description": "Message content to send.",
-            },
-        },
-        "required": ["to", "message"],
-    }
+            "required": ["to", "message"],
+        }
 
     def __init__(
         self,
