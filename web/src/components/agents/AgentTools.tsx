@@ -4,7 +4,7 @@ import {
   MousePointer2, Keyboard, ScrollText, GripVertical, Command,
   Camera, Terminal, Clock, CheckCircle, Phone, Search, PenTool,
 } from 'lucide-react'
-import Toggle from '@/components/ui/Toggle'
+import { Switch } from '@/components/ui/switch'
 
 interface Props {
   agent: AgentDetail
@@ -69,7 +69,7 @@ export default function AgentTools({ agent }: Props) {
   return (
     <div className="space-y-1">
       {saving && (
-        <div className="text-xs mb-2" style={{ color: 'var(--muted)' }}>Saving...</div>
+        <div className="text-xs mb-2 text-[var(--muted)]">Saving...</div>
       )}
       {tools.map(tool => {
         const enabled = !disabledList.includes(tool.name)
@@ -77,17 +77,16 @@ export default function AgentTools({ agent }: Props) {
         return (
           <div
             key={tool.name}
-            className="flex items-center gap-3 rounded-lg px-3 py-2 transition-colors"
-            style={{ background: 'var(--bg-deeper)' }}
+            className="flex items-center gap-3 rounded-lg px-3 py-2 transition-colors bg-[var(--bg)]"
           >
-            <Icon size={15} style={{ color: enabled ? 'var(--accent)' : 'var(--muted)', flexShrink: 0 }} />
-            <span className="text-sm font-medium" style={{ color: 'var(--text-strong)' }}>
+            <Icon size={15} className={enabled ? 'text-[var(--accent)] shrink-0' : 'text-[var(--muted)] shrink-0'} />
+            <span className="text-sm font-medium text-[var(--text-strong)]">
               {tool.name}
             </span>
-            <span className="text-xs flex-1 min-w-0 truncate" style={{ color: 'var(--muted)' }}>
+            <span className="text-xs flex-1 min-w-0 truncate text-[var(--muted)]">
               {tool.description}
             </span>
-            <Toggle enabled={enabled} onChange={() => toggle(tool.name)} />
+            <Switch checked={enabled} onCheckedChange={() => toggle(tool.name)} />
           </div>
         )
       })}

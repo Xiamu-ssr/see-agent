@@ -7,6 +7,7 @@ import {
   SlidersHorizontal,
   FileText,
 } from 'lucide-react'
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip'
 
 interface SidebarProps {
   open: boolean
@@ -24,8 +25,7 @@ const navItems = [
 
 export default function Sidebar({ open, onClose }: SidebarProps) {
   return (
-    <>
-      {/* Mobile overlay */}
+    <TooltipProvider delayDuration={300}>
       {open && (
         <div
           className="fixed inset-0 z-40 bg-black/50 lg:hidden"
@@ -36,36 +36,18 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
       <aside
         className={`
           fixed top-0 left-0 z-50 h-screen w-[72px]
-          border-r flex flex-col items-center
-          transition-transform duration-200
+          border-r border-[var(--border)] flex flex-col items-center
+          bg-[var(--bg)] transition-transform duration-200
           lg:translate-x-0
           ${open ? 'translate-x-0' : '-translate-x-full'}
         `}
-        style={{
-          background: '#0d1117',
-          borderColor: 'var(--border)',
-        }}
       >
         {/* Logo */}
         <div className="flex flex-col items-center pt-4 pb-4">
-          <div
-            className="flex items-center justify-center rounded-lg"
-            style={{
-              width: 36,
-              height: 36,
-              background: '#ff5c5c',
-            }}
-          >
+          <div className="flex items-center justify-center rounded-lg w-9 h-9 bg-[var(--accent)]">
             <span className="text-white text-base font-bold">S</span>
           </div>
-          <span
-            className="mt-1"
-            style={{
-              fontSize: 9,
-              color: '#7d8590',
-              letterSpacing: '0.02em',
-            }}
-          >
+          <span className="mt-1 text-[9px] text-[var(--muted)] tracking-[0.02em]">
             see-agent
           </span>
         </div>
@@ -73,48 +55,40 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
         {/* Nav items */}
         <nav className="flex flex-col items-center gap-1 flex-1 pt-2">
           {navItems.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              onClick={onClose}
-              className="flex flex-col items-center justify-center rounded-lg transition-all"
-              style={({ isActive }) => ({
-                width: 56,
-                height: 52,
-                background: isActive ? 'rgba(255, 92, 92, 0.12)' : 'transparent',
-                color: isActive ? '#ff5c5c' : '#7d8590',
-              })}
-            >
-              {({ isActive }) => (
-                <>
-                  <item.icon size={18} strokeWidth={isActive ? 2 : 1.5} />
-                  <span
-                    style={{
-                      fontSize: 10,
-                      marginTop: 3,
-                      fontWeight: isActive ? 500 : 400,
-                    }}
-                  >
-                    {item.label}
-                  </span>
-                </>
-              )}
-            </NavLink>
+            <Tooltip key={item.to}>
+              <TooltipTrigger asChild>
+                <NavLink
+                  to={item.to}
+                  onClick={onClose}
+                  className="flex flex-col items-center justify-center rounded-lg transition-all w-14 h-[52px]"
+                  style={({ isActive }) => ({
+                    background: isActive ? 'var(--accent-subtle)' : 'transparent',
+                    color: isActive ? 'var(--accent)' : 'var(--muted)',
+                  })}
+                >
+                  {({ isActive }) => (
+                    <>
+                      <item.icon size={18} strokeWidth={isActive ? 2 : 1.5} />
+                      <span
+                        className="text-[10px] mt-[3px]"
+                        style={{ fontWeight: isActive ? 500 : 400 }}
+                      >
+                        {item.label}
+                      </span>
+                    </>
+                  )}
+                </NavLink>
+              </TooltipTrigger>
+              <TooltipContent side="right">{item.label}</TooltipContent>
+            </Tooltip>
           ))}
         </nav>
 
         {/* Bottom: Avatar */}
         <div className="flex flex-col items-center gap-2 pb-4">
-          <div
-            className="rounded-full"
-            style={{
-              width: 28,
-              height: 28,
-              background: '#30363d',
-            }}
-          />
+          <div className="rounded-full w-7 h-7 bg-[var(--border-strong)]" />
         </div>
       </aside>
-    </>
+    </TooltipProvider>
   )
 }

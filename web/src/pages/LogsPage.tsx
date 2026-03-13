@@ -1,14 +1,17 @@
 import { useState, useEffect, useCallback } from 'react'
 import { getLogs } from '@/api/logs'
 import type { LogEntry } from '@/types'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card } from '@/components/ui/card'
 
-const levelColors: Record<string, string> = {
-  INFO: '#3fb950',
-  DEBUG: '#7d8590',
-  WARNING: '#d29922',
-  WARN: '#d29922',
-  ERROR: '#f85149',
-  CRITICAL: '#f85149',
+const levelVariant: Record<string, 'success' | 'secondary' | 'warning' | 'destructive'> = {
+  INFO: 'success',
+  DEBUG: 'secondary',
+  WARNING: 'warning',
+  WARN: 'warning',
+  ERROR: 'destructive',
+  CRITICAL: 'destructive',
 }
 
 export default function LogsPage() {
@@ -31,69 +34,61 @@ export default function LogsPage() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-xl font-semibold" style={{ color: '#e6edf3' }}>Logs</h1>
+        <h1 className="text-xl font-semibold text-[var(--text-strong)]">Logs</h1>
         <div className="flex items-center gap-2">
           <select
             value={filter}
             onChange={e => setFilter(e.target.value)}
-            className="rounded-md border px-2.5 py-1.5 text-xs"
-            style={{ background: '#0d1117', borderColor: '#30363d', color: '#e6edf3' }}
+            className="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg)] px-2.5 py-1.5 text-xs text-[var(--text-strong)]"
           >
             {['ALL', 'DEBUG', 'INFO', 'WARNING', 'ERROR'].map(l => (
               <option key={l} value={l}>{l}</option>
             ))}
           </select>
-          <button
-            onClick={refresh}
-            className="rounded-md border px-3 py-1.5 text-xs"
-            style={{ borderColor: '#30363d', color: '#7d8590' }}
-          >
+          <Button variant="outline" size="sm" onClick={refresh}>
             Refresh
-          </button>
+          </Button>
         </div>
       </div>
 
       {loading ? (
-        <div style={{ color: '#7d8590' }}>Loading...</div>
+        <div className="text-[var(--muted)]">Loading...</div>
       ) : (
-        <div className="rounded-lg border overflow-hidden" style={{ borderColor: '#30363d' }}>
-          <table className="w-full text-xs" style={{ fontFamily: 'var(--mono, monospace)' }}>
+        <Card className="overflow-hidden">
+          <table className="w-full text-xs font-mono">
             <thead>
-              <tr style={{ background: '#161b22' }}>
-                <th className="text-left px-3 py-2.5 font-medium" style={{ color: '#7d8590', width: 180 }}>Timestamp</th>
-                <th className="text-left px-3 py-2.5 font-medium" style={{ color: '#7d8590', width: 70 }}>Level</th>
-                <th className="text-left px-3 py-2.5 font-medium" style={{ color: '#7d8590', width: 120 }}>Source</th>
-                <th className="text-left px-3 py-2.5 font-medium" style={{ color: '#7d8590' }}>Message</th>
+              <tr className="bg-[var(--bg-elevated)]">
+                <th className="text-left px-3 py-2.5 font-medium text-[var(--muted)]" style={{ width: 180 }}>Timestamp</th>
+                <th className="text-left px-3 py-2.5 font-medium text-[var(--muted)]" style={{ width: 70 }}>Level</th>
+                <th className="text-left px-3 py-2.5 font-medium text-[var(--muted)]" style={{ width: 120 }}>Source</th>
+                <th className="text-left px-3 py-2.5 font-medium text-[var(--muted)]">Message</th>
               </tr>
             </thead>
             <tbody>
               {filtered.map((log, i) => (
                 <tr
                   key={i}
-                  className="border-t"
-                  style={{
-                    borderColor: '#21262d',
-                    background: i % 2 === 0 ? '#0d1117' : '#161b22',
-                  }}
+                  className="border-t border-[var(--border)]"
+                  style={{ background: i % 2 === 0 ? 'var(--bg)' : 'var(--bg-elevated)' }}
                 >
-                  <td className="px-3 py-2" style={{ color: '#7d8590' }}>{log.time}</td>
+                  <td className="px-3 py-2 text-[var(--muted)]">{log.time}</td>
                   <td className="px-3 py-2">
-                    <span style={{ color: levelColors[log.level] || '#7d8590' }}>{log.level}</span>
+                    <Badge variant={levelVariant[log.level] || 'secondary'}>{log.level}</Badge>
                   </td>
-                  <td className="px-3 py-2" style={{ color: '#e6edf3' }}>{log.logger || 'server'}</td>
-                  <td className="px-3 py-2" style={{ color: '#e6edf3' }}>{log.message}</td>
+                  <td className="px-3 py-2 text-[var(--text-strong)]">{log.logger || 'server'}</td>
+                  <td className="px-3 py-2 text-[var(--text-strong)]">{log.message}</td>
                 </tr>
               ))}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="px-3 py-8 text-center" style={{ color: '#7d8590' }}>
+                  <td colSpan={4} className="px-3 py-8 text-center text-[var(--muted)]">
                     No logs found.
                   </td>
                 </tr>
               )}
             </tbody>
           </table>
-        </div>
+        </Card>
       )}
     </div>
   )

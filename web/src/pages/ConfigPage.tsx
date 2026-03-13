@@ -1,6 +1,10 @@
 import { useState, useEffect } from 'react'
 import { getConfig, updateConfig, getSchema } from '@/api/config'
 import { Save, Eye, EyeOff } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Card } from '@/components/ui/card'
+import { Switch } from '@/components/ui/switch'
 
 export default function ConfigPage() {
   const [config, setConfig] = useState<Record<string, unknown> | null>(null)
@@ -25,7 +29,6 @@ export default function ConfigPage() {
       const toSave = editing ? JSON.parse(jsonText) : config
       await updateConfig(toSave)
       setMessage('Saved')
-      // Refresh
       const fresh = await getConfig()
       setConfig(fresh)
       setJsonText(JSON.stringify(fresh, null, 2))
@@ -37,7 +40,7 @@ export default function ConfigPage() {
   }
 
   if (!config || !schema) {
-    return <div style={{ color: '#7d8590' }}>Loading...</div>
+    return <div className="text-[var(--muted)]">Loading...</div>
   }
 
   const properties = (schema as { properties?: Record<string, Record<string, unknown>> }).properties || {}
@@ -45,36 +48,24 @@ export default function ConfigPage() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-xl font-semibold" style={{ color: '#e6edf3' }}>
+        <h1 className="text-xl font-semibold text-[var(--text-strong)]">
           Config
         </h1>
         <div className="flex items-center gap-2">
           {message && (
-            <span
-              className="text-xs"
-              style={{ color: message.startsWith('Error') ? '#f85149' : '#3fb950' }}
-            >
+            <span className={`text-xs ${message.startsWith('Error') ? 'text-[var(--danger)]' : 'text-[var(--ok)]'}`}>
               {message}
             </span>
           )}
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="flex items-center gap-1.5 rounded-[var(--radius)] px-3 py-1.5 text-sm font-medium text-white"
-            style={{ background: '#ff5c5c', opacity: saving ? 0.6 : 1 }}
-          >
+          <Button onClick={handleSave} disabled={saving} size="sm">
             <Save size={14} />
             Save
-          </button>
+          </Button>
         </div>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        {/* Left: Form */}
-        <div
-          className="rounded-[var(--radius-lg)] border p-5 space-y-4"
-          style={{ background: '#161b22', borderColor: '#30363d' }}
-        >
+        <Card className="p-5 space-y-4">
           {Object.entries(properties).map(([key, prop]) => (
             <ConfigField
               key={key}
@@ -88,47 +79,35 @@ export default function ConfigPage() {
               }}
             />
           ))}
-        </div>
+        </Card>
 
-        {/* Right: JSON preview */}
-        <div
-          className="rounded-[var(--radius-lg)] border p-5"
-          style={{ background: '#161b22', borderColor: '#30363d' }}
-        >
+        <Card className="p-5">
           <div className="flex items-center justify-between mb-3">
-            <span className="text-sm font-medium" style={{ color: '#e6edf3' }}>
+            <span className="text-sm font-medium text-[var(--text-strong)]">
               JSON
             </span>
-            <button
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={() => setEditing(!editing)}
-              className="flex items-center gap-1 text-xs rounded px-2 py-1 hover:bg-[#21262d]"
-              style={{ color: '#7d8590' }}
             >
               {editing ? <EyeOff size={12} /> : <Eye size={12} />}
               {editing ? 'Read-only' : 'Edit'}
-            </button>
+            </Button>
           </div>
           {editing ? (
             <textarea
               value={jsonText}
               onChange={(e) => setJsonText(e.target.value)}
-              className="w-full h-[500px] text-xs rounded-[var(--radius-sm)] border p-3 outline-none resize-none"
-              style={{
-                background: '#0d1117',
-                borderColor: '#30363d',
-                color: '#e6edf3',
-                fontFamily: 'var(--mono)',
-              }}
+              className="w-full h-[500px] text-xs rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg)] p-3 outline-none resize-none text-[var(--text-strong)] font-mono"
+              spellCheck={false}
             />
           ) : (
-            <pre
-              className="text-xs overflow-auto max-h-[500px]"
-              style={{ color: '#e6edf3', fontFamily: 'var(--mono)' }}
-            >
+            <pre className="text-xs overflow-auto max-h-[500px] text-[var(--text-strong)] font-mono">
               {jsonText}
             </pre>
           )}
-        </div>
+        </Card>
       </div>
     </div>
   )
@@ -151,14 +130,13 @@ function ConfigField({
   const isNumber = type === 'integer' || type === 'number'
   const enumValues = prop.enum as string[] | undefined
 
-  // For nested objects, just show a JSON preview
   if (isObject) {
     return (
       <div>
-        <label className="block text-xs font-medium mb-1" style={{ color: '#7d8590' }}>
+        <label className="block text-xs font-medium mb-1 text-[var(--muted)]">
           {name}
         </label>
-        <pre className="text-xs p-2 rounded" style={{ background: '#0d1117', color: '#e6edf3', fontFamily: 'var(--mono)' }}>
+        <pre className="text-xs p-2 rounded bg-[var(--bg)] text-[var(--text-strong)] font-mono">
           {JSON.stringify(value, null, 2)}
         </pre>
       </div>
@@ -168,19 +146,10 @@ function ConfigField({
   if (isBoolean) {
     return (
       <div className="flex items-center justify-between">
-        <label className="text-xs font-medium" style={{ color: '#7d8590' }}>
+        <label className="text-xs font-medium text-[var(--muted)]">
           {name}
         </label>
-        <button
-          onClick={() => onChange(!value)}
-          className="relative w-9 h-5 rounded-full transition-colors"
-          style={{ background: value ? '#ff5c5c' : 'var(--border-strong)' }}
-        >
-          <span
-            className="absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform"
-            style={{ left: value ? '18px' : '2px' }}
-          />
-        </button>
+        <Switch checked={!!value} onCheckedChange={() => onChange(!value)} />
       </div>
     )
   }
@@ -188,14 +157,13 @@ function ConfigField({
   if (enumValues) {
     return (
       <div>
-        <label className="block text-xs font-medium mb-1" style={{ color: '#7d8590' }}>
+        <label className="block text-xs font-medium mb-1 text-[var(--muted)]">
           {name}
         </label>
         <select
           value={String(value || '')}
           onChange={(e) => onChange(e.target.value)}
-          className="w-full rounded-[var(--radius-sm)] border px-3 py-1.5 text-sm outline-none"
-          style={{ background: '#0d1117', borderColor: '#30363d', color: '#e6edf3' }}
+          className="w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg)] px-3 py-1.5 text-sm text-[var(--text-strong)] outline-none"
         >
           {enumValues.map((v) => (
             <option key={v} value={v}>
@@ -209,15 +177,13 @@ function ConfigField({
 
   return (
     <div>
-      <label className="block text-xs font-medium mb-1" style={{ color: '#7d8590' }}>
+      <label className="block text-xs font-medium mb-1 text-[var(--muted)]">
         {name}
       </label>
-      <input
+      <Input
         type={isNumber ? 'number' : 'text'}
         value={value == null ? '' : String(value)}
         onChange={(e) => onChange(isNumber ? Number(e.target.value) : e.target.value)}
-        className="w-full rounded-[var(--radius-sm)] border px-3 py-1.5 text-sm outline-none"
-        style={{ background: '#0d1117', borderColor: '#30363d', color: '#e6edf3' }}
       />
     </div>
   )

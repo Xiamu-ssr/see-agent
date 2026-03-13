@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import type { AgentDetail } from '@/types'
 import { Sparkles } from 'lucide-react'
-import Toggle from '@/components/ui/Toggle'
+import { Switch } from '@/components/ui/switch'
 
 interface Props {
   agent: AgentDetail
@@ -50,7 +50,7 @@ export default function AgentSkills({ agent }: Props) {
 
   if (skills.length === 0) {
     return (
-      <div className="text-sm" style={{ color: 'var(--muted)' }}>
+      <div className="text-sm text-[var(--muted)]">
         No skills installed. Install skills from the Skills page.
       </div>
     )
@@ -59,24 +59,23 @@ export default function AgentSkills({ agent }: Props) {
   return (
     <div className="space-y-1">
       {saving && (
-        <div className="text-xs mb-2" style={{ color: 'var(--muted)' }}>Saving...</div>
+        <div className="text-xs mb-2 text-[var(--muted)]">Saving...</div>
       )}
       {skills.map(skill => {
         const enabled = !disabledList.includes(skill.name)
         return (
           <div
             key={skill.name}
-            className="flex items-center gap-3 rounded-lg px-3 py-2 transition-colors"
-            style={{ background: 'var(--bg-deeper)' }}
+            className="flex items-center gap-3 rounded-lg px-3 py-2 transition-colors bg-[var(--bg)]"
           >
-            <Sparkles size={15} style={{ color: enabled ? 'var(--accent)' : 'var(--muted)', flexShrink: 0 }} />
-            <span className="text-sm font-medium" style={{ color: 'var(--text-strong)' }}>
+            <Sparkles size={15} className={enabled ? 'text-[var(--accent)] shrink-0' : 'text-[var(--muted)] shrink-0'} />
+            <span className="text-sm font-medium text-[var(--text-strong)]">
               {skill.name}
             </span>
-            <span className="text-xs flex-1 min-w-0 truncate" style={{ color: 'var(--muted)' }}>
+            <span className="text-xs flex-1 min-w-0 truncate text-[var(--muted)]">
               {skill.description}
             </span>
-            <Toggle enabled={enabled} onChange={() => toggle(skill.name)} />
+            <Switch checked={enabled} onCheckedChange={() => toggle(skill.name)} />
           </div>
         )
       })}

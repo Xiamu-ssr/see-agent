@@ -5,46 +5,46 @@ import { listTeams, createTeam } from '@/api/teams'
 import { listAgents } from '@/api/agents'
 import type { TeamSummary, AgentSummary } from '@/types'
 import { Plus, Users } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Badge } from '@/components/ui/badge'
+import { Card } from '@/components/ui/card'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 
-const statusColors: Record<string, string> = {
-  created: '#7d8590',
-  running: '#3fb950',
-  completed: '#7d8590',
-  failed: '#f85149',
-  stopped: '#d29922',
-  idle: '#7d8590',
+const statusVariant: Record<string, 'success' | 'secondary' | 'destructive' | 'warning'> = {
+  running: 'success',
+  completed: 'secondary',
+  failed: 'destructive',
+  stopped: 'warning',
+  created: 'secondary',
+  idle: 'secondary',
 }
 
 function TeamCard({ team, onClick }: { team: TeamSummary; onClick: () => void }) {
-  const color = statusColors[team.status] || '#7d8590'
   return (
-    <button
+    <Card
+      className="p-5 cursor-pointer transition-all hover:border-[var(--accent)]/30"
       onClick={onClick}
-      className="w-full text-left rounded-lg border p-5 transition-all hover:border-[#ff5c5c]/30"
-      style={{ background: '#161b22', borderColor: '#30363d' }}
     >
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-semibold" style={{ color: '#e6edf3' }}>
+        <h3 className="text-sm font-semibold text-[var(--text-strong)]">
           {team.name}
         </h3>
-        <span
-          className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium"
-          style={{ color, background: `${color}15` }}
-        >
-          <span className="h-1.5 w-1.5 rounded-full" style={{ background: color }} />
+        <Badge variant={statusVariant[team.status] || 'secondary'}>
+          <span className="h-1.5 w-1.5 rounded-full bg-current" />
           {team.status}
-        </span>
+        </Badge>
       </div>
-      <div className="flex items-center gap-1.5 text-xs" style={{ color: '#7d8590' }}>
+      <div className="flex items-center gap-1.5 text-xs text-[var(--muted)]">
         <Users size={12} />
         {team.members.length} members
       </div>
       {(team as any).leader && (
-        <div className="text-xs mt-1" style={{ color: '#7d8590' }}>
+        <div className="text-xs mt-1 text-[var(--muted)]">
           Leader: {(team as any).leader}
         </div>
       )}
-    </button>
+    </Card>
   )
 }
 
@@ -89,135 +89,99 @@ export default function TeamsPage() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-xl font-semibold" style={{ color: '#e6edf3' }}>
+        <h1 className="text-xl font-semibold text-[var(--text-strong)]">
           Teams
         </h1>
-        <button
-          onClick={() => setShowCreate(true)}
-          className="flex items-center gap-1.5 rounded-[var(--radius)] px-3 py-1.5 text-sm font-medium text-white transition-colors"
-          style={{ background: '#ff5c5c' }}
-        >
+        <Button onClick={() => setShowCreate(true)} size="sm">
           <Plus size={14} />
           New Team
-        </button>
+        </Button>
       </div>
 
       {loading && !teams ? (
-        <div style={{ color: '#7d8590' }}>Loading...</div>
+        <div className="text-[var(--muted)]">Loading...</div>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {teams?.map((t) => (
             <TeamCard key={t.id} team={t} onClick={() => navigate(`/teams/${t.id}`)} />
           ))}
           {teams?.length === 0 && (
-            <p className="col-span-full text-sm" style={{ color: '#7d8590' }}>
+            <p className="col-span-full text-sm text-[var(--muted)]">
               No teams yet. Create one to get started.
             </p>
           )}
         </div>
       )}
 
-      {/* Create modal */}
-      {showCreate && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div
-            className="w-full max-w-md rounded-[var(--radius-lg)] border p-6"
-            style={{ background: '#161b22', borderColor: '#30363d' }}
-          >
-            <h2 className="text-base font-semibold mb-4" style={{ color: '#e6edf3' }}>
-              Create Team
-            </h2>
-            <div className="flex flex-col gap-3">
-              <input
-                placeholder="Team name"
-                value={teamName}
-                onChange={(e) => setTeamName(e.target.value)}
-                className="rounded-[var(--radius-sm)] border px-3 py-2 text-sm outline-none"
-                style={{
-                  background: '#0d1117',
-                  borderColor: '#30363d',
-                  color: '#e6edf3',
-                }}
-              />
+      <Dialog open={showCreate} onOpenChange={setShowCreate}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create Team</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-3">
+            <Input
+              placeholder="Team name"
+              value={teamName}
+              onChange={(e) => setTeamName(e.target.value)}
+            />
 
-              {/* Members multi-select */}
-              <div>
-                <label className="text-xs font-medium" style={{ color: '#7d8590' }}>
-                  Members
-                </label>
-                <div
-                  className="mt-1 max-h-40 overflow-y-auto rounded border p-2"
-                  style={{ borderColor: '#30363d', background: '#0d1117' }}
-                >
-                  {availableAgents.map((a) => (
-                    <label
-                      key={a.id}
-                      className="flex items-center gap-2 py-1 text-sm cursor-pointer"
-                      style={{ color: '#e6edf3' }}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selectedMembers.includes(a.id)}
-                        onChange={() => toggleMember(a.id)}
-                        style={{ accentColor: '#ff5c5c' }}
-                      />
-                      {a.id}
-                    </label>
-                  ))}
-                  {availableAgents.length === 0 && (
-                    <p className="text-xs py-2" style={{ color: '#7d8590' }}>
-                      No agents available. Create agents first.
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              {/* Leader dropdown */}
-              {selectedMembers.length > 0 && (
-                <div>
-                  <label className="text-xs font-medium" style={{ color: '#7d8590' }}>
-                    Leader
-                  </label>
-                  <select
-                    value={leader}
-                    onChange={(e) => setLeader(e.target.value)}
-                    className="mt-1 w-full rounded border px-3 py-2 text-sm"
-                    style={{
-                      background: '#0d1117',
-                      borderColor: '#30363d',
-                      color: '#e6edf3',
-                    }}
+            <div>
+              <label className="text-xs font-medium text-[var(--muted)]">
+                Members
+              </label>
+              <div className="mt-1 max-h-40 overflow-y-auto rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg)] p-2">
+                {availableAgents.map((a) => (
+                  <label
+                    key={a.id}
+                    className="flex items-center gap-2 py-1 text-sm cursor-pointer text-[var(--text-strong)]"
                   >
-                    <option value="">Select leader...</option>
-                    {selectedMembers.map((id) => (
-                      <option key={id} value={id}>
-                        {id}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
-              <div className="flex gap-2 justify-end mt-2">
-                <button
-                  onClick={() => setShowCreate(false)}
-                  className="rounded-[var(--radius-sm)] px-3 py-1.5 text-sm"
-                  style={{ color: '#7d8590' }}
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleCreate}
-                  className="rounded-[var(--radius-sm)] px-3 py-1.5 text-sm font-medium text-white"
-                  style={{ background: '#ff5c5c' }}
-                >
-                  Create
-                </button>
+                    <input
+                      type="checkbox"
+                      checked={selectedMembers.includes(a.id)}
+                      onChange={() => toggleMember(a.id)}
+                      className="accent-[var(--accent)]"
+                    />
+                    {a.id}
+                  </label>
+                ))}
+                {availableAgents.length === 0 && (
+                  <p className="text-xs py-2 text-[var(--muted)]">
+                    No agents available. Create agents first.
+                  </p>
+                )}
               </div>
             </div>
+
+            {selectedMembers.length > 0 && (
+              <div>
+                <label className="text-xs font-medium text-[var(--muted)]">
+                  Leader
+                </label>
+                <select
+                  value={leader}
+                  onChange={(e) => setLeader(e.target.value)}
+                  className="mt-1 w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg)] px-3 py-2 text-sm text-[var(--text-strong)]"
+                >
+                  <option value="">Select leader...</option>
+                  {selectedMembers.map((id) => (
+                    <option key={id} value={id}>
+                      {id}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
-        </div>
-      )}
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setShowCreate(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleCreate}>
+              Create
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

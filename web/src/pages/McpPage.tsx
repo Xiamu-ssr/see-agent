@@ -3,6 +3,10 @@ import { getConfig } from '@/api/config'
 import { installMcp, deleteMcp } from '@/api/mcp'
 import type { InstallMcpRequest } from '@/types'
 import { Plug, Plus, Trash2 } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Card } from '@/components/ui/card'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 
 interface McpServer {
   name: string
@@ -39,9 +43,7 @@ export default function McpPage() {
       .finally(() => setLoading(false))
   }
 
-  useEffect(() => {
-    refresh()
-  }, [])
+  useEffect(() => { refresh() }, [])
 
   const handleInstall = async () => {
     if (!form.name.trim()) return
@@ -86,7 +88,6 @@ export default function McpPage() {
     }
   }
 
-  // Auto-infer name from package
   const handlePackageChange = (pkg: string) => {
     setForm((prev) => {
       const name = prev.name || pkg.split('/').pop()?.replace(/^@/, '') || ''
@@ -94,253 +95,183 @@ export default function McpPage() {
     })
   }
 
-  if (loading) return <div style={{ color: '#7d8590' }}>Loading...</div>
+  if (loading) return <div className="text-[var(--muted)]">Loading...</div>
 
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-xl font-semibold" style={{ color: '#e6edf3' }}>
+        <h1 className="text-xl font-semibold text-[var(--text-strong)]">
           MCP Servers
         </h1>
-        <button
-          onClick={() => { setShowInstall(true); setInstallMsg('') }}
-          className="flex items-center gap-1.5 rounded-[var(--radius)] px-3 py-1.5 text-sm font-medium text-white"
-          style={{ background: '#ff5c5c' }}
-        >
+        <Button onClick={() => { setShowInstall(true); setInstallMsg('') }} size="sm">
           <Plus size={14} />
           Add MCP Server
-        </button>
+        </Button>
       </div>
 
-      <div
-        className="overflow-hidden rounded-[var(--radius-lg)] border"
-        style={{ borderColor: '#30363d' }}
-      >
+      <Card className="overflow-hidden">
         <table className="w-full text-sm">
           <thead>
-            <tr style={{ background: '#161b22' }}>
-              <th className="text-left px-4 py-2.5 font-medium" style={{ color: '#7d8590' }}>Name</th>
-              <th className="text-left px-4 py-2.5 font-medium" style={{ color: '#7d8590' }}>Type</th>
-              <th className="text-left px-4 py-2.5 font-medium" style={{ color: '#7d8590' }}>Command</th>
-              <th className="text-right px-4 py-2.5 font-medium" style={{ color: '#7d8590' }}>Actions</th>
+            <tr className="bg-[var(--bg-elevated)]">
+              <th className="text-left px-4 py-2.5 font-medium text-[var(--muted)]">Name</th>
+              <th className="text-left px-4 py-2.5 font-medium text-[var(--muted)]">Type</th>
+              <th className="text-left px-4 py-2.5 font-medium text-[var(--muted)]">Command</th>
+              <th className="text-right px-4 py-2.5 font-medium text-[var(--muted)]">Actions</th>
             </tr>
           </thead>
           <tbody>
             {servers.map((s) => (
-              <tr
-                key={s.name}
-                className="border-t hover:bg-[#21262d]"
-                style={{ borderColor: '#30363d' }}
-              >
+              <tr key={s.name} className="border-t border-[var(--border)] hover:bg-[var(--bg-hover)]">
                 <td className="px-4 py-2.5">
                   <div className="flex items-center gap-2">
-                    <Plug size={14} style={{ color: 'var(--accent-2)' }} />
-                    <span style={{ color: '#e6edf3' }}>{s.name}</span>
+                    <Plug size={14} className="text-[var(--accent-2)]" />
+                    <span className="text-[var(--text-strong)]">{s.name}</span>
                   </div>
                 </td>
-                <td className="px-4 py-2.5" style={{ color: '#7d8590' }}>{s.type}</td>
-                <td className="px-4 py-2.5" style={{ color: '#e6edf3', fontFamily: 'var(--mono)' }}>
+                <td className="px-4 py-2.5 text-[var(--muted)]">{s.type}</td>
+                <td className="px-4 py-2.5 text-[var(--text-strong)] font-mono">
                   {s.command} {s.args?.join(' ')}
                 </td>
                 <td className="px-4 py-2.5 text-right">
-                  <button
-                    onClick={() => handleDelete(s.name)}
-                    className="text-xs p-1.5 rounded hover:bg-[#21262d]"
-                    style={{ color: '#f85149' }}
-                  >
+                  <Button variant="ghost" size="icon" onClick={() => handleDelete(s.name)} className="text-[var(--danger)]">
                     <Trash2 size={14} />
-                  </button>
+                  </Button>
                 </td>
               </tr>
             ))}
             {servers.length === 0 && (
               <tr>
-                <td colSpan={4} className="px-4 py-8 text-center" style={{ color: '#7d8590' }}>
+                <td colSpan={4} className="px-4 py-8 text-center text-[var(--muted)]">
                   No MCP servers configured.
                 </td>
               </tr>
             )}
           </tbody>
         </table>
-      </div>
+      </Card>
 
-      {/* Install modal */}
-      {showInstall && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div
-            className="w-full max-w-lg rounded-[var(--radius-lg)] border p-6"
-            style={{ background: '#161b22', borderColor: '#30363d' }}
-          >
-            <h2 className="text-base font-semibold mb-4" style={{ color: '#e6edf3' }}>
-              Add MCP Server
-            </h2>
+      <Dialog open={showInstall} onOpenChange={setShowInstall}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Add MCP Server</DialogTitle>
+          </DialogHeader>
 
-            {/* Type tabs */}
-            <div className="flex gap-1 mb-4">
-              {(['npm', 'pip', 'manual'] as const).map((t) => (
-                <button
-                  key={t}
-                  onClick={() => setInstallType(t)}
-                  className="px-3 py-1.5 text-sm rounded-[var(--radius-sm)] capitalize"
-                  style={{
-                    background: installType === t ? 'rgba(255,92,92,0.12)' : 'transparent',
-                    color: installType === t ? '#ff5c5c' : '#7d8590',
-                  }}
-                >
-                  {t === 'npm' ? 'npm Package' : t === 'pip' ? 'pip Package' : 'Manual'}
-                </button>
-              ))}
-            </div>
+          <div className="flex gap-1 mb-4">
+            {(['npm', 'pip', 'manual'] as const).map((t) => (
+              <Button
+                key={t}
+                variant={installType === t ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setInstallType(t)}
+                className="capitalize"
+              >
+                {t === 'npm' ? 'npm Package' : t === 'pip' ? 'pip Package' : 'Manual'}
+              </Button>
+            ))}
+          </div>
 
-            <div className="space-y-3">
-              {(installType === 'npm' || installType === 'pip') && (
-                <>
+          <div className="space-y-3">
+            {(installType === 'npm' || installType === 'pip') && (
+              <>
+                <div>
+                  <label className="block text-xs font-medium mb-1 text-[var(--muted)]">Package name</label>
                   <Input
-                    label="Package name"
                     placeholder={installType === 'npm' ? '@modelcontextprotocol/server-fs' : 'mcp-server-sqlite'}
                     value={form.package}
-                    onChange={handlePackageChange}
+                    onChange={(e) => handlePackageChange(e.target.value)}
                   />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium mb-1 text-[var(--muted)]">Parameters</label>
                   <Input
-                    label="Parameters"
                     placeholder={installType === 'npm' ? '/Users/me/Documents' : '--db /path/to/db.sqlite'}
                     value={form.params}
-                    onChange={(v) => setForm({ ...form, params: v })}
+                    onChange={(e) => setForm({ ...form, params: e.target.value })}
                   />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium mb-1 text-[var(--muted)]">Server name</label>
                   <Input
-                    label="Server name"
                     placeholder="filesystem"
                     value={form.name}
-                    onChange={(v) => setForm({ ...form, name: v })}
+                    onChange={(e) => setForm({ ...form, name: e.target.value })}
                   />
-                </>
-              )}
+                </div>
+              </>
+            )}
 
-              {installType === 'manual' && (
-                <>
-                  <Input
-                    label="Server name"
-                    placeholder="my-server"
-                    value={form.name}
-                    onChange={(v) => setForm({ ...form, name: v })}
-                  />
-                  <Input
-                    label="Command"
-                    placeholder="node"
-                    value={form.command}
-                    onChange={(v) => setForm({ ...form, command: v })}
-                  />
-                  <Input
-                    label="Arguments (space-separated)"
-                    placeholder="server.js --port 3000"
-                    value={form.args}
-                    onChange={(v) => setForm({ ...form, args: v })}
-                  />
-                  <div>
-                    <label className="block text-xs font-medium mb-1" style={{ color: '#7d8590' }}>
-                      Environment Variables
-                    </label>
-                    {envRows.map((row, i) => (
-                      <div key={i} className="flex gap-2 mb-1">
-                        <input
-                          placeholder="KEY"
-                          value={row.key}
-                          onChange={(e) => {
-                            const next = [...envRows]
-                            next[i] = { ...row, key: e.target.value }
-                            setEnvRows(next)
-                          }}
-                          className="flex-1 rounded-[var(--radius-sm)] border px-2 py-1 text-xs outline-none"
-                          style={{ background: '#0d1117', borderColor: '#30363d', color: '#e6edf3' }}
-                        />
-                        <input
-                          placeholder="VALUE"
-                          value={row.value}
-                          onChange={(e) => {
-                            const next = [...envRows]
-                            next[i] = { ...row, value: e.target.value }
-                            setEnvRows(next)
-                          }}
-                          className="flex-1 rounded-[var(--radius-sm)] border px-2 py-1 text-xs outline-none"
-                          style={{ background: '#0d1117', borderColor: '#30363d', color: '#e6edf3' }}
-                        />
-                        <button
-                          onClick={() => setEnvRows(envRows.filter((_, j) => j !== i))}
-                          className="text-xs px-1"
-                          style={{ color: '#f85149' }}
-                        >
-                          x
-                        </button>
-                      </div>
-                    ))}
-                    <button
-                      onClick={() => setEnvRows([...envRows, { key: '', value: '' }])}
-                      className="text-xs mt-1"
-                      style={{ color: '#ff5c5c' }}
-                    >
-                      + Add variable
-                    </button>
-                  </div>
-                </>
-              )}
+            {installType === 'manual' && (
+              <>
+                <div>
+                  <label className="block text-xs font-medium mb-1 text-[var(--muted)]">Server name</label>
+                  <Input placeholder="my-server" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium mb-1 text-[var(--muted)]">Command</label>
+                  <Input placeholder="node" value={form.command} onChange={(e) => setForm({ ...form, command: e.target.value })} />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium mb-1 text-[var(--muted)]">Arguments (space-separated)</label>
+                  <Input placeholder="server.js --port 3000" value={form.args} onChange={(e) => setForm({ ...form, args: e.target.value })} />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium mb-1 text-[var(--muted)]">
+                    Environment Variables
+                  </label>
+                  {envRows.map((row, i) => (
+                    <div key={i} className="flex gap-2 mb-1">
+                      <Input
+                        placeholder="KEY"
+                        value={row.key}
+                        onChange={(e) => {
+                          const next = [...envRows]
+                          next[i] = { ...row, key: e.target.value }
+                          setEnvRows(next)
+                        }}
+                        className="flex-1 text-xs"
+                      />
+                      <Input
+                        placeholder="VALUE"
+                        value={row.value}
+                        onChange={(e) => {
+                          const next = [...envRows]
+                          next[i] = { ...row, value: e.target.value }
+                          setEnvRows(next)
+                        }}
+                        className="flex-1 text-xs"
+                      />
+                      <Button variant="ghost" size="sm" onClick={() => setEnvRows(envRows.filter((_, j) => j !== i))} className="text-[var(--danger)]">
+                        x
+                      </Button>
+                    </div>
+                  ))}
+                  <button
+                    onClick={() => setEnvRows([...envRows, { key: '', value: '' }])}
+                    className="text-xs mt-1 text-[var(--accent)]"
+                  >
+                    + Add variable
+                  </button>
+                </div>
+              </>
+            )}
 
-              {installMsg && (
-                <p
-                  className="text-xs"
-                  style={{ color: installMsg.startsWith('Error') ? '#f85149' : '#3fb950' }}
-                >
-                  {installMsg}
-                </p>
-              )}
-
-              <div className="flex gap-2 justify-end mt-2">
-                <button
-                  onClick={() => setShowInstall(false)}
-                  className="rounded-[var(--radius-sm)] px-3 py-1.5 text-sm"
-                  style={{ color: '#7d8590' }}
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleInstall}
-                  disabled={installing}
-                  className="rounded-[var(--radius-sm)] px-3 py-1.5 text-sm font-medium text-white"
-                  style={{ background: '#ff5c5c', opacity: installing ? 0.6 : 1 }}
-                >
-                  {installing ? 'Adding...' : installType === 'pip' ? 'Install & Add' : 'Add'}
-                </button>
-              </div>
-            </div>
+            {installMsg && (
+              <p className={`text-xs ${installMsg.startsWith('Error') ? 'text-[var(--danger)]' : 'text-[var(--ok)]'}`}>
+                {installMsg}
+              </p>
+            )}
           </div>
-        </div>
-      )}
-    </div>
-  )
-}
 
-function Input({
-  label,
-  placeholder,
-  value,
-  onChange,
-}: {
-  label: string
-  placeholder: string
-  value: string
-  onChange: (v: string) => void
-}) {
-  return (
-    <div>
-      <label className="block text-xs font-medium mb-1" style={{ color: '#7d8590' }}>
-        {label}
-      </label>
-      <input
-        placeholder={placeholder}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-[var(--radius-sm)] border px-3 py-2 text-sm outline-none"
-        style={{ background: '#0d1117', borderColor: '#30363d', color: '#e6edf3' }}
-      />
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setShowInstall(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleInstall} disabled={installing}>
+              {installing ? 'Adding...' : installType === 'pip' ? 'Install & Add' : 'Add'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

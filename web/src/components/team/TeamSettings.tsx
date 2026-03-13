@@ -1,248 +1,128 @@
-import React, { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { X } from "lucide-react"
 
-type TeamMember = { id: string; role: string };
+type TeamMember = { id: string; role: string }
 
 interface TeamSettingsProps {
-  open: boolean;
-  onClose: () => void;
+  open: boolean
+  onClose: () => void
   team: {
-    id: string;
-    name: string;
-    members: TeamMember[];
-    leader?: string | null;
-    status: string;
-  };
-  onSave: (updates: { name?: string; members?: TeamMember[]; leader?: string }) => void;
+    id: string
+    name: string
+    members: TeamMember[]
+    leader?: string | null
+    status: string
+  }
+  onSave: (updates: { name?: string; members?: TeamMember[]; leader?: string }) => void
 }
 
-const overlayStyle: React.CSSProperties = {
-  position: "fixed",
-  inset: 0,
-  backgroundColor: "rgba(0, 0, 0, 0.5)",
-  zIndex: 999,
-};
-
-const drawerStyle: React.CSSProperties = {
-  position: "fixed",
-  top: 0,
-  right: 0,
-  bottom: 0,
-  width: 380,
-  backgroundColor: "var(--bg-elevated)",
-  borderLeft: "1px solid var(--border)",
-  zIndex: 1000,
-  display: "flex",
-  flexDirection: "column",
-  transition: "transform 0.25s ease-in-out",
-};
-
 export default function TeamSettings({ open, onClose, team, onSave }: TeamSettingsProps) {
-  const [name, setName] = useState(team.name);
-  const [members, setMembers] = useState<TeamMember[]>(team.members);
-  const [leader, setLeader] = useState(team.leader ?? "");
-  const [newMember, setNewMember] = useState("");
+  const [name, setName] = useState(team.name)
+  const [members, setMembers] = useState<TeamMember[]>(team.members)
+  const [leader, setLeader] = useState(team.leader ?? "")
+  const [newMember, setNewMember] = useState("")
 
   useEffect(() => {
-    setName(team.name);
-    setMembers(team.members);
-    setLeader(team.leader ?? "");
-  }, [team]);
+    setName(team.name)
+    setMembers(team.members)
+    setLeader(team.leader ?? "")
+  }, [team])
 
   const handleRemoveMember = useCallback((memberId: string) => {
-    setMembers((prev) => prev.filter((m) => m.id !== memberId));
-    setLeader((prev) => (prev === memberId ? "" : prev));
-  }, []);
+    setMembers((prev) => prev.filter((m) => m.id !== memberId))
+    setLeader((prev) => (prev === memberId ? "" : prev))
+  }, [])
 
   const handleAddMember = useCallback(() => {
-    const trimmed = newMember.trim();
+    const trimmed = newMember.trim()
     if (trimmed && !members.some((m) => m.id === trimmed)) {
-      setMembers((prev) => [...prev, { id: trimmed, role: "worker" }]);
-      setNewMember("");
+      setMembers((prev) => [...prev, { id: trimmed, role: "worker" }])
+      setNewMember("")
     }
-  }, [newMember, members]);
+  }, [newMember, members])
 
   const handleSave = useCallback(() => {
-    const updates: { name?: string; members?: TeamMember[]; leader?: string } = {};
-    if (name !== team.name) updates.name = name;
-    if (JSON.stringify(members) !== JSON.stringify(team.members)) updates.members = members;
-    if (leader && leader !== (team.leader ?? "")) updates.leader = leader;
-    onSave(updates);
-  }, [name, members, leader, team, onSave]);
+    const updates: { name?: string; members?: TeamMember[]; leader?: string } = {}
+    if (name !== team.name) updates.name = name
+    if (JSON.stringify(members) !== JSON.stringify(team.members)) updates.members = members
+    if (leader && leader !== (team.leader ?? "")) updates.leader = leader
+    onSave(updates)
+  }, [name, members, leader, team, onSave])
 
-  if (!open) return null;
+  if (!open) return null
 
   return (
     <>
-      {/* Overlay */}
-      <div style={overlayStyle} onClick={onClose} />
+      <div className="fixed inset-0 z-[999] bg-black/50" onClick={onClose} />
 
-      {/* Drawer */}
       <div
-        style={{
-          ...drawerStyle,
-          transform: open ? "translateX(0)" : "translateX(100%)",
-        }}
+        className="fixed top-0 right-0 bottom-0 w-[380px] z-[1000] flex flex-col bg-[var(--bg-elevated)] border-l border-[var(--border)] transition-transform duration-250"
+        style={{ transform: open ? "translateX(0)" : "translateX(100%)" }}
       >
         {/* Header */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            padding: "16px 20px",
-            borderBottom: "1px solid var(--border)",
-          }}
-        >
-          <h2 style={{ margin: 0, fontSize: 18, color: "var(--text-strong)" }}>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border)]">
+          <h2 className="text-lg font-semibold text-[var(--text-strong)]">
             Team Settings
           </h2>
-          <button
-            onClick={onClose}
-            style={{
-              background: "none",
-              border: "none",
-              cursor: "pointer",
-              fontSize: 20,
-              color: "var(--muted)",
-              padding: 4,
-              lineHeight: 1,
-            }}
-            aria-label="Close"
-          >
-            &times;
-          </button>
+          <Button variant="ghost" size="icon" onClick={onClose}>
+            <X className="h-4 w-4" />
+          </Button>
         </div>
 
         {/* Body */}
-        <div style={{ flex: 1, overflowY: "auto", padding: "20px" }}>
-          {/* Basic Info */}
-          <section style={{ marginBottom: 24 }}>
-            <label
-              style={{
-                display: "block",
-                marginBottom: 6,
-                fontSize: 13,
-                fontWeight: 600,
-                color: "var(--text-strong)",
-              }}
-            >
+        <div className="flex-1 overflow-y-auto p-5 space-y-6">
+          <div>
+            <label className="block mb-1.5 text-[13px] font-semibold text-[var(--text-strong)]">
               Team Name
             </label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              style={{
-                width: "100%",
-                padding: "8px 12px",
-                border: "1px solid var(--border)",
-                borderRadius: "var(--radius-sm)",
-                backgroundColor: "var(--bg-elevated)",
-                color: "var(--text-strong)",
-                fontSize: 14,
-                boxSizing: "border-box",
-              }}
-            />
-          </section>
+            <Input value={name} onChange={(e) => setName(e.target.value)} />
+          </div>
 
-          {/* Members */}
-          <section style={{ marginBottom: 24 }}>
-            <label
-              style={{
-                display: "block",
-                marginBottom: 6,
-                fontSize: 13,
-                fontWeight: 600,
-                color: "var(--text-strong)",
-              }}
-            >
+          <div>
+            <label className="block mb-1.5 text-[13px] font-semibold text-[var(--text-strong)]">
               Members
             </label>
-            <ul style={{ listStyle: "none", margin: 0, padding: 0, marginBottom: 8 }}>
+            <ul className="space-y-1 mb-2">
               {members.map((member) => (
                 <li
                   key={member.id}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    padding: "6px 10px",
-                    marginBottom: 4,
-                    borderRadius: "var(--radius-sm)",
-                    border: "1px solid var(--border)",
-                    fontSize: 14,
-                    color: "var(--text-strong)",
-                  }}
+                  className="flex items-center justify-between px-2.5 py-1.5 rounded-[var(--radius-sm)] border border-[var(--border)] text-sm text-[var(--text-strong)]"
                 >
-                  <span>{member.id} <span style={{ color: "var(--muted)", fontSize: 12 }}>({member.role})</span></span>
-                  <button
+                  <span>{member.id} <span className="text-[var(--muted)] text-xs">({member.role})</span></span>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6 text-[var(--danger)]"
                     onClick={() => handleRemoveMember(member.id)}
-                    style={{
-                      background: "none",
-                      border: "none",
-                      cursor: "pointer",
-                      color: "var(--danger)",
-                      fontSize: 16,
-                      lineHeight: 1,
-                      padding: "0 2px",
-                    }}
-                    aria-label={`Remove ${member.id}`}
                   >
-                    &times;
-                  </button>
+                    <X className="h-3 w-3" />
+                  </Button>
                 </li>
               ))}
             </ul>
-            <input
-              type="text"
+            <Input
               placeholder="Add member..."
               value={newMember}
               onChange={(e) => setNewMember(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
-                  e.preventDefault();
-                  handleAddMember();
+                  e.preventDefault()
+                  handleAddMember()
                 }
               }}
-              style={{
-                width: "100%",
-                padding: "8px 12px",
-                border: "1px solid var(--border)",
-                borderRadius: "var(--radius-sm)",
-                backgroundColor: "var(--bg-elevated)",
-                color: "var(--text-strong)",
-                fontSize: 14,
-                boxSizing: "border-box",
-              }}
             />
-          </section>
+          </div>
 
-          {/* Leader */}
-          <section style={{ marginBottom: 24 }}>
-            <label
-              style={{
-                display: "block",
-                marginBottom: 6,
-                fontSize: 13,
-                fontWeight: 600,
-                color: "var(--text-strong)",
-              }}
-            >
+          <div>
+            <label className="block mb-1.5 text-[13px] font-semibold text-[var(--text-strong)]">
               Leader
             </label>
             <select
               value={leader}
               onChange={(e) => setLeader(e.target.value)}
-              style={{
-                width: "100%",
-                padding: "8px 12px",
-                border: "1px solid var(--border)",
-                borderRadius: "var(--radius-sm)",
-                backgroundColor: "var(--bg-elevated)",
-                color: "var(--text-strong)",
-                fontSize: 14,
-                boxSizing: "border-box",
-              }}
+              className="w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg)] px-3 py-2 text-sm text-[var(--text-strong)]"
             >
               <option value="">Select a leader</option>
               {members.map((member) => (
@@ -251,34 +131,16 @@ export default function TeamSettings({ open, onClose, team, onSave }: TeamSettin
                 </option>
               ))}
             </select>
-          </section>
+          </div>
         </div>
 
-        {/* Footer / Save */}
-        <div
-          style={{
-            padding: "16px 20px",
-            borderTop: "1px solid var(--border)",
-          }}
-        >
-          <button
-            onClick={handleSave}
-            style={{
-              width: "100%",
-              padding: "10px 0",
-              backgroundColor: "var(--accent)",
-              color: "#fff",
-              border: "none",
-              borderRadius: "var(--radius-lg)",
-              fontSize: 14,
-              fontWeight: 600,
-              cursor: "pointer",
-            }}
-          >
+        {/* Footer */}
+        <div className="px-5 py-4 border-t border-[var(--border)]">
+          <Button className="w-full" onClick={handleSave}>
             Save
-          </button>
+          </Button>
         </div>
       </div>
     </>
-  );
+  )
 }

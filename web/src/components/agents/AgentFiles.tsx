@@ -2,15 +2,17 @@ import { useState, useEffect, useCallback } from 'react'
 import { getWorkspaceFiles, getWorkspaceFile, updateWorkspaceFile } from '@/api/agents'
 import type { WorkspaceFileItem } from '@/types'
 import { Save, ChevronRight, ChevronDown, File, Folder, FolderOpen } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import CodeEditor from '@/components/ui/CodeEditor'
 
 interface Props {
   agentId: string
 }
 
-// Build a tree structure from flat file list.
 interface TreeNode {
-  name: string       // display name (just the segment)
-  path: string       // full relative path
+  name: string
+  path: string
   isDir: boolean
   children: TreeNode[]
 }
@@ -41,7 +43,6 @@ function buildTree(items: WorkspaceFileItem[]): TreeNode[] {
     }
   }
 
-  // Sort: dirs first, then alphabetical.
   const sortNodes = (nodes: TreeNode[]) => {
     nodes.sort((a, b) => {
       if (a.isDir !== b.isDir) return a.isDir ? -1 : 1
@@ -76,11 +77,11 @@ function FileTreeNode({
       <div>
         <button
           onClick={() => onToggle(node.path)}
-          className="flex items-center gap-1 w-full text-left py-0.5 px-1 rounded text-sm hover:bg-[rgba(255,255,255,0.04)] transition-colors"
-          style={{ paddingLeft: `${depth * 12 + 4}px`, color: '#e6edf3' }}
+          className="flex items-center gap-1 w-full text-left py-0.5 px-1 rounded text-sm hover:bg-[var(--bg-hover)] transition-colors text-[var(--text-strong)]"
+          style={{ paddingLeft: `${depth * 12 + 4}px` }}
         >
-          {isOpen ? <ChevronDown size={12} style={{ color: '#7d8590' }} /> : <ChevronRight size={12} style={{ color: '#7d8590' }} />}
-          {isOpen ? <FolderOpen size={13} style={{ color: '#ff8c5c' }} /> : <Folder size={13} style={{ color: '#ff8c5c' }} />}
+          {isOpen ? <ChevronDown size={12} className="text-[var(--muted)]" /> : <ChevronRight size={12} className="text-[var(--muted)]" />}
+          {isOpen ? <FolderOpen size={13} className="text-[var(--warn)]" /> : <Folder size={13} className="text-[var(--warn)]" />}
           <span className="truncate">{node.name}</span>
         </button>
         {isOpen && node.children.map((child) => (
@@ -105,10 +106,10 @@ function FileTreeNode({
       style={{
         paddingLeft: `${depth * 12 + 4}px`,
         background: isSelected ? 'var(--accent-subtle)' : 'transparent',
-        color: isSelected ? 'var(--accent)' : '#c9d1d9',
+        color: isSelected ? 'var(--accent)' : 'var(--text)',
       }}
     >
-      <File size={13} style={{ color: '#7d8590', flexShrink: 0 }} />
+      <File size={13} className="text-[var(--muted)] shrink-0" />
       <span className="truncate">{node.name}</span>
     </button>
   )
@@ -126,7 +127,6 @@ export default function AgentFiles({ agentId }: Props) {
   const loadFiles = useCallback(async () => {
     const f = await getWorkspaceFiles(agentId)
     setFiles(f)
-    // Auto-expand top-level directories.
     const dirs = f.filter((item) => item.is_dir && !item.name.includes('/')).map((d) => d.name)
     setExpanded((prev) => {
       const next = new Set(prev)
@@ -163,6 +163,17 @@ export default function AgentFiles({ agentId }: Props) {
     }
   }
 
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+        e.preventDefault()
+        handleSave()
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  })
+
   const toggleDir = (path: string) => {
     setExpanded((prev) => {
       const next = new Set(prev)
@@ -176,12 +187,8 @@ export default function AgentFiles({ agentId }: Props) {
 
   return (
     <div className="flex gap-0 h-full min-h-0">
-      {/* File tree */}
-      <div
-        className="w-[200px] shrink-0 border-r overflow-y-auto py-2 px-1"
-        style={{ borderColor: 'var(--border)' }}
-      >
-        <p className="text-[10px] font-medium uppercase tracking-wide mb-1 px-1" style={{ color: '#7d8590' }}>
+      <ScrollArea className="w-[200px] shrink-0 border-r border-[var(--border)] py-2 px-1">
+        <p className="text-[10px] font-medium uppercase tracking-wide mb-1 px-1 text-[var(--muted)]">
           ~/.see-agent/agents/{agentId}
         </p>
         {tree.map((node) => (
@@ -196,55 +203,37 @@ export default function AgentFiles({ agentId }: Props) {
           />
         ))}
         {files.length === 0 && (
-          <p className="text-xs px-1 mt-2" style={{ color: 'var(--muted)' }}>No files</p>
+          <p className="text-xs px-1 mt-2 text-[var(--muted)]">No files</p>
         )}
-      </div>
+      </ScrollArea>
 
-      {/* Editor area */}
       <div className="flex-1 flex flex-col min-h-0 min-w-0">
         {selected ? (
           <>
-            {/* File header */}
-            <div
-              className="flex items-center justify-between px-4 py-2 border-b shrink-0"
-              style={{ borderColor: 'var(--border)', background: '#0d1117' }}
-            >
-              <span className="text-sm font-mono truncate" style={{ color: '#e6edf3' }}>{selected}</span>
+            <div className="flex items-center justify-between px-4 py-2 border-b border-[var(--border)] bg-[var(--bg)] shrink-0">
+              <span className="text-sm font-mono truncate text-[var(--text-strong)]">{selected}</span>
               <div className="flex items-center gap-2 shrink-0">
                 {msg && (
-                  <span className="text-xs" style={{ color: msg === 'Saved' ? 'var(--ok)' : 'var(--danger)' }}>
+                  <span className={`text-xs ${msg === 'Saved' ? 'text-[var(--ok)]' : 'text-[var(--danger)]'}`}>
                     {msg}
                   </span>
                 )}
-                <button
-                  onClick={handleSave}
-                  disabled={!dirty || saving}
-                  className="flex items-center gap-1 rounded-[var(--radius-sm)] px-3 py-1 text-xs font-medium text-white transition-opacity"
-                  style={{ background: 'var(--accent)', opacity: !dirty || saving ? 0.4 : 1 }}
-                >
+                <Button onClick={handleSave} disabled={!dirty || saving} size="sm">
                   <Save size={12} /> Save
-                </button>
+                </Button>
               </div>
             </div>
-            {/* Textarea fills remaining space */}
-            <textarea
-              value={content}
-              onChange={(e) => { setContent(e.target.value); setDirty(true); setMsg('') }}
-              onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === 's') { e.preventDefault(); handleSave() } }}
-              className="flex-1 min-h-0 w-full text-sm p-4 outline-none resize-none"
-              style={{
-                background: '#0d1117',
-                color: '#e6edf3',
-                fontFamily: 'var(--mono, ui-monospace, monospace)',
-                lineHeight: '1.6',
-                tabSize: 2,
-              }}
-              spellCheck={false}
-            />
+            <div className="flex-1 min-h-0">
+              <CodeEditor
+                value={content}
+                onChange={(v) => { setContent(v); setDirty(true); setMsg('') }}
+                filename={selected}
+              />
+            </div>
           </>
         ) : (
           <div className="flex items-center justify-center flex-1">
-            <p className="text-sm" style={{ color: 'var(--muted)' }}>Select a file to edit</p>
+            <p className="text-sm text-[var(--muted)]">Select a file to edit</p>
           </div>
         )}
       </div>

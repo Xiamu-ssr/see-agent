@@ -11,8 +11,12 @@ import AgentTools from '@/components/agents/AgentTools'
 import AgentSkills from '@/components/agents/AgentSkills'
 import AgentSafehouse from '@/components/agents/AgentSafehouse'
 import AgentChat from '@/components/agents/AgentChat'
-
-type DetailsTab = 'overview' | 'files' | 'tools' | 'skills' | 'safehouse'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Badge } from '@/components/ui/badge'
+import { Card } from '@/components/ui/card'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 
 export default function AgentsPage() {
   const navigate = useNavigate()
@@ -26,7 +30,6 @@ export default function AgentsPage() {
   const [showCreate, setShowCreate] = useState(false)
   const [form, setForm] = useState<CreateAgentRequest>({})
   const [agent, setAgent] = useState<AgentDetail | null>(null)
-  const [detailsTab, setDetailsTab] = useState<DetailsTab>('overview')
 
   useEffect(() => {
     if (!id) {
@@ -46,17 +49,8 @@ export default function AgentsPage() {
     refresh()
   }
 
-  const detailsTabs: { key: DetailsTab; label: string }[] = [
-    { key: 'overview', label: 'Overview' },
-    { key: 'files', label: 'Files' },
-    { key: 'tools', label: 'Tools' },
-    { key: 'skills', label: 'Skills' },
-    { key: 'safehouse', label: 'Safehouse' },
-  ]
-
   return (
     <div className="flex h-full">
-      {/* Left panel: Agent list */}
       <AgentList
         agents={agents ?? undefined}
         selectedId={id}
@@ -64,157 +58,111 @@ export default function AgentsPage() {
         onNewAgent={() => setShowCreate(true)}
       />
 
-      {/* Right panel — fill remaining space */}
       <div className="flex-1 flex flex-col min-h-0 min-w-0 p-4">
         {!id ? (
           <div className="flex items-center justify-center flex-1">
             <div className="text-center">
-              <Bot size={48} style={{ color: 'var(--muted)', margin: '0 auto 12px' }} />
-              <p className="text-sm" style={{ color: 'var(--muted)' }}>Select an agent</p>
+              <Bot size={48} className="text-[var(--muted)] mx-auto mb-3" />
+              <p className="text-sm text-[var(--muted)]">Select an agent</p>
             </div>
           </div>
         ) : !agent ? (
-          <div style={{ color: 'var(--muted)' }}>Loading...</div>
+          <div className="text-[var(--muted)]">Loading...</div>
         ) : (
           <>
-            {/* Agent header: toggle (left) + name + status */}
+            {/* Agent header */}
             <div className="flex items-center gap-3 mb-3 shrink-0">
-              {/* Toggle switch — left side for easy reach */}
-              <div
-                className="flex rounded-full p-0.5 shrink-0"
-                style={{ background: '#21262d', border: '1px solid #30363d' }}
-              >
-                <button
+              <div className="flex rounded-full p-0.5 shrink-0 bg-[var(--bg-elevated)] border border-[var(--border)]">
+                <Button
                   onClick={() => navigate(`/agents/${id}`)}
-                  className="rounded-full px-3 py-1 text-xs font-medium transition-all"
-                  style={{
-                    background: !isChat ? '#ff5c5c' : 'transparent',
-                    color: !isChat ? 'white' : '#7d8590',
-                  }}
+                  variant={!isChat ? 'default' : 'ghost'}
+                  size="sm"
+                  className="rounded-full"
                 >
                   Details
-                </button>
-                <button
+                </Button>
+                <Button
                   onClick={() => navigate(`/agents/${id}/chat`)}
-                  className="rounded-full px-3 py-1 text-xs font-medium transition-all"
-                  style={{
-                    background: isChat ? '#ff5c5c' : 'transparent',
-                    color: isChat ? 'white' : '#7d8590',
-                  }}
+                  variant={isChat ? 'default' : 'ghost'}
+                  size="sm"
+                  className="rounded-full"
                 >
                   Chat
-                </button>
+                </Button>
               </div>
 
-              <h1 className="text-xl font-semibold" style={{ color: '#e6edf3' }}>
+              <h1 className="text-xl font-semibold text-[var(--text-strong)]">
                 {agent.id}
               </h1>
-              <span
-                className="text-xs font-medium rounded-full px-2.5 py-0.5"
-                style={{
-                  background: agent.status === 'busy' ? 'rgba(63, 185, 80, 0.15)' : 'rgba(125, 133, 144, 0.15)',
-                  color: agent.status === 'busy' ? '#3fb950' : '#7d8590',
-                }}
-              >
+              <Badge variant={agent.status === 'busy' ? 'success' : 'secondary'}>
+                <span className="h-1.5 w-1.5 rounded-full bg-current" />
                 {agent.status === 'busy' ? 'Running' : 'Idle'}
-              </span>
+              </Badge>
             </div>
 
             {isChat ? (
-              /* Chat fills all remaining vertical space */
-              <div
-                className="flex-1 min-h-0 rounded-[var(--radius-lg)] border p-4 flex flex-col"
-                style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
-              >
+              <Card className="flex-1 min-h-0 p-4 flex flex-col">
                 <AgentChat agentId={id} />
-              </div>
+              </Card>
             ) : (
-              <>
-                {/* Details tabs */}
-                <div className="flex gap-0 mb-3 shrink-0" style={{ borderBottom: '1px solid #30363d' }}>
-                  {detailsTabs.map((t) => (
-                    <button
-                      key={t.key}
-                      onClick={() => setDetailsTab(t.key)}
-                      className="px-4 py-2 text-sm transition-colors relative"
-                      style={{
-                        color: detailsTab === t.key ? '#ff5c5c' : '#7d8590',
-                        fontWeight: detailsTab === t.key ? 500 : 400,
-                      }}
-                    >
-                      {t.label}
-                      {detailsTab === t.key && (
-                        <span
-                          className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full"
-                          style={{ background: '#ff5c5c' }}
-                        />
-                      )}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Tab content fills remaining space */}
-                <div
-                  className="flex-1 min-h-0 overflow-y-auto rounded-[var(--radius-lg)] border p-5"
-                  style={{ background: 'var(--card)', borderColor: 'var(--border)' }}
-                >
-                  {detailsTab === 'overview' && <AgentOverview agent={agent} />}
-                  {detailsTab === 'files' && <AgentFiles agentId={id} />}
-                  {detailsTab === 'tools' && <AgentTools agent={agent} />}
-                  {detailsTab === 'skills' && <AgentSkills agent={agent} />}
-                  {detailsTab === 'safehouse' && <AgentSafehouse agent={agent} />}
-                </div>
-              </>
+              <Tabs defaultValue="overview" className="flex-1 flex flex-col min-h-0">
+                <TabsList className="shrink-0">
+                  <TabsTrigger value="overview">Overview</TabsTrigger>
+                  <TabsTrigger value="files">Files</TabsTrigger>
+                  <TabsTrigger value="tools">Tools</TabsTrigger>
+                  <TabsTrigger value="skills">Skills</TabsTrigger>
+                  <TabsTrigger value="safehouse">Safehouse</TabsTrigger>
+                </TabsList>
+                <TabsContent value="overview" className="overflow-y-auto">
+                  <Card className="p-5"><AgentOverview agent={agent} /></Card>
+                </TabsContent>
+                <TabsContent value="files">
+                  <Card className="h-full min-h-0 overflow-hidden">
+                    <AgentFiles agentId={id} />
+                  </Card>
+                </TabsContent>
+                <TabsContent value="tools" className="overflow-y-auto">
+                  <Card className="p-5"><AgentTools agent={agent} /></Card>
+                </TabsContent>
+                <TabsContent value="skills" className="overflow-y-auto">
+                  <Card className="p-5"><AgentSkills agent={agent} /></Card>
+                </TabsContent>
+                <TabsContent value="safehouse" className="overflow-y-auto">
+                  <Card className="p-5"><AgentSafehouse agent={agent} /></Card>
+                </TabsContent>
+              </Tabs>
             )}
           </>
         )}
       </div>
 
-      {/* Create modal */}
-      {showCreate && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div
-            className="w-full max-w-md rounded-[var(--radius-lg)] border p-6"
-            style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border)' }}
-          >
-            <h2 className="text-base font-semibold mb-4" style={{ color: 'var(--text-strong)' }}>
-              Create Agent
-            </h2>
-            <div className="flex flex-col gap-3">
-              <input
-                placeholder="Name"
-                value={form.name || ''}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
-                className="rounded-[var(--radius-sm)] border px-3 py-2 text-sm outline-none"
-                style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
-              />
-              <input
-                placeholder="Emoji (e.g. 🤖)"
-                value={form.emoji || ''}
-                onChange={(e) => setForm({ ...form, emoji: e.target.value })}
-                className="rounded-[var(--radius-sm)] border px-3 py-2 text-sm outline-none"
-                style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
-              />
-              <div className="flex gap-2 justify-end mt-2">
-                <button
-                  onClick={() => setShowCreate(false)}
-                  className="rounded-[var(--radius-sm)] px-3 py-1.5 text-sm"
-                  style={{ color: 'var(--muted)' }}
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleCreate}
-                  className="rounded-[var(--radius-sm)] px-3 py-1.5 text-sm font-medium text-white"
-                  style={{ background: 'var(--accent)' }}
-                >
-                  Create
-                </button>
-              </div>
-            </div>
+      <Dialog open={showCreate} onOpenChange={setShowCreate}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create Agent</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-3">
+            <Input
+              placeholder="Name"
+              value={form.name || ''}
+              onChange={(e) => setForm({ ...form, name: e.target.value })}
+            />
+            <Input
+              placeholder="Emoji (e.g. 🤖)"
+              value={form.emoji || ''}
+              onChange={(e) => setForm({ ...form, emoji: e.target.value })}
+            />
           </div>
-        </div>
-      )}
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setShowCreate(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleCreate}>
+              Create
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

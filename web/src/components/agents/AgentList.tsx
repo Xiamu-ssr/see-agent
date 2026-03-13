@@ -1,5 +1,7 @@
 import type { AgentSummary } from '@/types'
 import { Plus } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { ScrollArea } from '@/components/ui/scroll-area'
 
 const statusColors: Record<string, string> = {
   idle: 'var(--accent-2)',
@@ -15,20 +17,17 @@ interface AgentListProps {
 
 export default function AgentList({ agents, selectedId, onSelect, onNewAgent }: AgentListProps) {
   return (
-    <div
-      className="w-[160px] shrink-0 border-r flex flex-col h-full"
-      style={{ borderColor: 'var(--border)' }}
-    >
+    <div className="w-[160px] shrink-0 border-r border-[var(--border)] flex flex-col h-full">
       <div className="px-3 pt-4 pb-2">
-        <h2 className="text-lg font-semibold" style={{ color: 'var(--text-strong)' }}>
+        <h2 className="text-lg font-semibold text-[var(--text-strong)]">
           Agents
         </h2>
-        <p className="text-xs" style={{ color: 'var(--muted)' }}>
+        <p className="text-xs text-[var(--muted)]">
           {agents?.length ?? 0} agents
         </p>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-2 pb-2">
+      <ScrollArea className="flex-1 px-2 pb-2">
         {agents?.map((a) => (
           <button
             key={a.id}
@@ -40,7 +39,7 @@ export default function AgentList({ agents, selectedId, onSelect, onNewAgent }: 
             }}
           >
             <div className="flex items-center gap-1.5">
-              <span style={{ fontSize: 14 }}>{a.emoji || '🤖'}</span>
+              <span className="text-[14px]">{a.emoji || '🤖'}</span>
               <span
                 className="text-sm font-medium truncate"
                 style={{ color: selectedId === a.id ? 'var(--accent)' : 'var(--text-strong)' }}
@@ -57,17 +56,18 @@ export default function AgentList({ agents, selectedId, onSelect, onNewAgent }: 
             </div>
           </button>
         ))}
-      </div>
+      </ScrollArea>
 
       <div className="px-2 pb-3">
-        <button
+        <Button
+          variant="ghost"
           onClick={onNewAgent}
-          className="w-full flex items-center justify-center gap-1.5 rounded-[var(--radius)] py-2 text-sm font-medium transition-colors hover:bg-[var(--bg-hover)]"
-          style={{ color: 'var(--text)' }}
+          className="w-full"
+          size="sm"
         >
           <Plus size={14} />
           New Agent
-        </button>
+        </Button>
       </div>
     </div>
   )

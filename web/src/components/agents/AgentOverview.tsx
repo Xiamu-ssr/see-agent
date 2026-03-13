@@ -1,4 +1,5 @@
 import type { AgentDetail } from '@/types'
+import { Card } from '@/components/ui/card'
 
 interface Props {
   agent: AgentDetail
@@ -6,17 +7,14 @@ interface Props {
 
 function InfoCard({ title, value, accent }: { title: string; value: string; accent?: boolean }) {
   return (
-    <div
-      className="rounded-lg border p-4"
-      style={{ background: '#0d1117', borderColor: '#30363d' }}
-    >
-      <p className="text-[11px] font-medium uppercase tracking-wide mb-1.5" style={{ color: '#7d8590' }}>
+    <Card className="p-4">
+      <p className="text-[11px] font-medium uppercase tracking-wide mb-1.5 text-[var(--muted)]">
         {title}
       </p>
-      <p className="text-sm font-medium" style={{ color: accent ? '#ff5c5c' : '#e6edf3' }}>
+      <p className={`text-sm font-medium ${accent ? 'text-[var(--accent)]' : 'text-[var(--text-strong)]'}`}>
         {value}
       </p>
-    </div>
+    </Card>
   )
 }
 
@@ -26,7 +24,6 @@ export default function AgentOverview({ agent }: Props) {
 
   return (
     <div className="space-y-6">
-      {/* Info grid */}
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
         <InfoCard title="ID" value={agent.id} />
         <InfoCard title="Status" value={status} accent={status === 'running' || status === 'busy'} />
@@ -34,31 +31,23 @@ export default function AgentOverview({ agent }: Props) {
         <InfoCard title="Model" value={model} />
       </div>
 
-      {/* Workspace info */}
       <div>
-        <h3 className="text-xs font-medium uppercase tracking-wide mb-2" style={{ color: '#7d8590' }}>
+        <h3 className="text-xs font-medium uppercase tracking-wide mb-2 text-[var(--muted)]">
           Workspace
         </h3>
-        <div
-          className="rounded-lg border p-3 text-sm"
-          style={{ background: '#0d1117', borderColor: '#30363d', color: '#e6edf3', fontFamily: 'var(--mono, monospace)' }}
-        >
+        <Card className="p-3 text-sm font-mono text-[var(--text-strong)]">
           ~/.see-agent/agents/{agent.id}/
-        </div>
+        </Card>
       </div>
 
-      {/* SOUL preview */}
       {agent.has_soul && (
         <div>
-          <h3 className="text-xs font-medium uppercase tracking-wide mb-2" style={{ color: '#7d8590' }}>
+          <h3 className="text-xs font-medium uppercase tracking-wide mb-2 text-[var(--muted)]">
             SOUL.md
           </h3>
-          <div
-            className="rounded-lg border p-3 text-sm leading-relaxed"
-            style={{ background: '#0d1117', borderColor: '#30363d', color: '#e6edf3' }}
-          >
+          <Card className="p-3 text-sm leading-relaxed text-[var(--text-strong)]">
             SOUL.md configured
-          </div>
+          </Card>
         </div>
       )}
     </div>

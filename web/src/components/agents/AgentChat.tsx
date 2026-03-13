@@ -3,6 +3,9 @@ import { getAgentChat, sendAgentMessage } from '@/api/agents'
 import type { ChatMessage } from '@/types'
 import { Send, ChevronRight, ChevronDown, Wrench } from 'lucide-react'
 import Markdown from 'react-markdown'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Switch } from '@/components/ui/switch'
 
 interface Props {
   agentId: string
@@ -33,7 +36,6 @@ export default function AgentChat({ agentId }: Props) {
     return () => clearInterval(interval)
   }, [loadChat])
 
-  // Auto-scroll to bottom on new messages.
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
@@ -56,10 +58,9 @@ export default function AgentChat({ agentId }: Props) {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Messages */}
       <div className="flex-1 overflow-y-auto space-y-3 mb-4 px-2">
         {messages.length === 0 && (
-          <p className="text-sm" style={{ color: 'var(--muted)' }}>No messages yet.</p>
+          <p className="text-sm text-[var(--muted)]">No messages yet.</p>
         )}
         {messages.map((m, i) => {
           const isUser = m.role === 'user'
@@ -68,55 +69,40 @@ export default function AgentChat({ agentId }: Props) {
           return (
             <div key={i} className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
               <div
-                className="text-sm rounded-[var(--radius)] max-w-[80%]"
-                style={{
-                  background: isUser ? 'var(--accent-subtle)' : 'var(--bg)',
-                  color: 'var(--text)',
-                }}
+                className={`text-sm rounded-[var(--radius)] max-w-[80%] ${isUser ? 'bg-[var(--accent-subtle)]' : 'bg-[var(--bg)]'} text-[var(--text)]`}
               >
-                {/* Text content with markdown */}
                 {m.content && (
-                  <div className="px-4 py-2.5 prose prose-invert prose-sm max-w-none"
-                    style={{ fontSize: '14px', lineHeight: '1.6' }}
-                  >
+                  <div className="px-4 py-2.5 prose prose-invert prose-sm max-w-none text-[14px] leading-[1.6]">
                     <Markdown>{m.content}</Markdown>
                   </div>
                 )}
 
-                {/* Tool calls (collapsible) */}
                 {toolCalls && toolCalls.length > 0 && (
-                  <div
-                    className="border-t px-3 py-1.5"
-                    style={{ borderColor: 'rgba(255,255,255,0.06)' }}
-                  >
+                  <div className="border-t border-[rgba(255,255,255,0.06)] px-3 py-1.5">
                     {toolCalls.map((tc) => {
                       const isExpanded = expandedTools.has(tc.id)
                       return (
                         <div key={tc.id} className="my-1">
                           <button
                             onClick={() => toggleTool(tc.id)}
-                            className="flex items-center gap-1.5 text-xs py-0.5 w-full text-left transition-colors hover:opacity-80"
-                            style={{ color: '#ff8c5c' }}
+                            className="flex items-center gap-1.5 text-xs py-0.5 w-full text-left transition-colors hover:opacity-80 text-[var(--warn)]"
                           >
                             {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
                             <Wrench size={11} />
                             <span className="font-mono font-medium">{tc.name}</span>
                             {tc.result && !isExpanded && (
-                              <span className="ml-1 text-[10px]" style={{ color: '#3fb950' }}>✓</span>
+                              <span className="ml-1 text-[10px] text-[var(--ok)]">✓</span>
                             )}
                           </button>
                           {isExpanded && (
-                            <div
-                              className="ml-5 mt-1 rounded text-xs font-mono p-2 overflow-x-auto"
-                              style={{ background: 'rgba(0,0,0,0.3)', color: '#8b949e' }}
-                            >
+                            <div className="ml-5 mt-1 rounded text-xs font-mono p-2 overflow-x-auto bg-black/30 text-[var(--muted)]">
                               <div className="mb-1">
-                                <span style={{ color: '#7d8590' }}>args: </span>
+                                <span className="text-[var(--muted)]">args: </span>
                                 {tc.arguments}
                               </div>
                               {tc.result && (
-                                <div className="mt-1 pt-1" style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-                                  <span style={{ color: '#3fb950' }}>result: </span>
+                                <div className="mt-1 pt-1 border-t border-[rgba(255,255,255,0.05)]">
+                                  <span className="text-[var(--ok)]">result: </span>
                                   {tc.result}
                                 </div>
                               )}
@@ -128,9 +114,8 @@ export default function AgentChat({ agentId }: Props) {
                   </div>
                 )}
 
-                {/* Empty assistant with only tool calls — show a subtle label */}
                 {!m.content && (!toolCalls || toolCalls.length === 0) && !isUser && (
-                  <div className="px-4 py-2 text-xs" style={{ color: 'var(--muted)' }}>
+                  <div className="px-4 py-2 text-xs text-[var(--muted)]">
                     (thinking...)
                   </div>
                 )}
@@ -141,27 +126,21 @@ export default function AgentChat({ agentId }: Props) {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input */}
-      <div className="flex items-center gap-2 border-t pt-3" style={{ borderColor: 'var(--border)' }}>
-        <input
+      <div className="flex items-center gap-2 border-t border-[var(--border)] pt-3">
+        <Input
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && (e.metaKey || e.ctrlKey) && handleSend()}
           placeholder="Type a message..."
-          className="flex-1 rounded-[var(--radius-sm)] border px-3 py-2 text-sm outline-none"
-          style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}
+          className="flex-1"
         />
-        <label className="flex items-center gap-1 text-xs whitespace-nowrap" style={{ color: 'var(--muted)' }}>
-          <input type="checkbox" checked={steer} onChange={(e) => setSteer(e.target.checked)} />
+        <label className="flex items-center gap-1.5 text-xs whitespace-nowrap text-[var(--muted)]">
+          <Switch checked={steer} onCheckedChange={setSteer} />
           Steer
         </label>
-        <button
-          onClick={handleSend}
-          className="flex items-center gap-1 rounded-[var(--radius-sm)] px-4 py-2 text-sm font-medium text-white"
-          style={{ background: 'var(--accent)' }}
-        >
+        <Button onClick={handleSend} size="sm">
           <Send size={14} /> Send
-        </button>
+        </Button>
       </div>
     </div>
   )
