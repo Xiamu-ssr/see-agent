@@ -146,7 +146,7 @@ export default function AgentChat({ agentId }: Props) {
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+          onKeyDown={(e) => e.key === 'Enter' && (e.metaKey || e.ctrlKey) && handleSend()}
           placeholder="Type a message..."
           className="flex-1 rounded-[var(--radius-sm)] border px-3 py-2 text-sm outline-none"
           style={{ background: 'var(--bg)', borderColor: 'var(--border)', color: 'var(--text)' }}

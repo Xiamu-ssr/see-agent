@@ -40,10 +40,9 @@ class TestAgentRuntime:
         rt = AgentRuntime("alice", loop)
         steer = _msg("urgent!", priority="steer")
         await rt.handle_message(steer)
-        # Steer message while idle: queued in inject, no turn started.
-        loop.run_one_turn.assert_not_called()
-        assert rt.inject_count == 1
-        assert rt._inject[0].content == "urgent!"
+        # Steer message while idle: treated as normal message, triggers turn.
+        loop.run_one_turn.assert_called_once()
+        assert rt.inject_count == 0
 
     @pytest.mark.asyncio
     async def test_steer_during_running_goes_to_inject(self):

@@ -149,6 +149,12 @@ async def run_team(
             agent_id, body.task, sender="user",
         )
 
+    # Also create a task on the TaskBoard.
+    from see_agent.config import TEAMS_DIR
+    from see_agent.team.task_board import TaskBoard
+    board = TaskBoard(TEAMS_DIR / team_id)
+    board.create_task(title=body.task[:100], description=body.task, created_by="user")
+
     team_def.status = "running"
     team_def.save()
 

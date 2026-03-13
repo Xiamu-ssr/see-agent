@@ -48,9 +48,13 @@ class AgentRuntime:
           the next turn if busy.
         """
         if msg.is_steer:
-            self._inject.append(msg)
-            logger.debug("Steer message queued: %s", msg.format_prefix())
-            return
+            if self._running:
+                # Agent busy — inject into current ReAct loop.
+                self._inject.append(msg)
+                logger.debug("Steer message injected: %s", msg.format_prefix())
+                return
+            # Agent idle — treat as normal message.
+            logger.debug("Steer message (idle, treating as normal): %s", msg.format_prefix())
 
         if self._running:
             # Busy — queue for next turn.
