@@ -16,6 +16,12 @@ pub enum Commands {
     Init,
     /// Show workspace status
     Status,
+    /// Start the HTTP server
+    Serve {
+        /// Port to listen on (default: 28789)
+        #[arg(short, long)]
+        port: Option<u16>,
+    },
     /// Manage agents
     #[command(subcommand)]
     Agent(agent::AgentCmd),

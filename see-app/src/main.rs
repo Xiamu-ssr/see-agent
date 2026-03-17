@@ -1,4 +1,5 @@
 mod cli;
+mod server;
 
 use clap::Parser;
 use cli::{Cli, Commands};
@@ -31,6 +32,12 @@ fn main() {
 
             let teams = see::team::list_teams(&workspace).unwrap_or_default();
             println!("Teams: {}", teams.len());
+        }
+        Commands::Serve { port } => {
+            tracing_subscriber::fmt::init();
+            let state = server::AppState::new(workspace);
+            let rt = tokio::runtime::Runtime::new().expect("failed to create tokio runtime");
+            rt.block_on(server::serve(state, port));
         }
         Commands::Agent(cmd) => cli::agent::run(&workspace, cmd),
         Commands::Team(cmd) => cli::team::run(&workspace, cmd),
