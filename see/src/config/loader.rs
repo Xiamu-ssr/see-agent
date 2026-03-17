@@ -108,10 +108,10 @@ fn set_nested(value: &mut Value, keys: &[&str], target: Value) {
             }
             return;
         }
-        if !current.get(*key).is_some_and(|v| v.is_object()) {
-            if let Some(obj) = current.as_object_mut() {
-                obj.insert((*key).to_string(), Value::Object(Default::default()));
-            }
+        if !current.get(*key).is_some_and(|v| v.is_object())
+            && let Some(obj) = current.as_object_mut()
+        {
+            obj.insert((*key).to_string(), Value::Object(Default::default()));
         }
         current = current.get_mut(*key).unwrap();
     }

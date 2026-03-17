@@ -7,6 +7,7 @@ pub mod eye;
 pub mod io;
 pub mod memory;
 pub mod session;
+pub mod supervisor;
 pub mod team;
 pub mod tool;
 pub mod types;

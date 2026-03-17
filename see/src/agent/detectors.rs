@@ -31,6 +31,12 @@ pub struct NoProgressDetector {
     count: usize,
 }
 
+impl Default for NoProgressDetector {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl NoProgressDetector {
     pub fn new() -> Self {
         Self {
@@ -77,6 +83,12 @@ pub struct RepeatDetector {
     count: usize,
 }
 
+impl Default for RepeatDetector {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl RepeatDetector {
     pub fn new() -> Self {
         Self {
@@ -118,6 +130,12 @@ impl RepeatDetector {
 /// Warns when the agent hasn't taken a screenshot for N steps.
 pub struct NoScreenshotDetector {
     steps_since: usize,
+}
+
+impl Default for NoScreenshotDetector {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl NoScreenshotDetector {

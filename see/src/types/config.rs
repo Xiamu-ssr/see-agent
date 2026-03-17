@@ -33,7 +33,7 @@ pub struct Config {
 // NodeConfig
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct NodeConfig {
     /// Machine identifier. Defaults to hostname at runtime.
     #[serde(default)]
@@ -41,15 +41,6 @@ pub struct NodeConfig {
     /// Listen address. Empty string = local-only, no remote connections.
     #[serde(default)]
     pub listen: String,
-}
-
-impl Default for NodeConfig {
-    fn default() -> Self {
-        Self {
-            id: String::new(),
-            listen: String::new(),
-        }
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -149,17 +140,12 @@ impl Default for CompactConfig {
 // ScreenConfig
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ScalingMatch {
+    #[default]
     AspectRatio,
     PixelCount,
-}
-
-impl Default for ScalingMatch {
-    fn default() -> Self {
-        Self::AspectRatio
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -240,16 +226,11 @@ impl Default for SkillsConfig {
 // McpConfig + McpServerConfig
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum McpServerType {
+    #[default]
     Stdio,
-}
-
-impl Default for McpServerType {
-    fn default() -> Self {
-        Self::Stdio
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -266,21 +247,12 @@ pub struct McpServerConfig {
     pub url: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct McpConfig {
     #[serde(default)]
     pub servers: HashMap<String, McpServerConfig>,
     #[serde(default)]
     pub disabled: Vec<String>,
-}
-
-impl Default for McpConfig {
-    fn default() -> Self {
-        Self {
-            servers: HashMap::new(),
-            disabled: Vec::new(),
-        }
-    }
 }
 
 // ---------------------------------------------------------------------------

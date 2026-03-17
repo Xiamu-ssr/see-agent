@@ -48,10 +48,10 @@ pub fn find_target_resolution(
             for (tw, th) in candidates {
                 let target_aspect = tw as f64 / th as f64;
                 let diff = (aspect - target_aspect).abs() / aspect;
-                if diff < ASPECT_TOLERANCE {
-                    if best.is_none() || diff < best.unwrap().2 {
-                        best = Some((tw, th, diff));
-                    }
+                if diff < ASPECT_TOLERANCE
+                    && (best.is_none() || diff < best.unwrap().2)
+                {
+                    best = Some((tw, th, diff));
                 }
             }
 

@@ -38,7 +38,7 @@ pub struct AgentLoop {
     on_user_input: Option<UserInputCallback>,
     #[allow(dead_code)]
     agent_id: String,
-    inject_queue: Vec<serde_json::Value>,
+    pub(crate) inject_queue: Vec<serde_json::Value>,
     compact_warned: bool,
     // Derived from config
     max_steps: u32,
@@ -343,17 +343,17 @@ impl AgentLoop {
                 final_step = step + 1;
 
                 // Detectors — screenshot tool captures new image
-                if tc.name == "screenshot" {
-                    if let Ok(new_ss) = self.eye.capture().await {
-                        let sc = self.maybe_scale(&new_ss).unwrap_or(new_ss);
-                        ctx.add_screenshot(&sc.base64, sc.detail(), &sc.mime_type);
-                        step_had_screenshot = true;
-                        no_screenshot.got_screenshot();
+                if tc.name == "screenshot"
+                    && let Ok(new_ss) = self.eye.capture().await
+                {
+                    let sc = self.maybe_scale(&new_ss).unwrap_or(new_ss);
+                    ctx.add_screenshot(&sc.base64, sc.detail(), &sc.mime_type);
+                    step_had_screenshot = true;
+                    no_screenshot.got_screenshot();
 
-                        let prefix = &sc.base64[..std::cmp::min(1000, sc.base64.len())];
-                        if let DetectorAction::Warn(msg) = no_progress.check(prefix) {
-                            ctx.add_system_hint(&msg);
-                        }
+                    let prefix = &sc.base64[..std::cmp::min(1000, sc.base64.len())];
+                    if let DetectorAction::Warn(msg) = no_progress.check(prefix) {
+                        ctx.add_system_hint(&msg);
                     }
                 }
 
@@ -409,10 +409,10 @@ impl AgentLoop {
             }
 
             // No-screenshot warning (after all tool calls in this step)
-            if !step_had_screenshot {
-                if let DetectorAction::Warn(msg) = no_screenshot.step_without_screenshot() {
-                    ctx.add_system_hint(&msg);
-                }
+            if !step_had_screenshot
+                && let DetectorAction::Warn(msg) = no_screenshot.step_without_screenshot()
+            {
+                ctx.add_system_hint(&msg);
             }
         }
 

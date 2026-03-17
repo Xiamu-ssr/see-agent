@@ -221,10 +221,10 @@ impl ConversationContext {
 
     /// Update the system prompt in-place (hot-reload). Does NOT fire on_append.
     pub fn update_system_prompt(&mut self, new_prompt: &str) {
-        if let Some(msg) = self.messages.first_mut() {
-            if msg.get("role").and_then(|v| v.as_str()) == Some("system") {
-                msg["content"] = json!(new_prompt);
-            }
+        if let Some(msg) = self.messages.first_mut()
+            && msg.get("role").and_then(|v| v.as_str()) == Some("system")
+        {
+            msg["content"] = json!(new_prompt);
         }
     }
 
