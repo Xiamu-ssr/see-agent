@@ -8,6 +8,7 @@ pub mod io;
 pub mod mcp;
 pub mod memory;
 pub mod session;
+pub mod skill;
 pub mod supervisor;
 pub mod team;
 pub mod tool;
