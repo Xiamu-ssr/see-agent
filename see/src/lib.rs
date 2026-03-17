@@ -5,6 +5,7 @@ pub mod consts;
 pub mod error;
 pub mod eye;
 pub mod io;
+pub mod mcp;
 pub mod memory;
 pub mod session;
 pub mod supervisor;
