@@ -1,0 +1,7 @@
+[package]
+name = "see-web"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+see = { path = "../see" }

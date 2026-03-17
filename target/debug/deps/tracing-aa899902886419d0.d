@@ -1,0 +1,12 @@
+/Users/lanxuan/Code/computer-use-and-memory-agent/target/debug/deps/tracing-aa899902886419d0.d: /Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/tracing-0.1.44/src/lib.rs /Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/tracing-0.1.44/src/macros.rs /Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/tracing-0.1.44/src/dispatcher.rs /Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/tracing-0.1.44/src/field.rs /Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/tracing-0.1.44/src/instrument.rs /Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/tracing-0.1.44/src/level_filters.rs /Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/tracing-0.1.44/src/span.rs /Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/tracing-0.1.44/src/subscriber.rs
+
+/Users/lanxuan/Code/computer-use-and-memory-agent/target/debug/deps/libtracing-aa899902886419d0.rmeta: /Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/tracing-0.1.44/src/lib.rs /Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/tracing-0.1.44/src/macros.rs /Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/tracing-0.1.44/src/dispatcher.rs /Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/tracing-0.1.44/src/field.rs /Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/tracing-0.1.44/src/instrument.rs /Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/tracing-0.1.44/src/level_filters.rs /Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/tracing-0.1.44/src/span.rs /Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/tracing-0.1.44/src/subscriber.rs
+
+/Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/tracing-0.1.44/src/lib.rs:
+/Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/tracing-0.1.44/src/macros.rs:
+/Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/tracing-0.1.44/src/dispatcher.rs:
+/Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/tracing-0.1.44/src/field.rs:
+/Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/tracing-0.1.44/src/instrument.rs:
+/Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/tracing-0.1.44/src/level_filters.rs:
+/Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/tracing-0.1.44/src/span.rs:
+/Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/tracing-0.1.44/src/subscriber.rs:

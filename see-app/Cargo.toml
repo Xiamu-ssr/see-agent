@@ -1,0 +1,13 @@
+[package]
+name = "see-app"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "see"
+path = "src/main.rs"
+
+[dependencies]
+see = { path = "../see" }
+clap.workspace = true
+serde_json.workspace = true

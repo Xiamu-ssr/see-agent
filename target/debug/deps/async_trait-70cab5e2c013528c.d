@@ -1,0 +1,12 @@
+/Users/lanxuan/Code/computer-use-and-memory-agent/target/debug/deps/async_trait-70cab5e2c013528c.d: /Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/async-trait-0.1.89/src/lib.rs /Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/async-trait-0.1.89/src/args.rs /Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/async-trait-0.1.89/src/bound.rs /Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/async-trait-0.1.89/src/expand.rs /Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/async-trait-0.1.89/src/lifetime.rs /Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/async-trait-0.1.89/src/parse.rs /Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/async-trait-0.1.89/src/receiver.rs /Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/async-trait-0.1.89/src/verbatim.rs
+
+/Users/lanxuan/Code/computer-use-and-memory-agent/target/debug/deps/libasync_trait-70cab5e2c013528c.dylib: /Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/async-trait-0.1.89/src/lib.rs /Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/async-trait-0.1.89/src/args.rs /Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/async-trait-0.1.89/src/bound.rs /Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/async-trait-0.1.89/src/expand.rs /Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/async-trait-0.1.89/src/lifetime.rs /Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/async-trait-0.1.89/src/parse.rs /Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/async-trait-0.1.89/src/receiver.rs /Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/async-trait-0.1.89/src/verbatim.rs
+
+/Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/async-trait-0.1.89/src/lib.rs:
+/Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/async-trait-0.1.89/src/args.rs:
+/Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/async-trait-0.1.89/src/bound.rs:
+/Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/async-trait-0.1.89/src/expand.rs:
+/Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/async-trait-0.1.89/src/lifetime.rs:
+/Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/async-trait-0.1.89/src/parse.rs:
+/Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/async-trait-0.1.89/src/receiver.rs:
+/Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/async-trait-0.1.89/src/verbatim.rs:

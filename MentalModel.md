@@ -13,8 +13,8 @@
 ```
 ~/.see-agent/
 ├── config.json                          # 全局配置（最低优先级）
-├── dev.see-agent.server.plist           # launchd 服务定义
 │
+├── agents/system/                       # 内置系统 Agent（首次启动自动创建，不可删除）
 ├── agents/{agent_id}/
 │   ├── agent.json                       # Agent 配置（覆盖全局）
 │   ├── IDENTITY.md                      # 身份（Agent 可自改）
@@ -39,11 +39,11 @@
 │   └── shared/
 │
 ├── skills/{skill_name}/SKILL.md
-├── plugins/
 └── logs/YYYY-MM-DD.log
 ```
 
-sock 文件放 `/tmp/see-agent-{agent_id}.sock`。
+本地 IPC：sock 文件放 `/tmp/see-agent-{agent_id}.sock`。
+远程通信：通过 HTTP/WebSocket 连接目标 node 的监听地址。
 
 ---
 
@@ -69,11 +69,19 @@ sock 文件放 `/tmp/see-agent-{agent_id}.sock`。
 }
 ```
 
-### 2.2 IDENTITY.md / SOUL.md / AGENTS.md
+### 2.2 系统 Agent（agents/system/）
+
+首次启动自动创建，不可删除。与普通 Agent 使用相同的基础设施（loop、inbox、memory），区别：
+
+- 挂载管理类工具（manage_agent、manage_team、manage_config），不挂载 screen 类工具
+- 用户通过 UI 或 CLI 与它对话来管理配置、创建 agent/team 等
+- 模板从 `templates/system/` 复制
+
+### 2.3 IDENTITY.md / SOUL.md / AGENTS.md
 
 创建 Agent 时从 templates/ 复制。
 
-### 2.3 inbox.jsonl + inbox_cursor.json
+### 2.4 inbox.jsonl + inbox_cursor.json
 
 系统写入、系统消费，Agent 无感知。
 
@@ -87,11 +95,11 @@ sock 文件放 `/tmp/see-agent-{agent_id}.sock`。
 
 游标 `{"last_read_id": N}`，进程恢复后从游标继续，不丢消息。
 
-### 2.4 memory/
+### 2.5 memory/
 
 Agent 自觉维护。系统提供 `memory_search`（BM25）和 `write_memory` 两个 tool。
 
-### 2.5 session/
+### 2.6 session/
 
 单会话。messages.jsonl 是完整流水账，compact 不删旧行。
 
@@ -109,7 +117,8 @@ compact 触发前注入静默提醒让 Agent 先存记忆。compact 后携带：
     "name": "测试部",
     "members": [
         { "id": "xxxx4", "role": "项目经理" },
-        { "id": "alice", "role": "测试工程师" }
+        { "id": "alice", "role": "测试工程师" },
+        { "id": "bob",   "role": "开发", "endpoint": "192.168.1.5:8080" }
     ],
     "leader": "xxxx4",
     "status": "created",
@@ -118,6 +127,8 @@ compact 触发前注入静默提醒让 Agent 先存记忆。compact 后携带：
 ```
 
 leader 通过 role 体现，同时保留 `"leader": "xxxx4"` 字段给代码用。role 是业务描述（给 prompt 看），leader 是技术标识（给代码判断权限用）。
+
+成员无 `endpoint` 字段 = 本地 agent，有 `endpoint` = 远程 agent（消息通过网络投递到目标 node）。
 
 ### messages.jsonl
 
@@ -129,11 +140,12 @@ Agent 通过 tool 自主操作。
 
 ---
 
-## 四、skills / plugins / logs
+## 四、skills / logs
 
 - skills：内置自动复制，搜索路径 `skills.dirs`，禁用 `skills.disabled`
-- plugins：`plugins.enabled` + `plugins.dirs`
 - logs：按天滚动，全局 WARNING，详细 DEBUG 在 session.log
+
+> plugins 系统已废弃，扩展能力统一通过 MCP servers 提供。
 
 ---
 
@@ -143,14 +155,17 @@ config / team / agent 三份 JSON 同构，deep merge。dict 递归合并，数�
 
 ```jsonc
 {
+    "node": {
+        "id": "",                        // 本机标识（默认用 hostname）
+        "listen": ""                     // 对外监听地址（空 = 不接受远程连接，纯本地模式）
+    },
     "llm": {
-        "base_url": "https://api.openai.com/v1",  // API 地址
+        "base_url": "https://api.openai.com/v1",
         "api_key": "",
         "model": "gpt-4o"
     },
     "agent": {
         "max_steps": 50,                 // 单次任务最大步数
-        "context_engine": "legacy",      // legacy / 未来插件可扩展
         "compact": {                     // 始终开启
             "context_window": 200000,    // 上下文窗口 tokens
             "target_ratio": 0.75,        // 触发阈值
@@ -171,20 +186,16 @@ config / team / agent 三份 JSON 同构，deep merge。dict 递归合并，数�
         "disabled": []
     },
     "mcp": {
-        "servers": {},                   // MCP server 配置，前端添加的 mcp 写这里（全局级别）
+        "servers": {},                   // MCP server 配置
         "disabled": []
     },
     "tools": {
         "disabled": []                   // 禁用的工具
     },
     "sandbox": {
-        "profile": "default",
+        "profile": "default",            // shell 工具的文件系统访问限制
         "extra_read": [],
         "extra_write": []
-    },
-    "plugins": {
-        "enabled": true,
-        "dirs": ["~/.see-agent/plugins"]
     },
     "web": {
         "language": "zh"                 // 前端 UI 语言
@@ -202,10 +213,14 @@ config.json → team.json → agent.json（deep merge，数组覆盖）
 ## 六、消息流
 
 ```
-发消息 → Server → 写 team/messages.jsonl + agent/inbox.jsonl
+发消息 → 写 team/messages.jsonl → 判断目标 agent 位置
+  → 本地 agent：直接写 agent/inbox.jsonl
+  → 远程 agent：HTTP/WebSocket 发到目标 node → 目标 node 写 inbox.jsonl
   → Agent loop drain inbox（collect=下轮批量，steer=立即注入）
   → 更新 inbox_cursor.json
 ```
+
+Agent loop 的 drain 逻辑不区分消息来源（本地/远程），只读本地 inbox.jsonl。
 
 任务板不走消息流，Agent 通过 tool 操作。
 

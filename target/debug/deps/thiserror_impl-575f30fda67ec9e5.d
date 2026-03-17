@@ -1,0 +1,17 @@
+/Users/lanxuan/Code/computer-use-and-memory-agent/target/debug/deps/thiserror_impl-575f30fda67ec9e5.d: /Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/thiserror-impl-2.0.18/src/lib.rs /Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/thiserror-impl-2.0.18/src/ast.rs /Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/thiserror-impl-2.0.18/src/attr.rs /Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/thiserror-impl-2.0.18/src/expand.rs /Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/thiserror-impl-2.0.18/src/fallback.rs /Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/thiserror-impl-2.0.18/src/fmt.rs /Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/thiserror-impl-2.0.18/src/generics.rs /Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/thiserror-impl-2.0.18/src/prop.rs /Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/thiserror-impl-2.0.18/src/scan_expr.rs /Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/thiserror-impl-2.0.18/src/unraw.rs /Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/thiserror-impl-2.0.18/src/valid.rs
+
+/Users/lanxuan/Code/computer-use-and-memory-agent/target/debug/deps/libthiserror_impl-575f30fda67ec9e5.dylib: /Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/thiserror-impl-2.0.18/src/lib.rs /Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/thiserror-impl-2.0.18/src/ast.rs /Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/thiserror-impl-2.0.18/src/attr.rs /Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/thiserror-impl-2.0.18/src/expand.rs /Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/thiserror-impl-2.0.18/src/fallback.rs /Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/thiserror-impl-2.0.18/src/fmt.rs /Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/thiserror-impl-2.0.18/src/generics.rs /Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/thiserror-impl-2.0.18/src/prop.rs /Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/thiserror-impl-2.0.18/src/scan_expr.rs /Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/thiserror-impl-2.0.18/src/unraw.rs /Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/thiserror-impl-2.0.18/src/valid.rs
+
+/Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/thiserror-impl-2.0.18/src/lib.rs:
+/Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/thiserror-impl-2.0.18/src/ast.rs:
+/Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/thiserror-impl-2.0.18/src/attr.rs:
+/Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/thiserror-impl-2.0.18/src/expand.rs:
+/Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/thiserror-impl-2.0.18/src/fallback.rs:
+/Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/thiserror-impl-2.0.18/src/fmt.rs:
+/Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/thiserror-impl-2.0.18/src/generics.rs:
+/Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/thiserror-impl-2.0.18/src/prop.rs:
+/Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/thiserror-impl-2.0.18/src/scan_expr.rs:
+/Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/thiserror-impl-2.0.18/src/unraw.rs:
+/Users/lanxuan/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/thiserror-impl-2.0.18/src/valid.rs:
+
+# env-dep:CARGO_PKG_VERSION_PATCH=18
