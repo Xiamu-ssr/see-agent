@@ -3,5 +3,7 @@ pub mod config;
 pub mod consts;
 pub mod error;
 pub mod io;
+pub mod memory;
+pub mod session;
 pub mod team;
 pub mod types;
