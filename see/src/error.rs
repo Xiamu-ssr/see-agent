@@ -35,6 +35,9 @@ pub enum SeeError {
     #[error("MCP error: {message}")]
     Mcp { message: String },
 
+    #[error("Transport error: {message}")]
+    Transport { message: String },
+
     #[error("Not found: {what}")]
     NotFound { what: String },
 }

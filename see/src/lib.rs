@@ -14,4 +14,5 @@ pub mod skill;
 pub mod supervisor;
 pub mod team;
 pub mod tool;
+pub mod transport;
 pub mod types;
