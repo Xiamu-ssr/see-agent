@@ -1,0 +1,9 @@
+[serve]
+port = 8080
+open = false
+
+[build]
+target = "index.html"
+
+[watch]
+watch = ["src", "index.html"]
