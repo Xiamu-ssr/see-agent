@@ -7,7 +7,7 @@ use crate::api;
 struct McpServer {
     name: String,
     status: String,
-    tools: Vec<String>,
+    tools_count: usize,
 }
 
 #[component]
@@ -22,18 +22,17 @@ pub fn Mcp() -> impl IntoView {
             <Suspense fallback=|| view! { <p>"Loading..."</p> }>
                 {move || servers.get().map(|list| {
                     if list.is_empty() {
-                        view! { <p>"No MCP servers configured"</p> }.into_any()
+                        view! { <p class="empty">"No MCP servers configured. MCP endpoint not yet available."</p> }.into_any()
                     } else {
                         let items: Vec<_> = list.iter().cloned().collect();
                         view! {
                             <div class="card-grid">
                                 {items.into_iter().map(|s| {
-                                    let tool_count = s.tools.len();
                                     view! {
                                         <div class="card">
                                             <span class="card-name">{s.name}</span>
                                             <span class="card-status">{s.status}</span>
-                                            <span class="card-meta">{format!("{tool_count} tools")}</span>
+                                            <span class="card-meta">{format!("{} tools", s.tools_count)}</span>
                                         </div>
                                     }
                                 }).collect_view()}

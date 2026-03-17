@@ -4,37 +4,42 @@ use serde::Deserialize;
 use crate::api;
 
 #[derive(Debug, Clone, Deserialize)]
-struct HealthResponse {
-    status: String,
-    agents: usize,
-    teams: usize,
+struct DashboardData {
+    agents_count: usize,
+    agents_running: usize,
+    teams_count: usize,
+    version: String,
 }
 
 #[component]
 pub fn Dashboard() -> impl IntoView {
-    let health = LocalResource::new(|| async {
-        api::get::<HealthResponse>("/health").await.ok()
+    let data = LocalResource::new(|| async {
+        api::get::<DashboardData>("/dashboard").await.ok()
     });
 
     view! {
         <div class="page">
             <h2>"Dashboard"</h2>
             <Suspense fallback=|| view! { <p>"Loading..."</p> }>
-                {move || health.get().map(|h| {
-                    match &*h {
-                        Some(h) => view! {
+                {move || data.get().map(|d| {
+                    match &*d {
+                        Some(d) => view! {
                             <div class="stats">
                                 <div class="stat-card">
-                                    <span class="stat-label">"Status"</span>
-                                    <span class="stat-value">{h.status.clone()}</span>
+                                    <span class="stat-label">"Version"</span>
+                                    <span class="stat-value">{d.version.clone()}</span>
                                 </div>
                                 <div class="stat-card">
-                                    <span class="stat-label">"Agents"</span>
-                                    <span class="stat-value">{h.agents}</span>
+                                    <span class="stat-label">"Total Agents"</span>
+                                    <span class="stat-value">{d.agents_count}</span>
+                                </div>
+                                <div class="stat-card">
+                                    <span class="stat-label">"Running"</span>
+                                    <span class="stat-value stat-running">{d.agents_running}</span>
                                 </div>
                                 <div class="stat-card">
                                     <span class="stat-label">"Teams"</span>
-                                    <span class="stat-value">{h.teams}</span>
+                                    <span class="stat-value">{d.teams_count}</span>
                                 </div>
                             </div>
                         }.into_any(),

@@ -532,3 +532,46 @@ body {
     border-radius: 6px;
     font-size: 0.9rem;
 }
+
+/* Config editor */
+.config-editor {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.config-textarea {
+    width: 100%;
+    min-height: 400px;
+    padding: 1rem;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 0.85rem;
+    resize: vertical;
+    outline: none;
+}
+
+.config-textarea:focus {
+    border-color: var(--accent);
+}
+
+.config-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+/* Monospace cells */
+.mono {
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 0.85rem;
+}
+
+/* Availability */
+.avail-yes { color: var(--success); }
+.avail-no { color: var(--text-muted); }
+
+/* Running stat highlight */
+.stat-running { color: var(--success); }
