@@ -6,4 +6,5 @@ pub mod io;
 pub mod memory;
 pub mod session;
 pub mod team;
+pub mod tool;
 pub mod types;
