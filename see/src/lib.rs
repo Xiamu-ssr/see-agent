@@ -1,4 +1,5 @@
 pub mod agent;
+pub mod brain;
 pub mod config;
 pub mod consts;
 pub mod error;
