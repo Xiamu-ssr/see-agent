@@ -1,0 +1,27 @@
+;; ---------------------------------------------------------------------------
+;; Agent: Amp
+;; Amp CLI binary, state, and config paths.
+;; Source: 60-agents/amp.sb
+;; $$require=55-integrations-optional/clipboard.sb$$
+;; ---------------------------------------------------------------------------
+
+;; - install script binary locations:
+;;   - ~/.amp/bin/amp
+;;   - ~/.local/bin/amp (symlink target)
+;; - local state/config
+;; - auth storage: Amp CLI stores encrypted credentials in ~/.local/share/amp/secrets.json
+;;   (not macOS Keychain)
+
+(allow file-read* file-write*
+    (home-literal "/.amp/bin/amp")
+    (home-literal "/.local/bin/amp")
+    (home-subpath "/.amp")
+    (home-subpath "/.config/amp")
+    (home-subpath "/.cache/amp")
+    (home-subpath "/.local/share/amp")
+    (home-subpath "/.local/state/amp")
+)
+
+(allow file-read*
+    (home-subpath "/.claude")  ;; Amp probes Claude config/auth files on startup in some environments.
+)

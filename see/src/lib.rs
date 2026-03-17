@@ -7,6 +7,8 @@ pub mod eye;
 pub mod io;
 pub mod mcp;
 pub mod memory;
+pub mod overlay;
+pub mod sandbox;
 pub mod session;
 pub mod skill;
 pub mod supervisor;

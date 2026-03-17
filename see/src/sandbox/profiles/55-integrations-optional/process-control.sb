@@ -1,0 +1,15 @@
+;; ---------------------------------------------------------------------------
+;; Integration: Process Control
+;; Host process enumeration and signalling for local supervision workflows.
+;; Source: 55-integrations-optional/process-control.sb
+;; ---------------------------------------------------------------------------
+
+;; Enables host process lookup and signalling for tools such as pgrep, pkill,
+;; kill, and killall. This intentionally does NOT include task-port access or
+;; debugger-grade process inspection.
+
+(allow mach-lookup
+    (global-name "com.apple.sysmond")  ;; Process inventory service used by pgrep/pkill on modern macOS.
+)
+
+(allow signal)                         ;; Allow signalling host processes (kill, pkill, kill -0).
