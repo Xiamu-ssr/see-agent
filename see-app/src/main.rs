@@ -19,6 +19,8 @@ fn main() {
 
     match cli.command {
         Commands::Init => {
+            // Also create system agents on first init
+            create_system_agents(&workspace);
             println!("Workspace initialized at {}", workspace.path().display());
         }
         Commands::Status => {
@@ -35,11 +37,37 @@ fn main() {
         }
         Commands::Serve { port } => {
             tracing_subscriber::fmt::init();
+            // Ensure system agents exist before serving
+            create_system_agents(&workspace);
             let state = server::AppState::new(workspace);
             let rt = tokio::runtime::Runtime::new().expect("failed to create tokio runtime");
             rt.block_on(server::serve(state, port));
         }
         Commands::Agent(cmd) => cli::agent::run(&workspace, cmd),
         Commands::Team(cmd) => cli::team::run(&workspace, cmd),
+        Commands::Config(cmd) => cli::config_cmd::run(&workspace, cmd),
+        Commands::Send {
+            agent_id,
+            message,
+            steer,
+        } => cli::send::run(&workspace, &agent_id, &message, steer),
+        Commands::Worker {
+            agent_id,
+            workspace_path,
+        } => {
+            tracing_subscriber::fmt::init();
+            let rt = tokio::runtime::Runtime::new().expect("failed to create tokio runtime");
+            rt.block_on(cli::worker::run(&agent_id, &workspace_path));
+        }
+    }
+}
+
+/// Create system agents if they don't already exist.
+///
+/// The "system" agent handles management commands (status queries, etc.).
+fn create_system_agents(workspace: &WorkspaceDir) {
+    let system_dir = workspace.agent("system");
+    if !system_dir.path().exists() {
+        let _ = see::agent::create_agent(workspace, "system", Some("System"), Some("🔧"));
     }
 }

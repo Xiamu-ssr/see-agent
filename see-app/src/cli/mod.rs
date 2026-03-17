@@ -1,5 +1,8 @@
 pub mod agent;
+pub mod config_cmd;
+pub mod send;
 pub mod team;
+pub mod worker;
 
 use clap::{Parser, Subcommand};
 
@@ -28,4 +31,25 @@ pub enum Commands {
     /// Manage teams
     #[command(subcommand)]
     Team(team::TeamCmd),
+    /// Manage configuration
+    #[command(subcommand)]
+    Config(config_cmd::ConfigCmd),
+    /// Send a message to an agent
+    Send {
+        /// Agent id
+        agent_id: String,
+        /// Message content
+        message: String,
+        /// Send as steer (high priority) message
+        #[arg(short, long)]
+        steer: bool,
+    },
+    /// Run as a worker process (used by supervisor, not invoked directly)
+    #[command(hide = true)]
+    Worker {
+        /// Agent id
+        agent_id: String,
+        /// Workspace path
+        workspace_path: String,
+    },
 }
