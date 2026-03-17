@@ -2,6 +2,7 @@ pub mod agent;
 pub mod config;
 pub mod consts;
 pub mod error;
+pub mod eye;
 pub mod io;
 pub mod memory;
 pub mod session;
