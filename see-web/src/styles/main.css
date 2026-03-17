@@ -309,7 +309,226 @@ body {
     color: var(--accent);
 }
 
-/* Error */
+/* Error / Empty */
 .error {
     color: var(--error);
+}
+
+.empty {
+    color: var(--text-muted);
+    font-style: italic;
+    padding: 2rem 0;
+}
+
+/* Page header */
+.page-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1.5rem;
+}
+
+.page-header h2 {
+    margin-bottom: 0;
+}
+
+/* Back link */
+.back-link {
+    color: var(--text-muted);
+    text-decoration: none;
+    font-size: 0.85rem;
+}
+
+.back-link:hover {
+    color: var(--accent);
+}
+
+/* Status badge */
+.status-badge {
+    font-size: 0.75rem;
+    padding: 0.15rem 0.6rem;
+    border-radius: 10px;
+    text-transform: uppercase;
+    font-weight: 600;
+}
+
+.status-running {
+    background: rgba(46, 204, 113, 0.15);
+    color: var(--success);
+}
+
+.status-idle {
+    background: rgba(136, 136, 136, 0.15);
+    color: var(--text-muted);
+}
+
+/* Tabs */
+.tabs {
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 1.5rem;
+}
+
+.tab {
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--text-muted);
+    padding: 0.6rem 1rem;
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: color 0.15s, border-color 0.15s;
+}
+
+.tab:hover {
+    color: var(--text);
+}
+
+.tab.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+}
+
+/* Overview grid */
+.overview-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 1rem;
+}
+
+.info-card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+}
+
+.info-label {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+}
+
+.info-value {
+    font-weight: 500;
+}
+
+.info-value.mono {
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 0.8rem;
+    word-break: break-all;
+}
+
+/* Chat panel */
+.chat-panel {
+    display: flex;
+    flex-direction: column;
+    height: 400px;
+}
+
+.chat-log {
+    flex: 1;
+    overflow-y: auto;
+    padding: 1rem;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 8px 8px 0 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.chat-msg {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    padding: 0.5rem 0.75rem;
+    border-radius: 6px;
+    max-width: 80%;
+}
+
+.chat-you {
+    align-self: flex-end;
+    background: var(--accent);
+    color: #fff;
+}
+
+.chat-agent {
+    align-self: flex-start;
+    background: var(--card-bg);
+}
+
+.chat-sender {
+    font-size: 0.7rem;
+    opacity: 0.7;
+    text-transform: uppercase;
+}
+
+.chat-content {
+    font-size: 0.9rem;
+}
+
+.chat-input-row {
+    display: flex;
+    gap: 0.5rem;
+    padding: 0.75rem;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-top: none;
+    border-radius: 0 0 8px 8px;
+}
+
+.chat-input {
+    flex: 1;
+    padding: 0.5rem 0.75rem;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font-size: 0.9rem;
+    outline: none;
+}
+
+.chat-input:focus {
+    border-color: var(--accent);
+}
+
+/* Buttons */
+.btn {
+    padding: 0.5rem 1rem;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-weight: 500;
+    transition: background 0.15s;
+}
+
+.btn-primary {
+    background: var(--accent);
+    color: #fff;
+}
+
+.btn-primary:hover {
+    background: var(--accent-hover);
+}
+
+/* Simple list */
+.simple-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.simple-list li {
+    padding: 0.5rem 0.75rem;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 0.9rem;
 }
