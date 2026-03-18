@@ -41,20 +41,20 @@ jobs:
           sudo apt-get install -y gcc-aarch64-linux-gnu
 
       - name: Build frontend
-        run: cd see-web && trunk build --release
+        run: cd see-agent-corp-web && trunk build --release
 
       - name: Build binary
-        run: cargo build -p see-app --release --target ${{ matrix.target }}
+        run: cargo build -p see-agent-corp-app --release --target ${{ matrix.target }}
         env:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
 
       - name: Package
         run: |
           mkdir -p dist
-          cp target/${{ matrix.target }}/release/see dist/see-${{ matrix.target }}
-          tar czf see-${{ matrix.target }}.tar.gz -C dist see-${{ matrix.target }}
+          cp target/${{ matrix.target }}/release/see-agent-corp dist/see-agent-corp-${{ matrix.target }}
+          tar czf see-agent-corp-${{ matrix.target }}.tar.gz -C dist see-agent-corp-${{ matrix.target }}
 
       - name: Upload release assets
         uses: softprops/action-gh-release@v2
         with:
-          files: see-${{ matrix.target }}.tar.gz
+          files: see-agent-corp-${{ matrix.target }}.tar.gz

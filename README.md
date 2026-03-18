@@ -2,7 +2,7 @@
 
 <br/>
 
-<img src="https://badgen.net/static/%F0%9F%91%81%EF%B8%8F%20see-agent/Your%20Mac%2C%20on%20Autopilot/purple?scale=2" alt="see-agent" />
+<img src="https://badgen.net/static/%F0%9F%A4%96%20see-agent-corp/AI%20Agent%20Teams%20for%20macOS/purple?scale=2" alt="see-agent-corp" />
 
 <br/><br/>
 
@@ -25,7 +25,7 @@
 [![Rust](https://badgen.net/static/rust/2024/DEA584)](https://rust-lang.org)
 [![License](https://badgen.net/github/license/Xiamu-ssr/see-agent)](LICENSE)
 [![Stars](https://badgen.net/github/stars/Xiamu-ssr/see-agent)](https://github.com/Xiamu-ssr/see-agent)
-[![Tests](https://badgen.net/static/tests/194%20passed/green)](https://github.com/Xiamu-ssr/see-agent)
+[![Tests](https://badgen.net/static/tests/275%20passed/green)](https://github.com/Xiamu-ssr/see-agent)
 [![CI](https://github.com/Xiamu-ssr/see-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/Xiamu-ssr/see-agent/actions/workflows/ci.yml)
 
 <br/>
@@ -36,9 +36,9 @@
 
 ---
 
-## What is see-agent?
+## What is see-agent-corp?
 
-see-agent is an open-source AI agent platform for macOS, written entirely in Rust. Each agent can **see** your screen (via screenshots), **think** (via LLM), and **act** (clicks, types, scrolls, shell commands). Multiple agents form teams to tackle complex tasks — each running in its own sandboxed subprocess, communicating through a file-based message bus.
+see-agent-corp is an open-source AI agent platform for macOS, written entirely in Rust. Each agent can **see** your screen (via screenshots), **think** (via LLM), and **act** (clicks, types, scrolls, shell commands). Multiple agents form teams to tackle complex tasks — each running in its own sandboxed subprocess, communicating through a file-based message bus.
 
 Everything ships as a **single binary** with the web UI embedded. No Python, no Node.js, no runtime dependencies.
 
@@ -48,8 +48,8 @@ Everything ships as a **single binary** with the web UI embedded. No Python, no 
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Xiamu-ssr/see-agent/main/scripts/install.sh | sh
-see init
-see start
+see-agent-corp init
+see-agent-corp start
 # Open http://localhost:28789
 ```
 
@@ -58,12 +58,13 @@ see start
 ```bash
 git clone https://github.com/Xiamu-ssr/see-agent.git
 cd see-agent
-./see.sh init       # Auto-builds on first run
-./see.sh start      # Daemon mode
+cargo build -p see-agent-corp-app --release
+./target/release/see-agent-corp init
+./target/release/see-agent-corp start
 # Open http://localhost:28789
 ```
 
-Configure your LLM API key in the Config page (or `~/.see-agent/config.json`) and you're ready to go.
+Configure your LLM API key in the Config page (or `~/.see-agent-corp/config.json`) and you're ready to go.
 
 ## How It Works
 
@@ -94,33 +95,28 @@ You type a task in the Web UI
 
 Each agent follows a **ReAct loop**: screenshot → think → act → screenshot → think → ... until the task is done or the step limit is reached. Safety detectors (repeat action, no progress, no screenshot, consecutive errors) automatically intervene when the agent gets stuck.
 
+**Process lifecycle:** Sending a message to an agent automatically starts it — no manual start/stop needed. Idle agents sleep and wake on demand. The dashboard provides **freeze** (stop all) and **revive** (restart all) controls.
+
 ## CLI
 
 Single binary, all commands:
 
 | Command | Description |
 |---------|-------------|
-| `see init` | Initialize workspace (`~/.see-agent/`) |
-| `see start [--port N]` | Start as background daemon |
-| `see stop` | Stop the daemon |
-| `see restart [--port N]` | Restart the daemon |
-| `see status` | Show workspace + server status |
-| `see serve [--port N]` | Foreground mode (dev/debug) |
-| `see agent create --id NAME` | Create an agent |
-| `see agent list` | List all agents |
-| `see agent delete NAME` | Delete an agent |
-| `see team create --id NAME --members a,b` | Create a team |
-| `see team list` | List all teams |
-| `see send --agent NAME --message "..."` | Send a task to an agent |
-| `see config show` | Show merged config |
-| `see config set llm.model gpt-4o` | Set a config value |
-
-**Local development wrapper** — `./see.sh` has the exact same interface but auto-builds from source when files change:
-
-```bash
-./see.sh start           # builds if needed, then starts
-./see.sh agent list      # no rebuild if source unchanged
-```
+| `see-agent-corp init` | Initialize workspace (`~/.see-agent-corp/`) |
+| `see-agent-corp start [--port N]` | Start as background daemon |
+| `see-agent-corp stop` | Stop the daemon |
+| `see-agent-corp restart [--port N]` | Restart the daemon |
+| `see-agent-corp status` | Show workspace + server status |
+| `see-agent-corp serve [--port N]` | Foreground mode (dev/debug) |
+| `see-agent-corp agent create --id NAME` | Create an agent |
+| `see-agent-corp agent list` | List all agents |
+| `see-agent-corp agent delete NAME` | Delete an agent |
+| `see-agent-corp team create --id NAME --members a,b` | Create a team |
+| `see-agent-corp team list` | List all teams |
+| `see-agent-corp send --agent NAME --message "..."` | Send a task (auto-starts agent) |
+| `see-agent-corp config show` | Show merged config |
+| `see-agent-corp config set llm.model gpt-4o` | Set a config value |
 
 ## Agent Teams
 
@@ -138,17 +134,20 @@ Define agents with different roles and form teams:
 **How teams run:**
 
 1. Leader receives the task, reads the screen, decomposes into subtasks
-2. Workers claim subtasks from the shared task board
-3. Agents communicate via async message bus (file-based inbox)
-4. Owner (you) can message any agent or broadcast to the team
-5. All messages are logged and visible in the web UI
+2. Leader creates and assigns tasks on the shared task board
+3. Workers claim or receive tasks, execute them independently
+4. Agents communicate via async message bus (file-based inbox)
+5. Team members share a `shared/` workspace directory for file exchange
+6. All messages are logged and visible in the web UI (single-page team view)
+
+**Config hierarchy:** Settings cascade through three levels — `config.json` (global) → `team.json` (team-level) → `agent.json` (per-agent). Each level deep-merges on top of the previous. Environment variables (`SAC_*`) override everything.
 
 ## Memory
 
 Agents manage their own memory as **plain Markdown files** — no vector database needed:
 
 ```
-~/.see-agent/agents/{id}/
+~/.see-agent-corp/agents/{id}/
 ├── AGENTS.md          ← Behavior guidelines (auto-generated)
 ├── SOUL.md            ← Personality description
 └── memory/
@@ -168,7 +167,7 @@ Before context compaction, a **memoryFlush** event prompts the agent to save imp
 Each agent subprocess is wrapped in macOS `sandbox-exec` — kernel-level, not bypassable:
 
 ```
-sandbox-exec -f agent-profile.sb see worker <agent_id> <workspace>
+sandbox-exec -f agent-profile.sb see-agent-corp worker <agent_id> <workspace>
 ```
 
 **Defaults:**
@@ -182,42 +181,46 @@ sandbox-exec -f agent-profile.sb see worker <agent_id> <workspace>
 ## Architecture
 
 ```
-┌──────────────────────────────────────────────────────┐
-│  🖥️  Web UI (Leptos 0.7 CSR, WASM, embedded in binary) │
-│  Dashboard / Agents / Teams / Skills / Config / Logs │
-├──────────────────────────────────────────────────────┤
-│  🌐 HTTP Server (Axum 0.8)                           │
-│  30+ REST endpoints, static file serving             │
-├──────────────────────────────────────────────────────┤
-│  📡 Supervisor                                       │
-│  Worker lifecycle · Inbox drain · Signal relay        │
-├──────────────────────────────────────────────────────┤
-│  🤖 Agent worker subprocesses (one per agent)        │
-│  AgentLoop · Brain (LLM) · Eye (screen) · Memory     │
-│  MCP client · Skill loader · Sandbox wrapper          │
-└──────────────────────────────────────────────────────┘
+┌───────────────────────────────────────────────────────────┐
+│  🖥️  Web UI (Leptos 0.7 CSR + Thaw UI 0.4, WASM)         │
+│  Dashboard / Agents / Teams / Config / Logs               │
+├───────────────────────────────────────────────────────────┤
+│  🌐 HTTP Server (Axum 0.8)                                │
+│  30+ REST endpoints, static file serving, freeze/revive   │
+├───────────────────────────────────────────────────────────┤
+│  📡 Supervisor                                            │
+│  Worker lifecycle · Auto-start · Heartbeat · Signal relay  │
+├───────────────────────────────────────────────────────────┤
+│  🤖 Agent worker subprocesses (one per agent)             │
+│  AgentLoop · Brain (LLM) · Eye (screen) · Memory          │
+│  MCP client · Skill loader · Sandbox wrapper               │
+└───────────────────────────────────────────────────────────┘
 ```
 
 **Key design choices:**
 
 - **Single binary**: Rust + WASM frontend embedded via `rust-embed`. No runtime deps.
 - **File-based IPC**: Agents communicate through JSONL inbox files. Simple, auditable, survives crashes.
-- **Config layering**: `config.json` → env var overrides → per-agent `agent.json` deep merge.
+- **3-level config**: `config.json` → `team.json` → `agent.json` deep merge, plus `SAC_*` env var overrides.
 - **LLM agnostic**: Any OpenAI-compatible API (GPT-4o, Claude via proxy, local models).
-- **Zero warnings**: `clippy -D warnings` on both native and WASM targets. 194 tests.
+- **Auto-start lifecycle**: Sending a message starts the agent; idle agents sleep; dashboard freeze/revive for batch control.
+- **Lazy image loading**: Screenshots stored as path references, resolved to base64 only at LLM call time.
+- **Zero warnings**: `clippy -D warnings` on both native and WASM targets. 275 tests across 3 crates.
 
 ## Configuration
 
 ```jsonc
-// ~/.see-agent/config.json
+// ~/.see-agent-corp/config.json
 {
   "llm": {
     "base_url": "https://api.openai.com/v1",
     "api_key": "sk-...",
     "model": "gpt-4o"
   },
-  "agent": { "max_steps": 50 },
-  "screen": { "max_images": 5, "scaling_enabled": true },
+  "agent": {
+    "max_steps": 50,
+    "max_images": 5
+  },
   "mcp": {
     "servers": {
       "tavily": {
@@ -230,7 +233,7 @@ sandbox-exec -f agent-profile.sb see worker <agent_id> <workspace>
 }
 ```
 
-Per-agent overrides in `~/.see-agent/agents/{id}/agent.json` are deep-merged on top of global config.
+Per-agent overrides in `~/.see-agent-corp/agents/{id}/agent.json` and team-level overrides in `team.json` are deep-merged on top of global config.
 
 ## Development
 
@@ -246,14 +249,14 @@ bash scripts/check.sh
 **Project structure:**
 
 ```
-see/          ← Core library (types, agent loop, brain, eye, memory, mcp, sandbox, ...)
-see-app/      ← Binary crate (CLI, HTTP server, worker, daemon)
-see-web/      ← Frontend (Leptos 0.7 CSR → WASM)
-scripts/      ← check.sh, install.sh, service templates
+see-agent-corp/       ← Core library (types, agent loop, brain, eye, memory, mcp, sandbox, ...)
+see-agent-corp-app/   ← Binary crate (CLI, HTTP server, worker, daemon)
+see-agent-corp-web/   ← Frontend (Leptos 0.7 CSR + Thaw UI 0.4 → WASM)
+scripts/              ← check.sh, install.sh
 ```
 
 **Conventions:**
-- All constants live in `see/src/consts.rs`. No magic values outside the isolation zone (`see/src/io/`).
+- All constants live in `see-agent-corp/src/consts.rs`. No magic values outside the isolation zone (`see-agent-corp/src/io/`).
 - TDD: write test → red → implement → green → refactor.
 - `cargo test` for inner loop, `check.sh` for final gate before commit.
 
@@ -270,7 +273,7 @@ scripts/      ← check.sh, install.sh, service templates
 
 <div align="center">
 
-**Built with** 🦀 Rust · 🖥️ Leptos · 🧠 LLM Vision · ⚡ Axum · 🔒 macOS Sandbox
+**Built with** 🦀 Rust · 🖥️ Leptos · 🎨 Thaw UI · 🧠 LLM Vision · ⚡ Axum · 🔒 macOS Sandbox
 
 <sub>If you find this useful, a star on GitHub would be awesome!</sub>
 
