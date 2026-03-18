@@ -64,5 +64,12 @@ pub const MAX_INSTALLED_APPS_LIST: usize = 40;
 /// MCP
 pub const MCP_PROTOCOL_VERSION: &str = "2024-11-05";
 
+/// Tool execution
+pub const SHELL_OUTPUT_MAX_CHARS: usize = 10_000;
+pub const SHELL_TIMEOUT_SECS: u64 = 30;
+pub const MEMORY_SEARCH_LIMIT: usize = 10;
+pub const DEFAULT_WAIT_SECS: f64 = 2.0;
+pub const DEFAULT_SCROLL_AMOUNT: i32 = 3;
+
 /// Version
 pub const VERSION: &str = "0.1.0";

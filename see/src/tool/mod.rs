@@ -1,5 +1,5 @@
 mod builtin;
 mod registry;
 
-pub use builtin::register_builtin_tools;
+pub use builtin::{builtin_tool_infos, register_builtin_tools, ToolContext};
 pub use registry::{Tool, ToolRegistry};

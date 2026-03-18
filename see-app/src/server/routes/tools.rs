@@ -4,7 +4,7 @@ use axum::routing::get;
 use axum::{Json, Router};
 use serde::Serialize;
 
-use see::tool::{register_builtin_tools, ToolRegistry};
+use see::tool::builtin_tool_infos;
 
 use crate::server::AppState;
 
@@ -17,21 +17,11 @@ struct ToolInfoResponse {
 async fn list_tools_handler(
     State(_state): State<AppState>,
 ) -> Result<Json<Vec<ToolInfoResponse>>, StatusCode> {
-    let mut registry = ToolRegistry::new();
-    register_builtin_tools(&mut registry);
-
-    let tools: Vec<ToolInfoResponse> = registry
-        .names()
+    let tools: Vec<ToolInfoResponse> = builtin_tool_infos()
         .into_iter()
-        .map(|name| {
-            let desc = registry
-                .get(&name)
-                .map(|t| t.description().to_owned())
-                .unwrap_or_default();
-            ToolInfoResponse {
-                name,
-                description: desc,
-            }
+        .map(|(name, desc)| ToolInfoResponse {
+            name: name.to_owned(),
+            description: desc.to_owned(),
         })
         .collect();
 
