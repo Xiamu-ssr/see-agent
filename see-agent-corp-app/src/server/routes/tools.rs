@@ -114,3 +114,125 @@ pub fn router(state: AppState) -> Router {
         )
         .with_state(state)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::body::Body;
+    use axum::http::Request;
+    use tower::ServiceExt;
+
+    fn make_test_state() -> AppState {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let ws = see_agent_corp::types::WorkspaceDir::new(tmp.path());
+        see_agent_corp::config::ensure_workspace(&ws).unwrap();
+        std::mem::forget(tmp);
+        AppState::new(ws)
+    }
+
+    #[tokio::test]
+    async fn list_tools_returns_all_builtin_tools() {
+        let state = make_test_state();
+        let app = router(state);
+        let req = Request::builder()
+            .method("GET")
+            .uri("/tools")
+            .body(Body::empty())
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let tools: Vec<serde_json::Value> = serde_json::from_slice(&body).unwrap();
+        assert_eq!(tools.len(), builtin_tool_infos().len());
+        // Every tool has name, description, disabled
+        for tool in &tools {
+            assert!(tool["name"].is_string());
+            assert!(tool["description"].is_string());
+            assert!(tool["disabled"].is_boolean());
+        }
+    }
+
+    #[tokio::test]
+    async fn toggle_tool_writes_agent_json() {
+        let state = make_test_state();
+        let ws = state.workspace();
+        see_agent_corp::agent::create_agent(ws, "toggle-test", None, None).unwrap();
+
+        let app = router(state.clone());
+        let body_json = serde_json::json!({"disabled": true});
+        let req = Request::builder()
+            .method("POST")
+            .uri("/agents/toggle-test/tools/shell/toggle")
+            .header("Content-Type", "application/json")
+            .body(Body::from(serde_json::to_string(&body_json).unwrap()))
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        // Verify agent.json has shell in disabled list
+        let agent_json: Value =
+            serde_json::from_str(&std::fs::read_to_string(ws.agent("toggle-test").agent_json()).unwrap())
+                .unwrap();
+        let disabled = agent_json["tools"]["disabled"].as_array().unwrap();
+        assert!(disabled.contains(&Value::String("shell".into())));
+    }
+
+    #[tokio::test]
+    async fn toggle_tool_enable_removes_from_disabled() {
+        let state = make_test_state();
+        let ws = state.workspace();
+        see_agent_corp::agent::create_agent(ws, "toggle-e", None, None).unwrap();
+
+        // First disable shell
+        let app = router(state.clone());
+        let body_json = serde_json::json!({"disabled": true});
+        let req = Request::builder()
+            .method("POST")
+            .uri("/agents/toggle-e/tools/shell/toggle")
+            .header("Content-Type", "application/json")
+            .body(Body::from(serde_json::to_string(&body_json).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        // Now re-enable shell
+        let app2 = router(state.clone());
+        let body_json2 = serde_json::json!({"disabled": false});
+        let req2 = Request::builder()
+            .method("POST")
+            .uri("/agents/toggle-e/tools/shell/toggle")
+            .header("Content-Type", "application/json")
+            .body(Body::from(serde_json::to_string(&body_json2).unwrap()))
+            .unwrap();
+        let resp2 = app2.oneshot(req2).await.unwrap();
+        assert_eq!(resp2.status(), StatusCode::OK);
+
+        // Verify shell is no longer in disabled list
+        let agent_json: Value =
+            serde_json::from_str(&std::fs::read_to_string(ws.agent("toggle-e").agent_json()).unwrap())
+                .unwrap();
+        let disabled = agent_json["tools"]["disabled"].as_array().unwrap();
+        assert!(!disabled.contains(&Value::String("shell".into())));
+    }
+
+    #[tokio::test]
+    async fn toggle_tool_nonexistent_agent_returns_404() {
+        let state = make_test_state();
+        let app = router(state);
+        let body_json = serde_json::json!({"disabled": true});
+        let req = Request::builder()
+            .method("POST")
+            .uri("/agents/nope/tools/shell/toggle")
+            .header("Content-Type", "application/json")
+            .body(Body::from(serde_json::to_string(&body_json).unwrap()))
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+}

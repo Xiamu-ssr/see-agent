@@ -2,6 +2,7 @@ use leptos::prelude::*;
 use leptos_router::components::A;
 use leptos_router::hooks::use_params_map;
 use serde::Deserialize;
+use thaw::*;
 
 use crate::api;
 
@@ -50,13 +51,6 @@ struct TeamMessage {
     timestamp: String,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum TeamTab {
-    Members,
-    Tasks,
-    Messages,
-}
-
 // ---------------------------------------------------------------------------
 // List page
 // ---------------------------------------------------------------------------
@@ -68,30 +62,35 @@ pub fn Teams() -> impl IntoView {
     });
 
     view! {
-        <div class="page">
-            <div class="page-header">
-                <h2>"Teams"</h2>
-            </div>
-            <Suspense fallback=|| view! { <p>"Loading..."</p> }>
+        <div>
+            <Body1><b>"Teams"</b></Body1>
+            <Divider />
+            <Suspense fallback=|| view! { <Spinner /> }>
                 {move || teams.get().map(|list| {
                     let items: Vec<_> = list.iter().cloned().collect();
                     if items.is_empty() {
-                        view! { <p class="empty">"No teams yet"</p> }.into_any()
+                        view! { <MessageBar><MessageBarBody>"No teams yet"</MessageBarBody></MessageBar> }.into_any()
                     } else {
                         view! {
-                            <div class="card-grid">
+                            <Grid cols=3 x_gap=12 y_gap=12>
                                 {items.into_iter().map(|t| {
                                     let href = format!("/teams/{}", t.id);
                                     let count = t.members.len();
+                                    let name = t.name;
+                                    let status = t.status;
                                     view! {
-                                        <A href=href attr:class="card">
-                                            <span class="card-name">{t.name}</span>
-                                            <span class="card-status">{t.status}</span>
-                                            <span class="card-meta">{format!("{count} members")}</span>
-                                        </A>
+                                        <GridItem>
+                                            <A href=href attr:style="text-decoration:none;color:inherit">
+                                                <Card>
+                                                    <Caption1Strong>{name}</Caption1Strong>
+                                                    <Badge color=BadgeColor::Informative>{status}</Badge>
+                                                    <Caption1>{format!("{count} members")}</Caption1>
+                                                </Card>
+                                            </A>
+                                        </GridItem>
                                     }
                                 }).collect_view()}
-                            </div>
+                            </Grid>
                         }.into_any()
                     }
                 })}
@@ -107,11 +106,11 @@ pub fn Teams() -> impl IntoView {
 #[component]
 pub fn TeamDetail() -> impl IntoView {
     let params = use_params_map();
-    let (tab, set_tab) = signal(TeamTab::Members);
+    let selected_tab = RwSignal::new(String::from("members"));
     let tasks = RwSignal::new(Vec::<TaskItem>::new());
     let messages = RwSignal::new(Vec::<TeamMessage>::new());
-    let (new_task_title, set_new_task_title) = signal(String::new());
-    let (new_task_desc, set_new_task_desc) = signal(String::new());
+    let new_task_title = RwSignal::new(String::new());
+    let new_task_desc = RwSignal::new(String::new());
 
     let team_id = Memo::new(move |_| {
         params.read().get("id").unwrap_or_default()
@@ -162,8 +161,8 @@ pub fn TeamDetail() -> impl IntoView {
         }
         let desc = new_task_desc.get();
         let id = team_id.get();
-        set_new_task_title.set(String::new());
-        set_new_task_desc.set(String::new());
+        new_task_title.set(String::new());
+        new_task_desc.set(String::new());
 
         wasm_bindgen_futures::spawn_local(async move {
             let body = serde_json::json!({
@@ -198,8 +197,8 @@ pub fn TeamDetail() -> impl IntoView {
     };
 
     view! {
-        <div class="page">
-            <Suspense fallback=|| view! { <p>"Loading..."</p> }>
+        <div>
+            <Suspense fallback=|| view! { <Spinner /> }>
                 {move || team.get().map(|t| {
                     match &*t {
                         Some(t) => {
@@ -208,84 +207,64 @@ pub fn TeamDetail() -> impl IntoView {
                             let team_status = t.status.clone();
 
                             view! {
-                                <div class="detail-header">
-                                    <A href="/teams" attr:class="back-link">"< Teams"</A>
-                                    <h2>{team_name}</h2>
-                                    <span class="status-badge">{team_status}</span>
-                                </div>
+                                <Flex vertical=false align=FlexAlign::Center gap=FlexGap::Small>
+                                    <A href="/teams">
+                                        <Button appearance=ButtonAppearance::Subtle>"< Teams"</Button>
+                                    </A>
+                                    <Body1><b>{team_name}</b></Body1>
+                                    <Badge color=BadgeColor::Informative>{team_status}</Badge>
+                                </Flex>
+                                <Divider />
 
-                                <div class="tabs">
-                                    <button
-                                        class=move || if tab.get() == TeamTab::Members { "tab active" } else { "tab" }
-                                        on:click=move |_| set_tab.set(TeamTab::Members)
-                                    >"Members"</button>
-                                    <button
-                                        class=move || if tab.get() == TeamTab::Tasks { "tab active" } else { "tab" }
-                                        on:click=move |_| set_tab.set(TeamTab::Tasks)
-                                    >"Task Board"</button>
-                                    <button
-                                        class=move || if tab.get() == TeamTab::Messages { "tab active" } else { "tab" }
-                                        on:click=move |_| set_tab.set(TeamTab::Messages)
-                                    >"Messages"</button>
-                                </div>
+                                <TabList selected_value=selected_tab>
+                                    <Tab value="members">"Members"</Tab>
+                                    <Tab value="tasks">"Task Board"</Tab>
+                                    <Tab value="messages">"Messages"</Tab>
+                                </TabList>
 
-                                <div class="tab-content">
-                                    {move || match tab.get() {
-                                        // ---------------------------------------------------
-                                        // Members tab
-                                        // ---------------------------------------------------
-                                        TeamTab::Members => {
-                                            let members = members.clone();
-                                            view! {
-                                                <table class="data-table">
-                                                    <thead>
-                                                        <tr>
-                                                            <th>"Agent ID"</th>
-                                                            <th>"Role"</th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody>
-                                                        {members.into_iter().map(|m| {
-                                                            let agent_href = format!("/agents/{}", m.id);
-                                                            view! {
-                                                                <tr>
-                                                                    <td><A href=agent_href>{m.id}</A></td>
-                                                                    <td>{m.role}</td>
-                                                                </tr>
-                                                            }
-                                                        }).collect_view()}
-                                                    </tbody>
-                                                </table>
-                                            }.into_any()
-                                        }
+                                <div style="margin-top:12px">
+                                    {move || {
+                                        let current_tab = selected_tab.get();
+                                        match current_tab.as_str() {
+                                            // ----- Members -----
+                                            "members" => {
+                                                let members = members.clone();
+                                                view! {
+                                                    <Table>
+                                                        <TableHeader>
+                                                            <TableRow>
+                                                                <TableHeaderCell>"Agent ID"</TableHeaderCell>
+                                                                <TableHeaderCell>"Role"</TableHeaderCell>
+                                                            </TableRow>
+                                                        </TableHeader>
+                                                        <TableBody>
+                                                            {members.into_iter().map(|m| {
+                                                                let agent_href = format!("/agents/{}", m.id);
+                                                                let mid = m.id;
+                                                                let role = m.role;
+                                                                view! {
+                                                                    <TableRow>
+                                                                        <TableCell><TableCellLayout><A href=agent_href>{mid}</A></TableCellLayout></TableCell>
+                                                                        <TableCell><TableCellLayout>{role}</TableCellLayout></TableCell>
+                                                                    </TableRow>
+                                                                }
+                                                            }).collect_view()}
+                                                        </TableBody>
+                                                    </Table>
+                                                }.into_any()
+                                            }
 
-                                        // ---------------------------------------------------
-                                        // Task Board tab
-                                        // ---------------------------------------------------
-                                        TeamTab::Tasks => {
-                                            view! {
-                                                <div class="task-board">
-                                                    // Create task form
-                                                    <div class="task-create-form">
-                                                        <input
-                                                            type="text"
-                                                            class="form-input"
-                                                            placeholder="Task title..."
-                                                            prop:value=new_task_title
-                                                            on:input=move |ev| set_new_task_title.set(event_target_value(&ev))
-                                                        />
-                                                        <input
-                                                            type="text"
-                                                            class="form-input"
-                                                            placeholder="Description (optional)"
-                                                            prop:value=new_task_desc
-                                                            on:input=move |ev| set_new_task_desc.set(event_target_value(&ev))
-                                                        />
-                                                        <button class="btn btn-primary btn-sm" on:click=create_task>"Create Task"</button>
-                                                    </div>
-
-                                                    // Task columns
-                                                    <div class="task-columns">
+                                            // ----- Task Board -----
+                                            "tasks" => {
+                                                view! {
+                                                    <Card>
+                                                        <Flex vertical=false gap=FlexGap::Small align=FlexAlign::Center>
+                                                            <Input value=new_task_title placeholder="Task title..." />
+                                                            <Input value=new_task_desc placeholder="Description (optional)" />
+                                                            <Button appearance=ButtonAppearance::Primary on_click=create_task>"Create Task"</Button>
+                                                        </Flex>
+                                                    </Card>
+                                                    <Grid cols=4 x_gap=8 y_gap=8>
                                                         {["pending", "claimed", "in_progress", "done"].into_iter().map(|status| {
                                                             let status_label = match status {
                                                                 "pending" => "Pending",
@@ -296,104 +275,118 @@ pub fn TeamDetail() -> impl IntoView {
                                                             };
                                                             let status_owned = status.to_string();
                                                             view! {
-                                                                <div class="task-column">
-                                                                    <h4 class="task-column-title">{status_label}</h4>
-                                                                    {move || {
-                                                                        let all_tasks = tasks.get();
-                                                                        let filtered: Vec<_> = all_tasks.into_iter()
-                                                                            .filter(|t| t.status == status_owned)
-                                                                            .collect();
+                                                                <GridItem>
+                                                                    <Card>
+                                                                        <Caption1Strong>{status_label}</Caption1Strong>
+                                                                        <Divider />
+                                                                        {move || {
+                                                                            let all_tasks = tasks.get();
+                                                                            let filtered: Vec<_> = all_tasks.into_iter()
+                                                                                .filter(|t| t.status == status_owned)
+                                                                                .collect();
 
-                                                                        if filtered.is_empty() {
-                                                                            view! { <p class="empty task-empty">"—"</p> }.into_any()
-                                                                        } else {
-                                                                            filtered.into_iter().map(|task| {
-                                                                                let task_id = task.id.clone();
-                                                                                let next_status = match task.status.as_str() {
-                                                                                    "pending" => Some("claimed"),
-                                                                                    "claimed" => Some("in_progress"),
-                                                                                    "in_progress" => Some("done"),
-                                                                                    _ => None,
-                                                                                };
-                                                                                view! {
-                                                                                    <div class="task-card">
-                                                                                        <div class="task-title">{task.title}</div>
-                                                                                        {if !task.description.is_empty() {
-                                                                                            Some(view! { <div class="task-desc">{task.description}</div> })
-                                                                                        } else { None }}
-                                                                                        <div class="task-meta">
-                                                                                            {task.assigned_to.map(|a| view! {
-                                                                                                <span class="task-assignee">{a}</span>
+                                                                            if filtered.is_empty() {
+                                                                                view! { <Caption1>"—"</Caption1> }.into_any()
+                                                                            } else {
+                                                                                filtered.into_iter().map(|task| {
+                                                                                    let task_id = task.id.clone();
+                                                                                    let next_status = match task.status.as_str() {
+                                                                                        "pending" => Some("claimed"),
+                                                                                        "claimed" => Some("in_progress"),
+                                                                                        "in_progress" => Some("done"),
+                                                                                        _ => None,
+                                                                                    };
+                                                                                    view! {
+                                                                                        <Card>
+                                                                                            <Body1><b>{task.title}</b></Body1>
+                                                                                            {if !task.description.is_empty() {
+                                                                                                Some(view! { <Caption1>{task.description}</Caption1> })
+                                                                                            } else { None }}
+                                                                                            <Flex vertical=false gap=FlexGap::Small>
+                                                                                                {task.assigned_to.map(|a| view! {
+                                                                                                    <Badge color=BadgeColor::Brand>{a}</Badge>
+                                                                                                })}
+                                                                                                <Caption1>{format!("by {}", task.created_by)}</Caption1>
+                                                                                            </Flex>
+                                                                                            {task.result.map(|r| view! {
+                                                                                                <MessageBar><MessageBarBody>{r}</MessageBarBody></MessageBar>
                                                                                             })}
-                                                                                            <span class="task-creator">{format!("by {}", task.created_by)}</span>
-                                                                                        </div>
-                                                                                        {task.result.map(|r| view! {
-                                                                                            <div class="task-result">{r}</div>
-                                                                                        })}
-                                                                                        {next_status.map(|ns| {
-                                                                                            let tid = task_id.clone();
-                                                                                            let ns_str = ns.to_string();
-                                                                                            let label = match ns {
-                                                                                                "claimed" => "Claim",
-                                                                                                "in_progress" => "Start",
-                                                                                                "done" => "Complete",
-                                                                                                _ => ns,
-                                                                                            };
-                                                                                            view! {
-                                                                                                <button
-                                                                                                    class="btn btn-sm task-action-btn"
-                                                                                                    on:click=move |_| update_task_status(tid.clone(), ns_str.clone())
-                                                                                                >{label}</button>
-                                                                                            }
-                                                                                        })}
-                                                                                    </div>
-                                                                                }
-                                                                            }).collect_view().into_any()
-                                                                        }
-                                                                    }}
-                                                                </div>
+                                                                                            {next_status.map(|ns| {
+                                                                                                let tid = task_id.clone();
+                                                                                                let ns_str = ns.to_string();
+                                                                                                let label = match ns {
+                                                                                                    "claimed" => "Claim",
+                                                                                                    "in_progress" => "Start",
+                                                                                                    "done" => "Complete",
+                                                                                                    _ => ns,
+                                                                                                };
+                                                                                                view! {
+                                                                                                    <Button
+                                                                                                        appearance=ButtonAppearance::Primary
+                                                                                                        on_click=move |_| update_task_status(tid.clone(), ns_str.clone())
+                                                                                                    >{label}</Button>
+                                                                                                }
+                                                                                            })}
+                                                                                        </Card>
+                                                                                    }
+                                                                                }).collect_view().into_any()
+                                                                            }
+                                                                        }}
+                                                                    </Card>
+                                                                </GridItem>
                                                             }
                                                         }).collect_view()}
-                                                    </div>
-                                                </div>
-                                            }.into_any()
-                                        }
+                                                    </Grid>
+                                                }.into_any()
+                                            }
 
-                                        // ---------------------------------------------------
-                                        // Messages tab
-                                        // ---------------------------------------------------
-                                        TeamTab::Messages => {
-                                            view! {
-                                                <div class="team-messages">
-                                                    {move || {
-                                                        let msgs = messages.get();
-                                                        if msgs.is_empty() {
-                                                            view! { <p class="empty">"No messages yet"</p> }.into_any()
-                                                        } else {
-                                                            msgs.into_iter().map(|m| {
-                                                                let priority_class = format!("msg-priority msg-{}", m.priority);
-                                                                view! {
-                                                                    <div class="team-msg">
-                                                                        <div class="team-msg-header">
-                                                                            <span class="team-msg-sender">{m.sender}</span>
-                                                                            <span class=priority_class>{m.priority}</span>
-                                                                            <span class="team-msg-time">{m.timestamp}</span>
-                                                                        </div>
-                                                                        <div class="team-msg-content">{m.content}</div>
-                                                                    </div>
-                                                                }
-                                                            }).collect_view().into_any()
-                                                        }
-                                                    }}
-                                                </div>
-                                            }.into_any()
+                                            // ----- Messages -----
+                                            "messages" => {
+                                                view! {
+                                                    <div>
+                                                        {move || {
+                                                            let msgs = messages.get();
+                                                            if msgs.is_empty() {
+                                                                view! { <MessageBar><MessageBarBody>"No messages yet"</MessageBarBody></MessageBar> }.into_any()
+                                                            } else {
+                                                                msgs.into_iter().map(|m| {
+                                                                    let priority_color = match m.priority.as_str() {
+                                                                        "steer" => BadgeColor::Warning,
+                                                                        _ => BadgeColor::Brand,
+                                                                    };
+                                                                    let sender = m.sender;
+                                                                    let priority = m.priority;
+                                                                    let timestamp = m.timestamp;
+                                                                    let content = m.content;
+                                                                    view! {
+                                                                        <Card>
+                                                                            <Flex vertical=false justify=FlexJustify::SpaceBetween align=FlexAlign::Center>
+                                                                                <Body1><b>{sender}</b></Body1>
+                                                                                <Flex vertical=false gap=FlexGap::Small align=FlexAlign::Center>
+                                                                                    <Badge color=priority_color>{priority}</Badge>
+                                                                                    <Caption1>{timestamp}</Caption1>
+                                                                                </Flex>
+                                                                            </Flex>
+                                                                            <Body1>{content}</Body1>
+                                                                        </Card>
+                                                                    }
+                                                                }).collect_view().into_any()
+                                                            }
+                                                        }}
+                                                    </div>
+                                                }.into_any()
+                                            }
+
+                                            _ => view! {
+                                                <MessageBar><MessageBarBody>"Unknown tab"</MessageBarBody></MessageBar>
+                                            }.into_any(),
                                         }
                                     }}
                                 </div>
                             }.into_any()
                         }
                         None => view! {
-                            <p class="error">"Team not found"</p>
+                            <MessageBar><MessageBarBody>"Team not found"</MessageBarBody></MessageBar>
                         }.into_any(),
                     }
                 })}

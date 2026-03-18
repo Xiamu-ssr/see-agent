@@ -81,3 +81,89 @@ pub fn router(state: AppState) -> Router {
         .route("/config/defaults", get(get_config_defaults_handler))
         .with_state(state)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::body::Body;
+    use axum::http::Request;
+    use tower::ServiceExt;
+
+    fn make_test_state() -> AppState {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let ws = see_agent_corp::types::WorkspaceDir::new(tmp.path());
+        see_agent_corp::config::ensure_workspace(&ws).unwrap();
+        std::mem::forget(tmp);
+        AppState::new(ws)
+    }
+
+    #[tokio::test]
+    async fn config_schema_returns_valid_json_schema() {
+        let state = make_test_state();
+        let app = router(state);
+        let req = Request::builder()
+            .method("GET")
+            .uri("/config/schema")
+            .body(Body::empty())
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let schema: Value = serde_json::from_slice(&body).unwrap();
+        // Must be a valid JSON schema object with $schema or type fields
+        assert!(schema.is_object());
+        // Config schema should have properties for llm, agent, tools, etc.
+        let props = &schema["properties"];
+        assert!(props["llm"].is_object(), "schema should have llm property");
+        assert!(props["agent"].is_object(), "schema should have agent property");
+        assert!(props["tools"].is_object(), "schema should have tools property");
+    }
+
+    #[tokio::test]
+    async fn config_defaults_returns_valid_config() {
+        let state = make_test_state();
+        let app = router(state);
+        let req = Request::builder()
+            .method("GET")
+            .uri("/config/defaults")
+            .body(Body::empty())
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let defaults: Value = serde_json::from_slice(&body).unwrap();
+        assert!(defaults.is_object());
+        // Default config should have expected top-level keys
+        assert!(defaults["llm"].is_object());
+        assert!(defaults["agent"].is_object());
+        assert!(defaults["tools"].is_object());
+        // Check a specific default value
+        assert!(defaults["agent"]["max_steps"].is_number());
+    }
+
+    #[tokio::test]
+    async fn config_defaults_roundtrips_to_config() {
+        let state = make_test_state();
+        let app = router(state);
+        let req = Request::builder()
+            .method("GET")
+            .uri("/config/defaults")
+            .body(Body::empty())
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        // Verify the defaults JSON can deserialize back into a Config
+        let _config: Config = serde_json::from_slice(&body).unwrap();
+    }
+}

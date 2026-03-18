@@ -1,75 +1,78 @@
 use leptos::prelude::*;
 use leptos_router::components::A;
+use thaw::*;
 
 #[component]
-pub fn Layout(children: Children) -> impl IntoView {
-    let (dark, set_dark) = signal(load_theme());
-    let (sidebar_open, set_sidebar_open) = signal(false);
+pub fn AppLayout(is_dark: RwSignal<bool>, children: Children) -> impl IntoView {
+    let selected_nav = RwSignal::new(String::from("dashboard"));
+    let drawer_open = RwSignal::new(false);
 
-    // Apply theme class to body
+    // Persist theme
     Effect::new(move |_| {
-        if let Some(doc) = document().document_element() {
-            let _ = doc.set_attribute("data-theme", if dark.get() { "dark" } else { "light" });
+        let dark = is_dark.get();
+        if let Some(storage) = web_sys::window()
+            .and_then(|w| w.local_storage().ok().flatten())
+        {
+            let _ = storage.set_item("agentcorp-theme", if dark { "dark" } else { "light" });
         }
-        save_theme(dark.get());
     });
 
-    let close_sidebar = move |_| set_sidebar_open.set(false);
-
     view! {
-        <div class="app-layout">
-            <button
-                class="hamburger"
-                on:click=move |_| set_sidebar_open.update(|v| *v = !*v)
+        <Layout has_sider=true>
+            <LayoutSider
+                content_style="width:220px;min-height:100vh;padding:12px;border-right:1px solid var(--colorNeutralStroke1)"
+                class="desktop-sider"
             >
-                {move || if sidebar_open.get() { "\u{2715}" } else { "\u{2630}" }}
-            </button>
-
-            <div
-                class=move || if sidebar_open.get() { "sidebar-overlay visible" } else { "sidebar-overlay" }
-                on:click=close_sidebar
-            />
-
-            <nav class=move || if sidebar_open.get() { "sidebar open" } else { "sidebar" }>
-                <div class="sidebar-header">
-                    <h1 class="logo">"see-agent-corp"</h1>
-                    <button
-                        class="theme-toggle"
-                        on:click=move |_| set_dark.update(|d| *d = !*d)
+                <Flex vertical=false justify=FlexJustify::SpaceBetween align=FlexAlign::Center>
+                    <Body1><b>"see-agent-corp"</b></Body1>
+                    <Switch checked=is_dark />
+                </Flex>
+                <Divider />
+                <NavDrawer selected_value=selected_nav>
+                    <NavItem value="dashboard"><A href="/">"Dashboard"</A></NavItem>
+                    <NavItem value="agents"><A href="/agents">"Agents"</A></NavItem>
+                    <NavItem value="teams"><A href="/teams">"Teams"</A></NavItem>
+                    <NavItem value="config"><A href="/config">"Config"</A></NavItem>
+                    <NavItem value="skills"><A href="/skills">"Skills"</A></NavItem>
+                    <NavItem value="tools"><A href="/tools">"Tools"</A></NavItem>
+                    <NavItem value="mcp"><A href="/mcp">"MCP"</A></NavItem>
+                    <NavItem value="logs"><A href="/logs">"Logs"</A></NavItem>
+                </NavDrawer>
+            </LayoutSider>
+            <Layout>
+                <LayoutHeader class="mobile-header">
+                    <Button
+                        appearance=ButtonAppearance::Subtle
+                        on_click=move |_| drawer_open.set(!drawer_open.get_untracked())
                     >
-                        {move || if dark.get() { "Light" } else { "Dark" }}
-                    </button>
+                        {move || if drawer_open.get() { "\u{2715}" } else { "\u{2630}" }}
+                    </Button>
+                    <Body1><b>"see-agent-corp"</b></Body1>
+                </LayoutHeader>
+                <OverlayDrawer open=drawer_open>
+                    <DrawerHeader>
+                        <Flex vertical=false justify=FlexJustify::SpaceBetween align=FlexAlign::Center>
+                            <Body1><b>"see-agent-corp"</b></Body1>
+                            <Switch checked=is_dark />
+                        </Flex>
+                    </DrawerHeader>
+                    <DrawerBody>
+                        <NavDrawer selected_value=selected_nav>
+                            <NavItem value="dashboard"><A href="/" on:click=move |_| drawer_open.set(false)>"Dashboard"</A></NavItem>
+                            <NavItem value="agents"><A href="/agents" on:click=move |_| drawer_open.set(false)>"Agents"</A></NavItem>
+                            <NavItem value="teams"><A href="/teams" on:click=move |_| drawer_open.set(false)>"Teams"</A></NavItem>
+                            <NavItem value="config"><A href="/config" on:click=move |_| drawer_open.set(false)>"Config"</A></NavItem>
+                            <NavItem value="skills"><A href="/skills" on:click=move |_| drawer_open.set(false)>"Skills"</A></NavItem>
+                            <NavItem value="tools"><A href="/tools" on:click=move |_| drawer_open.set(false)>"Tools"</A></NavItem>
+                            <NavItem value="mcp"><A href="/mcp" on:click=move |_| drawer_open.set(false)>"MCP"</A></NavItem>
+                            <NavItem value="logs"><A href="/logs" on:click=move |_| drawer_open.set(false)>"Logs"</A></NavItem>
+                        </NavDrawer>
+                    </DrawerBody>
+                </OverlayDrawer>
+                <div style="padding:24px;min-width:0;max-width:1200px">
+                    {children()}
                 </div>
-                <ul class="nav-links">
-                    <li><A href="/" on:click=close_sidebar>"Dashboard"</A></li>
-                    <li><A href="/agents" on:click=close_sidebar>"Agents"</A></li>
-                    <li><A href="/teams" on:click=close_sidebar>"Teams"</A></li>
-                    <li><A href="/config" on:click=close_sidebar>"Config"</A></li>
-                    <li><A href="/skills" on:click=close_sidebar>"Skills"</A></li>
-                    <li><A href="/tools" on:click=close_sidebar>"Tools"</A></li>
-                    <li><A href="/mcp" on:click=close_sidebar>"MCP"</A></li>
-                    <li><A href="/logs" on:click=close_sidebar>"Logs"</A></li>
-                </ul>
-            </nav>
-            <main class="content">
-                {children()}
-            </main>
-        </div>
-    }
-}
-
-fn load_theme() -> bool {
-    web_sys::window()
-        .and_then(|w| w.local_storage().ok().flatten())
-        .and_then(|s| s.get_item("agentcorp-theme").ok().flatten())
-        .map(|v| v == "dark")
-        .unwrap_or(true)
-}
-
-fn save_theme(dark: bool) {
-    if let Some(storage) = web_sys::window()
-        .and_then(|w| w.local_storage().ok().flatten())
-    {
-        let _ = storage.set_item("agentcorp-theme", if dark { "dark" } else { "light" });
+            </Layout>
+        </Layout>
     }
 }

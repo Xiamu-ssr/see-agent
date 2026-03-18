@@ -203,7 +203,7 @@ fn create_eye() -> Arc<dyn see_agent_corp::eye::Eye> {
 }
 
 /// Find the team directory for an agent by scanning all teams.
-fn find_agent_team(
+pub(crate) fn find_agent_team(
     workspace: &WorkspaceDir,
     agent_id: &str,
 ) -> Option<see_agent_corp::types::paths::TeamDir> {
@@ -230,4 +230,67 @@ fn find_agent_team(
     }
 
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_workspace() -> (tempfile::TempDir, WorkspaceDir) {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let ws = WorkspaceDir::new(tmp.path());
+        see_agent_corp::config::ensure_workspace(&ws).unwrap();
+        (tmp, ws)
+    }
+
+    #[test]
+    fn find_agent_team_returns_none_when_no_teams() {
+        let (_tmp, ws) = make_workspace();
+        assert!(find_agent_team(&ws, "alice").is_none());
+    }
+
+    #[test]
+    fn find_agent_team_finds_matching_team() {
+        let (_tmp, ws) = make_workspace();
+
+        // Create a team that references "alice"
+        let team_dir = ws.team("my-team");
+        std::fs::create_dir_all(team_dir.path()).unwrap();
+        let team_json = serde_json::json!({
+            "id": "my-team",
+            "name": "My Team",
+            "members": [
+                {"id": "alice", "role": "leader"},
+                {"id": "bob", "role": "dev"}
+            ],
+            "leader": "alice",
+            "status": "running",
+            "created_at": "2025-01-01T00:00:00Z"
+        });
+        std::fs::write(team_dir.team_json(), serde_json::to_string(&team_json).unwrap()).unwrap();
+
+        let result = find_agent_team(&ws, "alice");
+        assert!(result.is_some());
+        let found = result.unwrap();
+        assert!(found.path().ends_with("my-team"));
+    }
+
+    #[test]
+    fn find_agent_team_returns_none_for_nonmember() {
+        let (_tmp, ws) = make_workspace();
+
+        let team_dir = ws.team("my-team");
+        std::fs::create_dir_all(team_dir.path()).unwrap();
+        let team_json = serde_json::json!({
+            "id": "my-team",
+            "name": "My Team",
+            "members": [{"id": "bob", "role": "dev"}],
+            "leader": "bob",
+            "status": "running",
+            "created_at": "2025-01-01T00:00:00Z"
+        });
+        std::fs::write(team_dir.team_json(), serde_json::to_string(&team_json).unwrap()).unwrap();
+
+        assert!(find_agent_team(&ws, "charlie").is_none());
+    }
 }

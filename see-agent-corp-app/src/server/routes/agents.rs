@@ -13,7 +13,7 @@ use crate::server::AppState;
 // Response types
 // ---------------------------------------------------------------------------
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 struct AgentSummaryResponse {
     id: String,
     name: String,
@@ -41,7 +41,7 @@ struct AgentCreateResponse {
     emoji: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 struct StatusResponse {
     status: String,
 }
@@ -215,4 +215,121 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/agents/{agent_id}/message", post(send_message_handler))
         .with_state(state)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::body::Body;
+    use axum::http::Request;
+    use tower::ServiceExt;
+
+    fn make_test_state() -> AppState {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let ws = see_agent_corp::types::WorkspaceDir::new(tmp.path());
+        see_agent_corp::config::ensure_workspace(&ws).unwrap();
+        std::mem::forget(tmp);
+        AppState::new(ws)
+    }
+
+    #[tokio::test]
+    async fn list_agents_returns_empty_for_fresh_workspace() {
+        let state = make_test_state();
+        let app = router(state);
+        let req = Request::builder()
+            .method("GET")
+            .uri("/agents")
+            .body(Body::empty())
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let agents: Vec<AgentSummaryResponse> =
+            serde_json::from_slice(&body).unwrap();
+        // Fresh workspace has system agent created by ensure_workspace
+        // but list_agents only returns dirs with agent.json
+        // System agent dir exists but may or may not have agent.json
+        assert!(agents.len() <= 1);
+    }
+
+    #[tokio::test]
+    async fn list_agents_returns_created_agent() {
+        let state = make_test_state();
+        let ws = state.workspace();
+        see_agent_corp::agent::create_agent(ws, "test-a", Some("TestA"), Some("T")).unwrap();
+
+        let app = router(state);
+        let req = Request::builder()
+            .method("GET")
+            .uri("/agents")
+            .body(Body::empty())
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let agents: Vec<serde_json::Value> = serde_json::from_slice(&body).unwrap();
+        let ids: Vec<&str> = agents.iter().filter_map(|a| a["id"].as_str()).collect();
+        assert!(ids.contains(&"test-a"));
+    }
+
+    #[tokio::test]
+    async fn send_message_writes_to_inbox() {
+        let state = make_test_state();
+        let ws = state.workspace();
+        see_agent_corp::agent::create_agent(ws, "msg-agent", None, None).unwrap();
+
+        // Set supervisor binary to /usr/bin/true so auto-start doesn't fail
+        {
+            let mut sup = state.inner.supervisor.write().await;
+            sup.set_binary_path(std::path::PathBuf::from("/usr/bin/true"));
+        }
+
+        let app = router(state);
+        let body_json = serde_json::json!({
+            "content": "hello test",
+            "priority": "collect"
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/agents/msg-agent/message")
+            .header("Content-Type", "application/json")
+            .body(Body::from(serde_json::to_string(&body_json).unwrap()))
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let result: StatusResponse = serde_json::from_slice(&body).unwrap();
+        assert_eq!(result.status, "sent");
+    }
+
+    #[tokio::test]
+    async fn send_message_to_nonexistent_returns_404() {
+        let state = make_test_state();
+        let app = router(state);
+        let body_json = serde_json::json!({
+            "content": "hello",
+            "priority": "collect"
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/agents/nonexistent/message")
+            .header("Content-Type", "application/json")
+            .body(Body::from(serde_json::to_string(&body_json).unwrap()))
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
 }

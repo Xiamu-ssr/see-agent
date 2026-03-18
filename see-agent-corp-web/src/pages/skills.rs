@@ -1,5 +1,6 @@
 use leptos::prelude::*;
 use serde::Deserialize;
+use thaw::*;
 
 use crate::api;
 
@@ -17,36 +18,40 @@ pub fn Skills() -> impl IntoView {
     });
 
     view! {
-        <div class="page">
-            <h2>"Skills"</h2>
-            <Suspense fallback=|| view! { <p>"Loading..."</p> }>
+        <div>
+            <Body1><b>"Skills"</b></Body1>
+            <Divider />
+            <Suspense fallback=|| view! { <Spinner /> }>
                 {move || skills.get().map(|list| {
                     if list.is_empty() {
-                        view! { <p class="empty">"No skills loaded"</p> }.into_any()
+                        view! { <MessageBar><MessageBarBody>"No skills loaded"</MessageBarBody></MessageBar> }.into_any()
                     } else {
                         let items: Vec<_> = list.iter().cloned().collect();
                         view! {
-                            <table class="data-table">
-                                <thead>
-                                    <tr>
-                                        <th>"Name"</th>
-                                        <th>"Description"</th>
-                                        <th>"Available"</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHeaderCell>"Name"</TableHeaderCell>
+                                        <TableHeaderCell>"Description"</TableHeaderCell>
+                                        <TableHeaderCell>"Available"</TableHeaderCell>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
                                     {items.into_iter().map(|s| {
-                                        let avail_class = if s.available { "avail-yes" } else { "avail-no" };
+                                        let name = s.name;
+                                        let desc = s.description;
+                                        let badge_color = if s.available { BadgeColor::Success } else { BadgeColor::Danger };
+                                        let badge_text = if s.available { "Yes" } else { "No" };
                                         view! {
-                                            <tr>
-                                                <td class="mono">{s.name}</td>
-                                                <td>{s.description}</td>
-                                                <td class=avail_class>{if s.available { "Yes" } else { "No" }}</td>
-                                            </tr>
+                                            <TableRow>
+                                                <TableCell><TableCellLayout><code>{name}</code></TableCellLayout></TableCell>
+                                                <TableCell><TableCellLayout>{desc}</TableCellLayout></TableCell>
+                                                <TableCell><TableCellLayout><Badge color=badge_color>{badge_text}</Badge></TableCellLayout></TableCell>
+                                            </TableRow>
                                         }
                                     }).collect_view()}
-                                </tbody>
-                            </table>
+                                </TableBody>
+                            </Table>
                         }.into_any()
                     }
                 })}

@@ -1,5 +1,6 @@
 use leptos::prelude::*;
 use serde::Deserialize;
+use thaw::*;
 
 use crate::api;
 
@@ -17,27 +18,45 @@ pub fn Logs() -> impl IntoView {
     });
 
     view! {
-        <div class="page">
-            <h2>"Logs"</h2>
-            <Suspense fallback=|| view! { <p>"Loading..."</p> }>
+        <div>
+            <Body1><b>"Logs"</b></Body1>
+            <Divider />
+            <Suspense fallback=|| view! { <Spinner /> }>
                 {move || logs.get().map(|list| {
                     if list.is_empty() {
-                        view! { <p class="empty">"No log entries"</p> }.into_any()
+                        view! { <MessageBar><MessageBarBody>"No log entries"</MessageBarBody></MessageBar> }.into_any()
                     } else {
                         let items: Vec<_> = list.iter().cloned().collect();
                         view! {
-                            <div class="log-list">
-                                {items.into_iter().map(|e| {
-                                    let level_class = format!("log-{}", e.level.to_lowercase());
-                                    view! {
-                                        <div class="log-entry">
-                                            <span class="log-time">{e.time}</span>
-                                            <span class=level_class>{e.level}</span>
-                                            <span class="log-msg">{e.message}</span>
-                                        </div>
-                                    }
-                                }).collect_view()}
-                            </div>
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHeaderCell>"Time"</TableHeaderCell>
+                                        <TableHeaderCell>"Level"</TableHeaderCell>
+                                        <TableHeaderCell>"Message"</TableHeaderCell>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {items.into_iter().map(|e| {
+                                        let time = e.time;
+                                        let level_text = e.level.clone();
+                                        let badge_color = match e.level.to_lowercase().as_str() {
+                                            "error" => BadgeColor::Danger,
+                                            "warn" => BadgeColor::Warning,
+                                            "info" => BadgeColor::Brand,
+                                            _ => BadgeColor::Informative,
+                                        };
+                                        let msg = e.message;
+                                        view! {
+                                            <TableRow>
+                                                <TableCell><TableCellLayout><Caption1>{time}</Caption1></TableCellLayout></TableCell>
+                                                <TableCell><TableCellLayout><Badge color=badge_color>{level_text}</Badge></TableCellLayout></TableCell>
+                                                <TableCell><TableCellLayout><code>{msg}</code></TableCellLayout></TableCell>
+                                            </TableRow>
+                                        }
+                                    }).collect_view()}
+                                </TableBody>
+                            </Table>
                         }.into_any()
                     }
                 })}

@@ -1,5 +1,6 @@
 use leptos::prelude::*;
 use serde::Deserialize;
+use thaw::*;
 
 use crate::api;
 
@@ -17,26 +18,32 @@ pub fn Mcp() -> impl IntoView {
     });
 
     view! {
-        <div class="page">
-            <h2>"MCP Servers"</h2>
-            <Suspense fallback=|| view! { <p>"Loading..."</p> }>
+        <div>
+            <Body1><b>"MCP Servers"</b></Body1>
+            <Divider />
+            <Suspense fallback=|| view! { <Spinner /> }>
                 {move || servers.get().map(|list| {
                     if list.is_empty() {
-                        view! { <p class="empty">"No MCP servers configured."</p> }.into_any()
+                        view! { <MessageBar><MessageBarBody>"No MCP servers configured."</MessageBarBody></MessageBar> }.into_any()
                     } else {
                         let items: Vec<_> = list.iter().cloned().collect();
                         view! {
-                            <div class="card-grid">
+                            <Grid cols=3 x_gap=12 y_gap=12>
                                 {items.into_iter().map(|s| {
+                                    let name = s.name;
+                                    let status = s.status;
+                                    let tools_label = format!("{} tools", s.tools_count);
                                     view! {
-                                        <div class="card">
-                                            <span class="card-name">{s.name}</span>
-                                            <span class="card-status">{s.status}</span>
-                                            <span class="card-meta">{format!("{} tools", s.tools_count)}</span>
-                                        </div>
+                                        <GridItem>
+                                            <Card>
+                                                <Caption1Strong>{name}</Caption1Strong>
+                                                <Badge color=BadgeColor::Informative>{status}</Badge>
+                                                <Caption1>{tools_label}</Caption1>
+                                            </Card>
+                                        </GridItem>
                                     }
                                 }).collect_view()}
-                            </div>
+                            </Grid>
                         }.into_any()
                     }
                 })}

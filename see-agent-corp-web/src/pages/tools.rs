@@ -1,5 +1,6 @@
 use leptos::prelude::*;
 use serde::Deserialize;
+use thaw::*;
 
 use crate::api;
 
@@ -16,33 +17,36 @@ pub fn Tools() -> impl IntoView {
     });
 
     view! {
-        <div class="page">
-            <h2>"Tools"</h2>
-            <Suspense fallback=|| view! { <p>"Loading..."</p> }>
+        <div>
+            <Body1><b>"Tools"</b></Body1>
+            <Divider />
+            <Suspense fallback=|| view! { <Spinner /> }>
                 {move || tools.get().map(|list| {
                     if list.is_empty() {
-                        view! { <p class="empty">"No tools registered"</p> }.into_any()
+                        view! { <MessageBar><MessageBarBody>"No tools registered"</MessageBarBody></MessageBar> }.into_any()
                     } else {
                         let items: Vec<_> = list.iter().cloned().collect();
                         view! {
-                            <table class="data-table">
-                                <thead>
-                                    <tr>
-                                        <th>"Name"</th>
-                                        <th>"Description"</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHeaderCell>"Name"</TableHeaderCell>
+                                        <TableHeaderCell>"Description"</TableHeaderCell>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
                                     {items.into_iter().map(|t| {
+                                        let name = t.name;
+                                        let desc = t.description;
                                         view! {
-                                            <tr>
-                                                <td class="mono">{t.name}</td>
-                                                <td>{t.description}</td>
-                                            </tr>
+                                            <TableRow>
+                                                <TableCell><TableCellLayout><code>{name}</code></TableCellLayout></TableCell>
+                                                <TableCell><TableCellLayout>{desc}</TableCellLayout></TableCell>
+                                            </TableRow>
                                         }
                                     }).collect_view()}
-                                </tbody>
-                            </table>
+                                </TableBody>
+                            </Table>
                         }.into_any()
                     }
                 })}
