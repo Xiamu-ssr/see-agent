@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+use crate::consts;
+
 // ---------------------------------------------------------------------------
 // Top-level Config (matches MentalModel.md section 五 config.json)
 // ---------------------------------------------------------------------------
@@ -58,11 +60,11 @@ pub struct LlmConfig {
 }
 
 fn default_llm_base_url() -> String {
-    "https://api.openai.com/v1".to_owned()
+    consts::DEFAULT_LLM_BASE_URL.to_owned()
 }
 
 fn default_llm_model() -> String {
-    "gpt-4o".to_owned()
+    consts::DEFAULT_LLM_MODEL.to_owned()
 }
 
 impl Default for LlmConfig {
@@ -88,7 +90,7 @@ pub struct AgentBehaviorConfig {
 }
 
 fn default_max_steps() -> u32 {
-    50
+    consts::DEFAULT_MAX_STEPS
 }
 
 impl Default for AgentBehaviorConfig {
@@ -114,15 +116,15 @@ pub struct CompactConfig {
 }
 
 fn default_context_window() -> u64 {
-    200_000
+    consts::DEFAULT_CONTEXT_WINDOW
 }
 
 fn default_target_ratio() -> f64 {
-    0.75
+    consts::DEFAULT_COMPACT_TARGET_RATIO
 }
 
 fn default_keep_recent() -> u32 {
-    8
+    consts::DEFAULT_COMPACT_KEEP_RECENT
 }
 
 impl Default for CompactConfig {
@@ -165,15 +167,15 @@ pub struct ScreenConfig {
 }
 
 fn default_max_images() -> u32 {
-    5
+    consts::DEFAULT_MAX_CONTEXT_IMAGES
 }
 
 fn default_screenshot_interval_ms() -> u64 {
-    800
+    consts::DEFAULT_SCREENSHOT_INTERVAL_MS
 }
 
 fn default_tool_delay_ms() -> u64 {
-    200
+    consts::DEFAULT_TOOL_DELAY_MS
 }
 
 fn default_scaling_enabled() -> bool {
@@ -210,7 +212,7 @@ pub struct SkillsConfig {
 }
 
 fn default_skills_dirs() -> Vec<String> {
-    vec!["~/.see-agent/skills".to_owned()]
+    vec![consts::DEFAULT_SKILLS_DIR.to_owned()]
 }
 
 impl Default for SkillsConfig {
@@ -280,7 +282,7 @@ pub struct SandboxConfig {
 }
 
 fn default_sandbox_profile() -> String {
-    "default".to_owned()
+    consts::DEFAULT_SANDBOX_PROFILE.to_owned()
 }
 
 impl Default for SandboxConfig {
@@ -304,7 +306,7 @@ pub struct WebConfig {
 }
 
 fn default_web_language() -> String {
-    "zh".to_owned()
+    consts::DEFAULT_WEB_LANGUAGE.to_owned()
 }
 
 impl Default for WebConfig {

@@ -44,6 +44,14 @@ impl WorkspaceDir {
     pub fn system_agent(&self) -> AgentDir {
         self.agent("system")
     }
+
+    pub fn server_pid(&self) -> PathBuf {
+        self.0.join("server.pid")
+    }
+
+    pub fn server_log(&self) -> PathBuf {
+        self.0.join("server.log")
+    }
 }
 
 /// Single agent directory ~/.see-agent/agents/{id}/

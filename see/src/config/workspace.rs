@@ -13,7 +13,7 @@ pub fn resolve_workspace_root() -> PathBuf {
     }
     dirs::home_dir()
         .unwrap_or_else(|| PathBuf::from("."))
-        .join(".see-agent")
+        .join(crate::consts::WORKSPACE_DIR_NAME)
 }
 
 /// Ensure the workspace directory structure exists.

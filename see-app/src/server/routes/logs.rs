@@ -33,7 +33,7 @@ async fn get_logs_handler(
         if let Some(latest) = files.last()
             && let Ok(content) = std::fs::read_to_string(latest)
         {
-            for line in content.lines().rev().take(200) {
+            for line in content.lines().rev().take(see::consts::LOG_TAIL_LINES) {
                 entries.push(LogEntry {
                     time: String::new(),
                     level: "info".into(),

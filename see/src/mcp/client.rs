@@ -154,7 +154,7 @@ impl McpClient {
             .send_request(
                 "initialize",
                 Some(json!({
-                    "protocolVersion": "2024-11-05",
+                    "protocolVersion": crate::consts::MCP_PROTOCOL_VERSION,
                     "capabilities": {},
                     "clientInfo": {
                         "name": "see-agent",

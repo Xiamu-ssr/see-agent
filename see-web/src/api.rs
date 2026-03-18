@@ -44,15 +44,3 @@ pub async fn put<T: DeserializeOwned>(path: &str, body: &serde_json::Value) -> R
     }
     resp.json().await.map_err(|e| e.to_string())
 }
-
-pub async fn delete(path: &str) -> Result<(), String> {
-    let url = format!("{BASE}{path}");
-    let resp = Request::delete(&url)
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
-    if !resp.ok() {
-        return Err(format!("HTTP {}", resp.status()));
-    }
-    Ok(())
-}

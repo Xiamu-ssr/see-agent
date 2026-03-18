@@ -1,5 +1,6 @@
 pub mod agent;
 pub mod config_cmd;
+pub mod daemon;
 pub mod send;
 pub mod team;
 pub mod worker;
@@ -19,11 +20,14 @@ pub enum Commands {
     Init,
     /// Show workspace status
     Status,
-    /// Start the HTTP server
+    /// Start the HTTP server (foreground)
     Serve {
         /// Port to listen on (default: 28789)
         #[arg(short, long)]
         port: Option<u16>,
+        /// PID file path (internal, used by daemon mode)
+        #[arg(long, hide = true)]
+        pid_file: Option<String>,
     },
     /// Manage agents
     #[command(subcommand)]
@@ -34,6 +38,20 @@ pub enum Commands {
     /// Manage configuration
     #[command(subcommand)]
     Config(config_cmd::ConfigCmd),
+    /// Start server as background daemon
+    Start {
+        /// Port to listen on (default: 28789)
+        #[arg(short, long)]
+        port: Option<u16>,
+    },
+    /// Stop running daemon
+    Stop,
+    /// Restart daemon (stop + start)
+    Restart {
+        /// Port to listen on (default: 28789)
+        #[arg(short, long)]
+        port: Option<u16>,
+    },
     /// Send a message to an agent
     Send {
         /// Agent id

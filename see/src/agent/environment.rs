@@ -7,7 +7,7 @@ pub async fn collect_environment(screen_width: u32, screen_height: u32) -> Strin
     use tokio::process::Command;
     use tokio::time::{timeout, Duration};
 
-    let timeout_dur = Duration::from_secs(5);
+    let timeout_dur = Duration::from_secs(crate::consts::ENVIRONMENT_TIMEOUT_SECS);
 
     let running_apps = timeout(timeout_dur, async {
         Command::new("osascript")
@@ -60,7 +60,7 @@ pub async fn collect_environment(screen_width: u32, screen_height: u32) -> Strin
             .map(|o| {
                 String::from_utf8_lossy(&o.stdout)
                     .lines()
-                    .take(40)
+                    .take(crate::consts::MAX_INSTALLED_APPS_LIST)
                     .map(|l| l.trim_end_matches(".app"))
                     .collect::<Vec<_>>()
                     .join(", ")

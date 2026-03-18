@@ -37,7 +37,7 @@ macro_rules! define_tool {
 }
 
 // ---------------------------------------------------------------------------
-// GUI Input Tools (stubs — real impl depends on Phase 5 screen capture)
+// GUI Input Tools
 // ---------------------------------------------------------------------------
 
 define_tool!(

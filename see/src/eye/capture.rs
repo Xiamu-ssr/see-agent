@@ -32,9 +32,11 @@ impl Screenshot {
         (self.height as f64 * self.scale_factor) as u32
     }
 
-    /// OpenAI vision detail level: "low" if both dims <= 1024, else "high".
+    /// OpenAI vision detail level: "low" if both dims <= threshold, else "high".
     pub fn detail(&self) -> &str {
-        if self.width <= 1024 && self.height <= 1024 {
+        if self.width <= crate::consts::VISION_LOW_DETAIL_MAX_DIM
+            && self.height <= crate::consts::VISION_LOW_DETAIL_MAX_DIM
+        {
             "low"
         } else {
             "high"

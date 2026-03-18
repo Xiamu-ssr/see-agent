@@ -249,7 +249,7 @@ pub fn AgentDetail() -> impl IntoView {
                                         }
 
                                         Tab::Files => view! {
-                                            <p class="empty">"File browser coming in Phase 16+"</p>
+                                            <p class="empty">"File browser not yet available"</p>
                                         }.into_any(),
 
                                         Tab::Tools => {

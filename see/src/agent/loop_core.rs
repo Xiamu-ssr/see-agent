@@ -351,7 +351,7 @@ impl AgentLoop {
                     step_had_screenshot = true;
                     no_screenshot.got_screenshot();
 
-                    let prefix = &sc.base64[..std::cmp::min(1000, sc.base64.len())];
+                    let prefix = &sc.base64[..std::cmp::min(crate::consts::SCREENSHOT_PREFIX_LEN, sc.base64.len())];
                     if let DetectorAction::Warn(msg) = no_progress.check(prefix) {
                         ctx.add_system_hint(&msg);
                     }
@@ -363,7 +363,7 @@ impl AgentLoop {
                     no_screenshot.got_screenshot();
                     if let Some(first_img) = result.images.first() {
                         let prefix =
-                            &first_img.base64[..std::cmp::min(1000, first_img.base64.len())];
+                            &first_img.base64[..std::cmp::min(crate::consts::SCREENSHOT_PREFIX_LEN, first_img.base64.len())];
                         if let DetectorAction::Warn(msg) = no_progress.check(prefix) {
                             ctx.add_system_hint(&msg);
                         }

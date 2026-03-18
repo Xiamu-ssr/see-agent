@@ -3,6 +3,9 @@ name = "see-web"
 version.workspace = true
 edition.workspace = true
 
+[lib]
+crate-type = ["cdylib", "rlib"]
+
 [dependencies]
 leptos = { version = "0.7", features = ["csr"] }
 leptos_router = "0.7"

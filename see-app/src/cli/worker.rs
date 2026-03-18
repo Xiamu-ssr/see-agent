@@ -17,7 +17,8 @@ pub async fn run(agent_id: &str, workspace_path: &str) {
     info!(agent = agent_id, "worker starting");
 
     // Set up SIGUSR1 handler to wake the inbox drain loop
-    let (wake_tx, mut wake_rx) = tokio::sync::mpsc::channel::<()>(16);
+    let (wake_tx, mut wake_rx) =
+        tokio::sync::mpsc::channel::<()>(see::consts::WORKER_WAKE_CHANNEL_SIZE);
 
     #[cfg(unix)]
     {
@@ -61,7 +62,8 @@ pub async fn run(agent_id: &str, workspace_path: &str) {
         }
 
         // Wait for wake signal or timeout
-        let timeout = tokio::time::Duration::from_secs(5);
+        let timeout =
+            tokio::time::Duration::from_secs(see::consts::WORKER_SIGNAL_TIMEOUT_SECS);
         let _ = tokio::time::timeout(timeout, wake_rx.recv()).await;
     }
 
