@@ -1,3 +1,4 @@
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -7,7 +8,7 @@ use crate::consts;
 // Top-level Config (matches MentalModel.md section 五 config.json)
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, JsonSchema)]
 pub struct Config {
     #[serde(default)]
     pub node: NodeConfig,
@@ -35,7 +36,7 @@ pub struct Config {
 // NodeConfig
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
 pub struct NodeConfig {
     /// Machine identifier. Defaults to hostname at runtime.
     #[serde(default)]
@@ -49,7 +50,7 @@ pub struct NodeConfig {
 // LlmConfig
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct LlmConfig {
     #[serde(default = "default_llm_base_url")]
     pub base_url: String,
@@ -81,7 +82,7 @@ impl Default for LlmConfig {
 // AgentBehaviorConfig + CompactConfig
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct AgentBehaviorConfig {
     #[serde(default = "default_max_steps")]
     pub max_steps: u32,
@@ -102,7 +103,7 @@ impl Default for AgentBehaviorConfig {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct CompactConfig {
     #[serde(default = "default_context_window")]
     pub context_window: u64,
@@ -142,7 +143,7 @@ impl Default for CompactConfig {
 // ScreenConfig
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ScalingMatch {
     #[default]
@@ -150,7 +151,7 @@ pub enum ScalingMatch {
     PixelCount,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ScreenConfig {
     #[serde(default = "default_max_images")]
     pub max_images: u32,
@@ -203,7 +204,7 @@ impl Default for ScreenConfig {
 // SkillsConfig
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct SkillsConfig {
     #[serde(default = "default_skills_dirs")]
     pub dirs: Vec<String>,
@@ -228,14 +229,14 @@ impl Default for SkillsConfig {
 // McpConfig + McpServerConfig
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum McpServerType {
     #[default]
     Stdio,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct McpServerConfig {
     #[serde(default, rename = "type")]
     pub server_type: McpServerType,
@@ -249,7 +250,7 @@ pub struct McpServerConfig {
     pub url: Option<String>,
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
 pub struct McpConfig {
     #[serde(default)]
     pub servers: HashMap<String, McpServerConfig>,
@@ -261,7 +262,7 @@ pub struct McpConfig {
 // ToolsConfig
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, JsonSchema)]
 pub struct ToolsConfig {
     #[serde(default)]
     pub disabled: Vec<String>,
@@ -271,7 +272,7 @@ pub struct ToolsConfig {
 // SandboxConfig
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct SandboxConfig {
     #[serde(default = "default_sandbox_profile")]
     pub profile: String,
@@ -299,7 +300,7 @@ impl Default for SandboxConfig {
 // WebConfig
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct WebConfig {
     #[serde(default = "default_web_language")]
     pub language: String,

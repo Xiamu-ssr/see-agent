@@ -28,3 +28,4 @@ objc2 = "0.6"
 tempfile = "3"
 rust-embed = { version = "8", features = ["interpolate-folder-path"] }
 mime_guess = "2"
+schemars = "0.8"

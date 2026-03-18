@@ -1,8 +1,11 @@
 mod agents;
 mod config;
 mod dashboard;
+mod files;
 mod health;
 mod logs;
+mod mcp;
+mod sessions;
 mod skills;
 mod teams;
 mod tools;
@@ -21,5 +24,8 @@ pub fn api_router(state: AppState) -> Router {
         .merge(skills::router(state.clone()))
         .merge(config::router(state.clone()))
         .merge(dashboard::router(state.clone()))
-        .merge(logs::router(state))
+        .merge(logs::router(state.clone()))
+        .merge(sessions::router(state.clone()))
+        .merge(files::router(state.clone()))
+        .merge(mcp::router(state))
 }

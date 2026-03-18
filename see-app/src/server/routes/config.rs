@@ -4,6 +4,8 @@ use axum::routing::get;
 use axum::{Json, Router};
 use serde_json::Value;
 
+use see::types::Config;
+
 use crate::server::AppState;
 
 async fn get_config_handler(
@@ -57,8 +59,25 @@ async fn update_config_handler(
     Ok(Json(serde_json::json!({"status": "updated"})))
 }
 
+/// Return a JSON schema derived from Config via schemars — single source of truth.
+async fn get_config_schema_handler() -> Json<Value> {
+    let schema = schemars::schema_for!(Config);
+    let value = serde_json::to_value(schema).unwrap_or_default();
+    Json(value)
+}
+
+/// Return default config values (derived from Config::default()).
+async fn get_config_defaults_handler() -> Result<Json<Value>, StatusCode> {
+    let defaults = Config::default();
+    let value =
+        serde_json::to_value(defaults).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(Json(value))
+}
+
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/config", get(get_config_handler).put(update_config_handler))
+        .route("/config/schema", get(get_config_schema_handler))
+        .route("/config/defaults", get(get_config_defaults_handler))
         .with_state(state)
 }
