@@ -1,8 +1,8 @@
+use leptos::ev;
 use leptos::prelude::*;
 use leptos_router::components::A;
 use leptos_router::hooks::use_params_map;
 use serde::Deserialize;
-use thaw::*;
 
 use crate::api;
 use crate::components::markdown::render_markdown;
@@ -111,12 +111,12 @@ fn format_file_size(size: u64) -> String {
     }
 }
 
-fn status_badge_color(status: &str) -> BadgeColor {
+fn status_badge_class(status: &str) -> &'static str {
     match status {
-        "running" => BadgeColor::Success,
-        "idle" => BadgeColor::Subtle,
-        "error" => BadgeColor::Danger,
-        _ => BadgeColor::Informative,
+        "running" => "badge badge-success",
+        "idle" => "badge badge-ghost",
+        "error" => "badge badge-error",
+        _ => "badge badge-info",
     }
 }
 
@@ -131,38 +131,37 @@ pub fn Agents() -> impl IntoView {
     });
 
     view! {
-        <div class="page-content">
-            <span class="page-header">"Agents"</span>
-            <Suspense fallback=|| view! { <Spinner /> }>
+        <div>
+            <h2 class="text-xl font-bold mb-4">"Agents"</h2>
+            <Suspense fallback=|| view! { <span class="loading loading-spinner loading-lg"></span> }>
                 {move || agents.get().map(|list| {
                     let items: Vec<_> = list.iter().cloned().collect();
                     if items.is_empty() {
                         view! {
-                            <div class="empty-state">
-                                <div class="empty-state-icon">"🤖"</div>
-                                <div class="empty-state-text">"No agents yet"</div>
+                            <div class="text-center py-12 opacity-60">
+                                <p class="text-4xl mb-2">"🤖"</p>
+                                <p>"No agents yet"</p>
                             </div>
                         }.into_any()
                     } else {
                         view! {
-                            <Grid cols=3 x_gap=12 y_gap=12>
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                                 {items.into_iter().map(|a| {
                                     let href = format!("/agents/{}", a.id);
-                                    let badge_color = status_badge_color(&a.state);
-                                    let status_text = a.state;
+                                    let badge_class = status_badge_class(&a.state);
                                     view! {
-                                        <GridItem>
-                                            <A href=href attr:style="text-decoration:none;color:inherit">
-                                                <Card class="card-interactive">
-                                                    <span style="font-size:1.5rem">{a.emoji}</span>
-                                                    <Caption1Strong>{a.name}</Caption1Strong>
-                                                    <Badge color=badge_color>{status_text}</Badge>
-                                                </Card>
-                                            </A>
-                                        </GridItem>
+                                        <A href=href attr:class="no-underline text-inherit">
+                                            <div class="card bg-base-100 shadow-xl hover:shadow-2xl transition-shadow cursor-pointer">
+                                                <div class="card-body">
+                                                    <span class="text-2xl">{a.emoji}</span>
+                                                    <h3 class="card-title text-sm">{a.name}</h3>
+                                                    <span class=badge_class>{a.state}</span>
+                                                </div>
+                                            </div>
+                                        </A>
                                     }
                                 }).collect_view()}
-                            </Grid>
+                            </div>
                         }.into_any()
                     }
                 })}
@@ -389,8 +388,8 @@ pub fn AgentDetail() -> impl IntoView {
     // ---------------------------------------------------------------------------
 
     view! {
-        <div style="flex:1;display:flex;flex-direction:column;min-height:0">
-            <Suspense fallback=|| view! { <Spinner /> }>
+        <div class="flex-1 flex flex-col min-h-0">
+            <Suspense fallback=|| view! { <span class="loading loading-spinner loading-lg"></span> }>
                 {move || agent.get().map(|a| {
                     match &*a {
                         Some(a) => {
@@ -401,31 +400,46 @@ pub fn AgentDetail() -> impl IntoView {
                             let location = a.location.clone();
 
                             view! {
-                                <Flex vertical=false align=FlexAlign::Center gap=FlexGap::Small>
+                                // Header bar
+                                <div class="flex items-center gap-2 mb-2">
                                     <A href="/agents">
-                                        <Button appearance=ButtonAppearance::Subtle>"< Agents"</Button>
+                                        <button class="btn btn-ghost btn-sm">"< Agents"</button>
                                     </A>
-                                    <Caption1>{emoji}</Caption1>
-                                    <Body1><b>{name}</b></Body1>
+                                    <span class="text-lg">{emoji}</span>
+                                    <span class="font-bold text-lg">{name}</span>
                                     {move || {
                                         let s = agent_status.get();
-                                        let color = status_badge_color(&s);
-                                        view! { <Badge color=color>{s}</Badge> }
+                                        let cls = status_badge_class(&s);
+                                        view! { <span class=cls>{s}</span> }
                                     }}
-                                    <Button appearance=ButtonAppearance::Primary on_click=start_agent>"Start"</Button>
-                                    <Button appearance=ButtonAppearance::Subtle on_click=stop_agent>"Stop"</Button>
-                                </Flex>
-                                <Divider />
+                                    <button class="btn btn-primary btn-sm" on:click=start_agent>"Start"</button>
+                                    <button class="btn btn-ghost btn-sm" on:click=stop_agent>"Stop"</button>
+                                </div>
+                                <div class="divider my-1"></div>
 
-                                <TabList selected_value=selected_tab>
-                                    <Tab value="overview">"Overview"</Tab>
-                                    <Tab value="chat">"Chat"</Tab>
-                                    <Tab value="files">"Files"</Tab>
-                                    <Tab value="tools">"Tools"</Tab>
-                                    <Tab value="skills">"Skills"</Tab>
-                                </TabList>
+                                // Tabs
+                                <div role="tablist" class="tabs tabs-bordered mb-3">
+                                    {["overview", "chat", "files", "tools", "skills"].into_iter().map(|tab| {
+                                        let label = match tab {
+                                            "overview" => "Overview",
+                                            "chat" => "Chat",
+                                            "files" => "Files",
+                                            "tools" => "Tools",
+                                            "skills" => "Skills",
+                                            _ => tab,
+                                        };
+                                        view! {
+                                            <a
+                                                role="tab"
+                                                class=move || if selected_tab.get() == tab { "tab tab-active" } else { "tab" }
+                                                on:click=move |_| selected_tab.set(tab.to_string())
+                                            >{label}</a>
+                                        }
+                                    }).collect_view()}
+                                </div>
 
-                                <div style="margin-top:12px;flex:1;display:flex;flex-direction:column;min-height:0">
+                                // Tab content
+                                <div class="flex-1 flex flex-col min-h-0">
                                     {
                                         let id_for_tab = id.clone();
                                         let location_for_tab = location.clone();
@@ -436,114 +450,107 @@ pub fn AgentDetail() -> impl IntoView {
                                         match current_tab.as_str() {
                                             // ----- Overview -----
                                             "overview" => view! {
-                                                <Grid cols=3 x_gap=12 y_gap=12>
-                                                    <GridItem>
-                                                        <Card>
-                                                            <Caption1Strong>"ID"</Caption1Strong>
-                                                            <Body1>{id_display}</Body1>
-                                                        </Card>
-                                                    </GridItem>
-                                                    <GridItem>
-                                                        <Card>
-                                                            <Caption1Strong>"Status"</Caption1Strong>
-                                                            <Body1>{move || agent_status.get()}</Body1>
-                                                        </Card>
-                                                    </GridItem>
-                                                    <GridItem>
-                                                        <Card>
-                                                            <Caption1Strong>"Has SOUL.md"</Caption1Strong>
-                                                            <Body1>{if has_soul { "Yes" } else { "No" }}</Body1>
-                                                        </Card>
-                                                    </GridItem>
-                                                    <GridItem>
-                                                        <Card>
-                                                            <Caption1Strong>"Location"</Caption1Strong>
-                                                            <code>{loc_display}</code>
-                                                        </Card>
-                                                    </GridItem>
-                                                    <GridItem>
-                                                        <Card>
-                                                            <Caption1Strong>"Tools"</Caption1Strong>
-                                                            <Body1>{move || tools_list.get().len().to_string()}</Body1>
-                                                        </Card>
-                                                    </GridItem>
-                                                    <GridItem>
-                                                        <Card>
-                                                            <Caption1Strong>"Skills"</Caption1Strong>
-                                                            <Body1>{move || skills_list.get().len().to_string()}</Body1>
-                                                        </Card>
-                                                    </GridItem>
-                                                </Grid>
+                                                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                                    <div class="card bg-base-100 shadow-xl"><div class="card-body">
+                                                        <span class="text-sm font-bold opacity-70">"ID"</span>
+                                                        <p>{id_display}</p>
+                                                    </div></div>
+                                                    <div class="card bg-base-100 shadow-xl"><div class="card-body">
+                                                        <span class="text-sm font-bold opacity-70">"Status"</span>
+                                                        <p>{move || agent_status.get()}</p>
+                                                    </div></div>
+                                                    <div class="card bg-base-100 shadow-xl"><div class="card-body">
+                                                        <span class="text-sm font-bold opacity-70">"Has SOUL.md"</span>
+                                                        <p>{if has_soul { "Yes" } else { "No" }}</p>
+                                                    </div></div>
+                                                    <div class="card bg-base-100 shadow-xl"><div class="card-body">
+                                                        <span class="text-sm font-bold opacity-70">"Location"</span>
+                                                        <code>{loc_display}</code>
+                                                    </div></div>
+                                                    <div class="card bg-base-100 shadow-xl"><div class="card-body">
+                                                        <span class="text-sm font-bold opacity-70">"Tools"</span>
+                                                        <p>{move || tools_list.get().len().to_string()}</p>
+                                                    </div></div>
+                                                    <div class="card bg-base-100 shadow-xl"><div class="card-body">
+                                                        <span class="text-sm font-bold opacity-70">"Skills"</span>
+                                                        <p>{move || skills_list.get().len().to_string()}</p>
+                                                    </div></div>
+                                                </div>
                                             }.into_any(),
 
                                             // ----- Chat -----
                                             "chat" => {
                                                 let send = send_msg;
                                                 view! {
-                                                    <Card attr:style="flex:1;display:flex;flex-direction:column;min-height:0">
-                                                        <div style="flex:1;overflow-y:auto;padding:8px;min-height:200px">
-                                                            {move || {
-                                                                let msgs = chat_messages.get();
-                                                                if msgs.is_empty() {
-                                                                    view! {
-                                                                        <MessageBar><MessageBarBody>"No messages yet. Send a message to start a conversation."</MessageBarBody></MessageBar>
-                                                                    }.into_any()
-                                                                } else {
-                                                                    msgs.into_iter().filter_map(|m| {
-                                                                        let text = extract_message_text(&m);
-                                                                        if text.is_empty() { return None; }
-                                                                        match m.msg_type.as_str() {
-                                                                            "user_task" | "user_reply" => Some(view! {
-                                                                                <div style="text-align:right;margin-bottom:8px">
-                                                                                    <Tag>"You"</Tag>
-                                                                                    <div style="background:var(--colorBrandBackground);color:var(--colorNeutralForegroundOnBrand);padding:8px;border-radius:8px;display:inline-block;max-width:80%;text-align:left">
-                                                                                        {text}
+                                                    <div class="card bg-base-100 shadow-xl flex-1 flex flex-col min-h-0">
+                                                        <div class="card-body flex-1 flex flex-col min-h-0 p-4">
+                                                            <div class="flex-1 overflow-y-auto chat-scroll min-h-[200px]">
+                                                                {move || {
+                                                                    let msgs = chat_messages.get();
+                                                                    if msgs.is_empty() {
+                                                                        view! {
+                                                                            <div role="alert" class="alert">
+                                                                                <span>"No messages yet. Send a message to start a conversation."</span>
+                                                                            </div>
+                                                                        }.into_any()
+                                                                    } else {
+                                                                        msgs.into_iter().filter_map(|m| {
+                                                                            let text = extract_message_text(&m);
+                                                                            if text.is_empty() { return None; }
+                                                                            match m.msg_type.as_str() {
+                                                                                "user_task" | "user_reply" => Some(view! {
+                                                                                    <div class="chat chat-end mb-2">
+                                                                                        <div class="chat-header">"You"</div>
+                                                                                        <div class="chat-bubble chat-bubble-primary">{text}</div>
                                                                                     </div>
-                                                                                </div>
-                                                                            }.into_any()),
-                                                                            "assistant" => {
-                                                                                let html = render_markdown(&text);
-                                                                                Some(view! {
-                                                                                    <div style="text-align:left;margin-bottom:8px">
-                                                                                        <Tag>"Agent"</Tag>
-                                                                                        <div style="padding:8px" class="markdown-body" inner_html=html></div>
+                                                                                }.into_any()),
+                                                                                "assistant" => {
+                                                                                    let html = render_markdown(&text);
+                                                                                    Some(view! {
+                                                                                        <div class="chat chat-start mb-2">
+                                                                                            <div class="chat-header">"Agent"</div>
+                                                                                            <div class="chat-bubble markdown-body" inner_html=html></div>
+                                                                                        </div>
+                                                                                    }.into_any())
+                                                                                }
+                                                                                "tool_result" => Some(view! {
+                                                                                    <div class="mb-2">
+                                                                                        <span class="badge badge-outline badge-sm">"Tool"</span>
+                                                                                        <pre class="text-xs whitespace-pre-wrap max-h-[200px] overflow-y-auto mt-1 bg-base-200 p-2 rounded">{text}</pre>
                                                                                     </div>
-                                                                                }.into_any())
+                                                                                }.into_any()),
+                                                                                _ => None,
                                                                             }
-                                                                            "tool_result" => Some(view! {
-                                                                                <div style="margin-bottom:8px">
-                                                                                    <Tag>"Tool"</Tag>
-                                                                                    <pre style="font-size:0.8rem;white-space:pre-wrap;max-height:200px;overflow-y:auto">{text}</pre>
-                                                                                </div>
-                                                                            }.into_any()),
-                                                                            _ => None,
-                                                                        }
-                                                                    }).collect_view().into_any()
-                                                                }
-                                                            }}
-                                                        </div>
-                                                        <Divider />
-                                                        <Flex vertical=false gap=FlexGap::Small align=FlexAlign::Center>
-                                                            <div style="flex:1;min-width:0" on:keydown=move |ev: web_sys::KeyboardEvent| {
-                                                                if ev.key() == "Enter" {
-                                                                    send();
-                                                                }
-                                                            }>
-                                                                <Input
-                                                                    value=msg_input
-                                                                    placeholder="Send a message..."
-                                                                />
+                                                                        }).collect_view().into_any()
+                                                                    }
+                                                                }}
                                                             </div>
-                                                            <Select value=msg_priority>
-                                                                <option value="collect">"Collect"</option>
-                                                                <option value="steer">"Steer"</option>
-                                                            </Select>
-                                                            <Button
-                                                                appearance=ButtonAppearance::Primary
-                                                                on_click=move |_| (send_msg)()
-                                                            >"Send"</Button>
-                                                        </Flex>
-                                                    </Card>
+                                                            <div class="divider my-1"></div>
+                                                            <div class="flex items-center gap-2">
+                                                                <div class="flex-1 min-w-0" on:keydown=move |ev: web_sys::KeyboardEvent| {
+                                                                    if ev.key() == "Enter" {
+                                                                        send();
+                                                                    }
+                                                                }>
+                                                                    <input class="input input-bordered w-full"
+                                                                        placeholder="Send a message..."
+                                                                        prop:value=move || msg_input.get()
+                                                                        on:input=move |ev: ev::Event| msg_input.set(event_target_value(&ev))
+                                                                    />
+                                                                </div>
+                                                                <select class="select select-bordered select-sm"
+                                                                    prop:value=move || msg_priority.get()
+                                                                    on:change=move |ev: ev::Event| msg_priority.set(event_target_value(&ev))
+                                                                >
+                                                                    <option value="collect">"Collect"</option>
+                                                                    <option value="steer">"Steer"</option>
+                                                                </select>
+                                                                <button class="btn btn-primary btn-sm"
+                                                                    on:click=move |_| (send_msg)()
+                                                                >"Send"</button>
+                                                            </div>
+                                                        </div>
+                                                    </div>
                                                 }.into_any()
                                             }
 
@@ -551,200 +558,222 @@ pub fn AgentDetail() -> impl IntoView {
                                             "files" => {
                                                 let fetch_dir = fetch_dir;
                                                 view! {
-                                                    <Card>
-                                                        <Flex vertical=false gap=FlexGap::Small align=FlexAlign::Center>
-                                                            <Button
-                                                                appearance=ButtonAppearance::Subtle
-                                                                on_click={
-                                                                    let fd = fetch_dir;
-                                                                    move |_| fd(String::new())
-                                                                }
-                                                            >"/"</Button>
-                                                            {move || {
-                                                                let path = file_path.get();
-                                                                if path.is_empty() {
-                                                                    view! { <span></span> }.into_any()
-                                                                } else {
-                                                                    let parts: Vec<&str> = path.split('/').collect();
-                                                                    parts.iter().enumerate().map(|(i, part)| {
-                                                                        let partial = parts[..=i].join("/");
-                                                                        let part_str = part.to_string();
+                                                    <div class="card bg-base-100 shadow-xl">
+                                                        <div class="card-body">
+                                                            // Breadcrumb
+                                                            <div class="flex items-center gap-1 text-sm breadcrumbs">
+                                                                <button class="btn btn-ghost btn-xs"
+                                                                    on:click={
                                                                         let fd = fetch_dir;
-                                                                        view! {
-                                                                            <Caption1>" / "</Caption1>
-                                                                            <Button
-                                                                                appearance=ButtonAppearance::Subtle
-                                                                                on_click=move |_| fd(partial.clone())
-                                                                            >{part_str}</Button>
-                                                                        }
-                                                                    }).collect_view().into_any()
-                                                                }
-                                                            }}
-                                                        </Flex>
-                                                        <Divider />
-                                                        <Flex vertical=false gap=FlexGap::Medium>
-                                                            <div style="flex:0 0 280px;max-height:500px;overflow-y:auto;border:1px solid var(--colorNeutralStroke1);border-radius:4px">
+                                                                        move |_| fd(String::new())
+                                                                    }
+                                                                >"/"</button>
                                                                 {move || {
                                                                     let path = file_path.get();
-                                                                    let entries = file_entries.get();
-                                                                    let mut views = Vec::new();
-
-                                                                    if !path.is_empty() {
-                                                                        let parent = if let Some(pos) = path.rfind('/') {
-                                                                            path[..pos].to_string()
-                                                                        } else {
-                                                                            String::new()
-                                                                        };
-                                                                        let fd = fetch_dir;
-                                                                        views.push(view! {
-                                                                            <Button
-                                                                                appearance=ButtonAppearance::Transparent
-                                                                                on_click=move |_| fd(parent.clone())
-                                                                            >"../"</Button>
-                                                                        }.into_any());
+                                                                    if path.is_empty() {
+                                                                        view! { <span></span> }.into_any()
+                                                                    } else {
+                                                                        let parts: Vec<&str> = path.split('/').collect();
+                                                                        parts.iter().enumerate().map(|(i, part)| {
+                                                                            let partial = parts[..=i].join("/");
+                                                                            let part_str = part.to_string();
+                                                                            let fd = fetch_dir;
+                                                                            view! {
+                                                                                <span class="opacity-50">" / "</span>
+                                                                                <button class="btn btn-ghost btn-xs"
+                                                                                    on:click=move |_| fd(partial.clone())
+                                                                                >{part_str}</button>
+                                                                            }
+                                                                        }).collect_view().into_any()
                                                                     }
+                                                                }}
+                                                            </div>
+                                                            <div class="divider my-1"></div>
+                                                            // File browser split
+                                                            <div class="flex gap-4">
+                                                                // Left: directory listing
+                                                                <div class="w-[280px] shrink-0 max-h-[500px] overflow-y-auto border border-base-300 rounded-lg">
+                                                                    {move || {
+                                                                        let path = file_path.get();
+                                                                        let entries = file_entries.get();
+                                                                        let mut views = Vec::new();
 
-                                                                    for entry in entries {
-                                                                        let name = entry.name.clone();
-                                                                        let is_dir = entry.entry_type == "directory";
-                                                                        let size_str = format_file_size(entry.size);
-
-                                                                        if is_dir {
-                                                                            let dir_path = if path.is_empty() {
-                                                                                name.clone()
+                                                                        if !path.is_empty() {
+                                                                            let parent = if let Some(pos) = path.rfind('/') {
+                                                                                path[..pos].to_string()
                                                                             } else {
-                                                                                format!("{path}/{name}")
+                                                                                String::new()
                                                                             };
                                                                             let fd = fetch_dir;
                                                                             views.push(view! {
-                                                                                <Button
-                                                                                    appearance=ButtonAppearance::Transparent
-                                                                                    on_click=move |_| fd(dir_path.clone())
-                                                                                >{format!("📁 {name}")}</Button>
-                                                                            }.into_any());
-                                                                        } else {
-                                                                            let fname = name.clone();
-                                                                            views.push(view! {
-                                                                                <Flex vertical=false justify=FlexJustify::SpaceBetween align=FlexAlign::Center>
-                                                                                    <Button
-                                                                                        appearance=ButtonAppearance::Transparent
-                                                                                        on_click=move |_| open_file(fname.clone())
-                                                                                    >{format!("📄 {name}")}</Button>
-                                                                                    <Caption1>{size_str.clone()}</Caption1>
-                                                                                </Flex>
+                                                                                <button class="btn btn-ghost btn-sm w-full justify-start"
+                                                                                    on:click=move |_| fd(parent.clone())
+                                                                                >"../"</button>
                                                                             }.into_any());
                                                                         }
-                                                                    }
 
-                                                                    views.collect_view()
-                                                                }}
-                                                            </div>
+                                                                        for entry in entries {
+                                                                            let name = entry.name.clone();
+                                                                            let is_dir = entry.entry_type == "directory";
+                                                                            let size_str = format_file_size(entry.size);
 
-                                                            <div style="flex:1;min-width:0;border:1px solid var(--colorNeutralStroke1);border-radius:4px;padding:8px;overflow:auto">
-                                                                {move || {
-                                                                    match file_content.get() {
-                                                                        Some(content) => {
-                                                                            if is_editing_file.get() {
-                                                                                view! {
-                                                                                    <Textarea
-                                                                                        value=file_edit_text
-                                                                                        attr:style="width:100%;min-height:300px;font-family:monospace;font-size:0.85rem"
-                                                                                    />
-                                                                                    <Flex vertical=false gap=FlexGap::Small>
-                                                                                        <Button appearance=ButtonAppearance::Primary on_click=save_file>"Save"</Button>
-                                                                                        <Button appearance=ButtonAppearance::Subtle on_click=move |_| is_editing_file.set(false)>"Cancel"</Button>
-                                                                                    </Flex>
-                                                                                }.into_any()
+                                                                            if is_dir {
+                                                                                let dir_path = if path.is_empty() {
+                                                                                    name.clone()
+                                                                                } else {
+                                                                                    format!("{path}/{name}")
+                                                                                };
+                                                                                let fd = fetch_dir;
+                                                                                views.push(view! {
+                                                                                    <button class="btn btn-ghost btn-sm w-full justify-start"
+                                                                                        on:click=move |_| fd(dir_path.clone())
+                                                                                    >{format!("\u{1F4C1} {name}")}</button>
+                                                                                }.into_any());
                                                                             } else {
-                                                                                view! {
-                                                                                    <Button appearance=ButtonAppearance::Subtle on_click=move |_| is_editing_file.set(true)>"Edit"</Button>
-                                                                                    <pre style="font-size:0.85rem;white-space:pre-wrap;word-break:break-all">{content}</pre>
-                                                                                }.into_any()
+                                                                                let fname = name.clone();
+                                                                                views.push(view! {
+                                                                                    <div class="flex justify-between items-center px-2">
+                                                                                        <button class="btn btn-ghost btn-sm justify-start flex-1 min-w-0"
+                                                                                            on:click=move |_| open_file(fname.clone())
+                                                                                        >{format!("\u{1F4C4} {name}")}</button>
+                                                                                        <span class="text-xs opacity-50 shrink-0">{size_str}</span>
+                                                                                    </div>
+                                                                                }.into_any());
                                                                             }
                                                                         }
-                                                                        None => view! {
-                                                                            <MessageBar><MessageBarBody>"Select a file to view"</MessageBarBody></MessageBar>
-                                                                        }.into_any(),
-                                                                    }
-                                                                }}
+
+                                                                        views.collect_view()
+                                                                    }}
+                                                                </div>
+
+                                                                // Right: file content
+                                                                <div class="flex-1 min-w-0 border border-base-300 rounded-lg p-3 overflow-auto">
+                                                                    {move || {
+                                                                        match file_content.get() {
+                                                                            Some(content) => {
+                                                                                if is_editing_file.get() {
+                                                                                    view! {
+                                                                                        <textarea class="textarea textarea-bordered w-full min-h-[300px] font-mono text-sm"
+                                                                                            prop:value=move || file_edit_text.get()
+                                                                                            on:input=move |ev: ev::Event| file_edit_text.set(event_target_value(&ev))
+                                                                                        ></textarea>
+                                                                                        <div class="flex items-center gap-2 mt-2">
+                                                                                            <button class="btn btn-primary btn-sm" on:click=save_file>"Save"</button>
+                                                                                            <button class="btn btn-ghost btn-sm" on:click=move |_| is_editing_file.set(false)>"Cancel"</button>
+                                                                                        </div>
+                                                                                    }.into_any()
+                                                                                } else {
+                                                                                    view! {
+                                                                                        <button class="btn btn-ghost btn-sm mb-2" on:click=move |_| is_editing_file.set(true)>"Edit"</button>
+                                                                                        <pre class="text-sm whitespace-pre-wrap break-all">{content}</pre>
+                                                                                    }.into_any()
+                                                                                }
+                                                                            }
+                                                                            None => view! {
+                                                                                <div role="alert" class="alert">
+                                                                                    <span>"Select a file to view"</span>
+                                                                                </div>
+                                                                            }.into_any(),
+                                                                        }
+                                                                    }}
+                                                                </div>
                                                             </div>
-                                                        </Flex>
-                                                    </Card>
+                                                        </div>
+                                                    </div>
                                                 }.into_any()
                                             }
 
                                             // ----- Tools -----
                                             "tools" => {
                                                 view! {
-                                                    <Card>
-                                                        {move || {
-                                                            let tools = tools_list.get();
-                                                            if tools.is_empty() {
-                                                                view! { <MessageBar><MessageBarBody>"No tools loaded"</MessageBarBody></MessageBar> }.into_any()
-                                                            } else {
-                                                                tools.into_iter().map(|tool| {
-                                                                    let name = tool.name.clone();
-                                                                    let desc = tool.description.clone();
-                                                                    let disabled = tool.disabled;
-                                                                    let name_for_toggle = name.clone();
-                                                                    let checked = RwSignal::new(!disabled);
-                                                                    Effect::new(move |_| {
-                                                                        let is_checked = checked.get();
-                                                                        let should_disable = !is_checked;
-                                                                        if should_disable != disabled {
-                                                                            toggle_tool(name_for_toggle.clone(), should_disable);
-                                                                        }
-                                                                    });
+                                                    <div class="card bg-base-100 shadow-xl">
+                                                        <div class="card-body">
+                                                            {move || {
+                                                                let tools = tools_list.get();
+                                                                if tools.is_empty() {
                                                                     view! {
-                                                                        <Flex vertical=false justify=FlexJustify::SpaceBetween align=FlexAlign::Center>
-                                                                            <div>
-                                                                                <Body1><b>{name}</b></Body1>
-                                                                                <br />
-                                                                                <Caption1>{desc}</Caption1>
+                                                                        <div role="alert" class="alert">
+                                                                            <span>"No tools loaded"</span>
+                                                                        </div>
+                                                                    }.into_any()
+                                                                } else {
+                                                                    tools.into_iter().map(|tool| {
+                                                                        let name = tool.name.clone();
+                                                                        let desc = tool.description.clone();
+                                                                        let disabled = tool.disabled;
+                                                                        let name_for_toggle = name.clone();
+                                                                        let checked = RwSignal::new(!disabled);
+                                                                        Effect::new(move |_| {
+                                                                            let is_checked = checked.get();
+                                                                            let should_disable = !is_checked;
+                                                                            if should_disable != disabled {
+                                                                                toggle_tool(name_for_toggle.clone(), should_disable);
+                                                                            }
+                                                                        });
+                                                                        view! {
+                                                                            <div class="flex justify-between items-center py-2">
+                                                                                <div>
+                                                                                    <span class="font-bold">{name}</span>
+                                                                                    <br />
+                                                                                    <span class="text-sm opacity-70">{desc}</span>
+                                                                                </div>
+                                                                                <input type="checkbox" class="toggle toggle-primary"
+                                                                                    prop:checked=move || checked.get()
+                                                                                    on:change=move |ev: ev::Event| {
+                                                                                        checked.set(event_target_checked(&ev));
+                                                                                    }
+                                                                                />
                                                                             </div>
-                                                                            <Switch checked=checked />
-                                                                        </Flex>
-                                                                        <Divider />
-                                                                    }
-                                                                }).collect_view().into_any()
-                                                            }
-                                                        }}
-                                                    </Card>
+                                                                            <div class="divider my-0"></div>
+                                                                        }
+                                                                    }).collect_view().into_any()
+                                                                }
+                                                            }}
+                                                        </div>
+                                                    </div>
                                                 }.into_any()
                                             }
 
                                             // ----- Skills -----
                                             "skills" => {
                                                 view! {
-                                                    <Card>
-                                                        {move || {
-                                                            let skills = skills_list.get();
-                                                            if skills.is_empty() {
-                                                                view! { <MessageBar><MessageBarBody>"No skills loaded"</MessageBarBody></MessageBar> }.into_any()
-                                                            } else {
-                                                                skills.into_iter().map(|skill| {
-                                                                    let badge_color = if skill.available { BadgeColor::Success } else { BadgeColor::Danger };
-                                                                    let badge_text = if skill.available { "Available" } else { "Blocked" };
+                                                    <div class="card bg-base-100 shadow-xl">
+                                                        <div class="card-body">
+                                                            {move || {
+                                                                let skills = skills_list.get();
+                                                                if skills.is_empty() {
                                                                     view! {
-                                                                        <Flex vertical=false justify=FlexJustify::SpaceBetween align=FlexAlign::Center>
-                                                                            <div>
-                                                                                <Body1><b>{skill.name}</b></Body1>
-                                                                                <br />
-                                                                                <Caption1>{skill.description}</Caption1>
+                                                                        <div role="alert" class="alert">
+                                                                            <span>"No skills loaded"</span>
+                                                                        </div>
+                                                                    }.into_any()
+                                                                } else {
+                                                                    skills.into_iter().map(|skill| {
+                                                                        let badge_class = if skill.available { "badge badge-success" } else { "badge badge-error" };
+                                                                        let badge_text = if skill.available { "Available" } else { "Blocked" };
+                                                                        view! {
+                                                                            <div class="flex justify-between items-center py-2">
+                                                                                <div>
+                                                                                    <span class="font-bold">{skill.name}</span>
+                                                                                    <br />
+                                                                                    <span class="text-sm opacity-70">{skill.description}</span>
+                                                                                </div>
+                                                                                <span class=badge_class>{badge_text}</span>
                                                                             </div>
-                                                                            <Badge color=badge_color>{badge_text}</Badge>
-                                                                        </Flex>
-                                                                        <Divider />
-                                                                    }
-                                                                }).collect_view().into_any()
-                                                            }
-                                                        }}
-                                                    </Card>
+                                                                            <div class="divider my-0"></div>
+                                                                        }
+                                                                    }).collect_view().into_any()
+                                                                }
+                                                            }}
+                                                        </div>
+                                                    </div>
                                                 }.into_any()
                                             }
 
                                             _ => view! {
-                                                <MessageBar><MessageBarBody>"Unknown tab"</MessageBarBody></MessageBar>
+                                                <div role="alert" class="alert alert-error">
+                                                    <span>"Unknown tab"</span>
+                                                </div>
                                             }.into_any(),
                                         }
                                     }}
@@ -752,7 +781,9 @@ pub fn AgentDetail() -> impl IntoView {
                             }.into_any()
                         }
                         None => view! {
-                            <MessageBar><MessageBarBody>"Agent not found"</MessageBarBody></MessageBar>
+                            <div role="alert" class="alert alert-error">
+                                <span>"Agent not found"</span>
+                            </div>
                         }.into_any(),
                     }
                 })}
@@ -821,7 +852,6 @@ mod tests {
 
     #[test]
     fn agent_summary_deserialize_backend_format() {
-        // Backend sends "state" not "status"
         let json = r#"{"id":"a1","name":"bot","emoji":"🤖","state":"running","team_id":null}"#;
         let a: AgentSummary = serde_json::from_str(json).unwrap();
         assert_eq!(a.id, "a1");
@@ -830,7 +860,6 @@ mod tests {
 
     #[test]
     fn agent_detail_deserialize_backend_format() {
-        // Backend sends "state" not "status"
         let json = r#"{
             "id": "a1",
             "name": "bot",

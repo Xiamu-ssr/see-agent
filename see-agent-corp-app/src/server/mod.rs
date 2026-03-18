@@ -7,9 +7,11 @@ pub use state::AppState;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 
+use axum::http::HeaderValue;
 use axum::routing::get;
 use axum::Router;
 use tower_http::cors::{Any, CorsLayer};
+use tower_http::set_header::SetResponseHeaderLayer;
 use tracing::info;
 
 use see_agent_corp::consts::DEFAULT_SERVER_PORT;
@@ -23,7 +25,12 @@ pub fn build_router(state: AppState) -> Router {
         .allow_methods(Any)
         .allow_headers(Any);
 
-    let api = routes::api_router(state);
+    let no_cache = SetResponseHeaderLayer::overriding(
+        axum::http::header::CACHE_CONTROL,
+        HeaderValue::from_static("no-store"),
+    );
+
+    let api = routes::api_router(state).layer(no_cache);
 
     Router::new()
         .nest("/api", api)

@@ -1,45 +1,10 @@
 /* ==========================================================================
-   Minimal CSS — only styles that Thaw does not provide
+   Custom CSS — only styles that DaisyUI/Tailwind does not provide
    ========================================================================== */
-
-/* Sider brand header */
-.sider-brand {
-    padding: 16px;
-    background: var(--colorBrandBackground, #6B4EAB);
-    color: var(--colorNeutralForegroundOnBrand, #fff);
-    border-bottom: 1px solid var(--colorNeutralStroke1);
-}
-
-.sider-brand .thaw-body1 {
-    color: var(--colorNeutralForegroundOnBrand, #fff);
-}
-
-/* Dashboard stat cards */
-.stat-card.thaw-card {
-    text-align: center;
-    padding: 20px 16px;
-    transition: box-shadow 0.2s, transform 0.15s;
-}
-
-.stat-card.thaw-card:hover {
-    transform: translateY(-2px);
-    box-shadow: var(--shadow8);
-}
-
-.stat-card-accent.thaw-card {
-    border-left: 3px solid var(--colorBrandBackground, #6B4EAB);
-}
-
-.stat-number {
-    font-size: 2rem;
-    font-weight: 700;
-    color: var(--colorNeutralForeground1);
-    line-height: 1.2;
-}
 
 /* Markdown rendered in chat (pulldown-cmark HTML output) */
 .markdown-body {
-    line-height: 1.5;
+    line-height: 1.6;
 }
 
 .markdown-body h1, .markdown-body h2, .markdown-body h3,
@@ -57,17 +22,17 @@
 }
 
 .markdown-body code {
-    background: rgba(128, 128, 128, 0.2);
+    background: oklch(var(--b3));
     padding: 2px 5px;
-    border-radius: 3px;
+    border-radius: 4px;
     font-size: 0.85em;
     font-family: monospace;
 }
 
 .markdown-body pre {
-    background: rgba(128, 128, 128, 0.15);
+    background: oklch(var(--b3));
     padding: 0.75rem;
-    border-radius: 6px;
+    border-radius: 8px;
     overflow-x: auto;
     margin: 0.5em 0;
 }
@@ -83,14 +48,14 @@
 }
 
 .markdown-body blockquote {
-    border-left: 3px solid var(--colorBrandForeground1, #6B4EAB);
+    border-left: 3px solid oklch(var(--p));
     padding-left: 0.75rem;
     margin: 0.4em 0;
     opacity: 0.8;
 }
 
 .markdown-body a {
-    color: var(--colorBrandForeground1, #6B4EAB);
+    color: oklch(var(--p));
 }
 
 .markdown-body table {
@@ -99,80 +64,26 @@
 }
 
 .markdown-body th, .markdown-body td {
-    border: 1px solid var(--colorNeutralStroke1, #ddd);
+    border: 1px solid oklch(var(--bc) / 0.2);
     padding: 4px 8px;
     text-align: left;
 }
 
-/* Page header — larger than Body1 since Thaw 0.4 has no Title component */
-.page-header {
-    font-size: 1.5rem;
-    font-weight: 600;
-    line-height: 1.3;
-    color: var(--colorNeutralForeground1);
-    margin: 0 0 4px;
+/* Chat bubble scrollbar */
+.chat-scroll::-webkit-scrollbar {
+    width: 6px;
+}
+.chat-scroll::-webkit-scrollbar-track {
+    background: transparent;
+}
+.chat-scroll::-webkit-scrollbar-thumb {
+    background: oklch(var(--bc) / 0.2);
+    border-radius: 3px;
 }
 
-/* Page content vertical spacing */
-.page-content {
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-}
-
-/* Interactive card hover (agent/team list cards) */
-.card-interactive.thaw-card {
-    transition: box-shadow 0.2s, transform 0.15s;
-    cursor: pointer;
-}
-
-.card-interactive.thaw-card:hover {
-    transform: translateY(-2px);
-    box-shadow: var(--shadow8);
-}
-
-/* Table row hover highlight */
-.thaw-table-body .thaw-table-row:hover {
-    background: var(--colorNeutralBackground1Hover);
-}
-
-/* Empty state — centered placeholder for empty lists */
-.empty-state {
-    text-align: center;
-    padding: 48px 24px;
-    color: var(--colorNeutralForeground3);
-}
-
-.empty-state-icon {
-    font-size: 3rem;
-    margin-bottom: 12px;
-    opacity: 0.6;
-}
-
-.empty-state-text {
-    font-size: 1.1rem;
-    margin-bottom: 16px;
-}
-
-/* Desktop sider visible, mobile header hidden on wide screens */
-.desktop-sider {
-    display: block;
-}
-
-.mobile-header {
-    display: none !important;
-}
-
-@media (max-width: 768px) {
-    .desktop-sider {
-        display: none !important;
-    }
-
-    .mobile-header {
-        display: flex !important;
-        align-items: center;
-        gap: 8px;
-        padding: 8px 12px;
-        border-bottom: 1px solid var(--colorNeutralStroke1, #ddd);
-    }
+/* Stat card number */
+.stat-value-custom {
+    font-size: 2rem;
+    font-weight: 700;
+    line-height: 1.2;
 }
