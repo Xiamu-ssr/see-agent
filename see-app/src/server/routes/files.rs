@@ -2,7 +2,7 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::routing::get;
 use axum::{Json, Router};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::server::AppState;
 
@@ -95,6 +95,48 @@ async fn read_agent_file_handler(
 }
 
 // ---------------------------------------------------------------------------
+// Write handler
+// ---------------------------------------------------------------------------
+
+#[derive(Deserialize)]
+struct WriteFileRequest {
+    content: String,
+}
+
+#[derive(Serialize)]
+struct WriteFileResponse {
+    status: String,
+}
+
+async fn write_agent_file_handler(
+    State(state): State<AppState>,
+    Path((agent_id, filepath)): Path<(String, String)>,
+    Json(req): Json<WriteFileRequest>,
+) -> Result<Json<WriteFileResponse>, StatusCode> {
+    let ws = state.workspace();
+    let agent_dir = ws.agent(&agent_id);
+
+    if !agent_dir.path().exists() {
+        return Err(StatusCode::NOT_FOUND);
+    }
+
+    let target = agent_dir.path().join(&filepath);
+    if !target.starts_with(agent_dir.path()) {
+        return Err(StatusCode::FORBIDDEN);
+    }
+
+    if let Some(parent) = target.parent() {
+        std::fs::create_dir_all(parent).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    }
+
+    std::fs::write(&target, &req.content).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok(Json(WriteFileResponse {
+        status: "saved".into(),
+    }))
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -136,7 +178,7 @@ pub fn router(state: AppState) -> Router {
         )
         .route(
             "/agents/{agent_id}/file/{*filepath}",
-            get(read_agent_file_handler),
+            get(read_agent_file_handler).put(write_agent_file_handler),
         )
         .with_state(state)
 }
