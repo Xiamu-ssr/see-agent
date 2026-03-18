@@ -58,6 +58,18 @@ pub async fn delete<T: DeserializeOwned>(path: &str) -> Result<T, String> {
     resp.json().await.map_err(|e| e.to_string())
 }
 
+pub async fn post_empty(path: &str) -> Result<(), String> {
+    let url = format!("{BASE}{path}");
+    let resp = Request::post(&url)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    if !resp.ok() {
+        return Err(format!("HTTP {}", resp.status()));
+    }
+    Ok(())
+}
+
 pub async fn get_text(path: &str) -> Result<String, String> {
     let url = format!("{BASE}{path}");
     let resp = Request::get(&url)

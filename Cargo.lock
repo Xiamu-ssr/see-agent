@@ -3020,6 +3020,7 @@ version = "0.1.0"
 dependencies = [
  "gloo-net",
  "gloo-timers",
+ "icondata_ai",
  "leptos",
  "leptos_router",
  "pulldown-cmark",

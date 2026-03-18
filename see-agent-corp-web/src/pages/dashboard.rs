@@ -37,42 +37,61 @@ pub fn Dashboard() -> impl IntoView {
                             view! {
                                 <Grid cols=3 x_gap=12 y_gap=12>
                                     <GridItem>
-                                        <Card>
+                                        <Card class="stat-card">
                                             <Caption1Strong>"Version"</Caption1Strong>
-                                            <Body1>{version}</Body1>
+                                            <span class="stat-number">{version}</span>
                                         </Card>
                                     </GridItem>
                                     <GridItem>
-                                        <Card>
+                                        <Card class="stat-card">
                                             <Caption1Strong>"Total Agents"</Caption1Strong>
-                                            <Body1>{agents_count}</Body1>
+                                            <span class="stat-number">{agents_count}</span>
                                         </Card>
                                     </GridItem>
                                     <GridItem>
-                                        <Card>
+                                        <Card class="stat-card stat-card-accent">
                                             <Caption1Strong>"Running"</Caption1Strong>
-                                            <Badge color=BadgeColor::Success>{agents_running}</Badge>
+                                            <span class="stat-number">{agents_running}</span>
                                         </Card>
                                     </GridItem>
                                     <GridItem>
-                                        <Card>
+                                        <Card class="stat-card">
                                             <Caption1Strong>"Teams"</Caption1Strong>
-                                            <Body1>{teams_count}</Body1>
+                                            <span class="stat-number">{teams_count}</span>
                                         </Card>
                                     </GridItem>
                                     <GridItem>
-                                        <Card>
+                                        <Card class="stat-card">
                                             <Caption1Strong>"Tools"</Caption1Strong>
-                                            <Body1>{tools_count}</Body1>
+                                            <span class="stat-number">{tools_count}</span>
                                         </Card>
                                     </GridItem>
                                     <GridItem>
-                                        <Card>
+                                        <Card class="stat-card">
                                             <Caption1Strong>"Skills"</Caption1Strong>
-                                            <Body1>{skills_count}</Body1>
+                                            <span class="stat-number">{skills_count}</span>
                                         </Card>
                                     </GridItem>
                                 </Grid>
+
+                                <Flex vertical=false gap=FlexGap::Small>
+                                    <Button
+                                        appearance=ButtonAppearance::Primary
+                                        on_click=move |_| {
+                                            wasm_bindgen_futures::spawn_local(async {
+                                                let _ = crate::api::post_empty("/freeze").await;
+                                            });
+                                        }
+                                    >"Freeze All"</Button>
+                                    <Button
+                                        appearance=ButtonAppearance::Secondary
+                                        on_click=move |_| {
+                                            wasm_bindgen_futures::spawn_local(async {
+                                                let _ = crate::api::post_empty("/revive").await;
+                                            });
+                                        }
+                                    >"Revive All"</Button>
+                                </Flex>
                             }.into_any()
                         }
                         None => view! {

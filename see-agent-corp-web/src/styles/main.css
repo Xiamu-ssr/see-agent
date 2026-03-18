@@ -2,6 +2,41 @@
    Minimal CSS — only styles that Thaw does not provide
    ========================================================================== */
 
+/* Sider brand header */
+.sider-brand {
+    padding: 16px;
+    background: var(--colorBrandBackground, #6B4EAB);
+    color: var(--colorNeutralForegroundOnBrand, #fff);
+    border-bottom: 1px solid var(--colorNeutralStroke1);
+}
+
+.sider-brand .thaw-body1 {
+    color: var(--colorNeutralForegroundOnBrand, #fff);
+}
+
+/* Dashboard stat cards */
+.stat-card.thaw-card {
+    text-align: center;
+    padding: 20px 16px;
+    transition: box-shadow 0.2s, transform 0.15s;
+}
+
+.stat-card.thaw-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow8);
+}
+
+.stat-card-accent.thaw-card {
+    border-left: 3px solid var(--colorBrandBackground, #6B4EAB);
+}
+
+.stat-number {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--colorNeutralForeground1);
+    line-height: 1.2;
+}
+
 /* Markdown rendered in chat (pulldown-cmark HTML output) */
 .markdown-body {
     line-height: 1.5;
@@ -22,7 +57,7 @@
 }
 
 .markdown-body code {
-    background: rgba(0, 0, 0, 0.15);
+    background: rgba(128, 128, 128, 0.2);
     padding: 2px 5px;
     border-radius: 3px;
     font-size: 0.85em;
@@ -30,7 +65,7 @@
 }
 
 .markdown-body pre {
-    background: rgba(0, 0, 0, 0.1);
+    background: rgba(128, 128, 128, 0.15);
     padding: 0.75rem;
     border-radius: 6px;
     overflow-x: auto;
@@ -48,14 +83,14 @@
 }
 
 .markdown-body blockquote {
-    border-left: 3px solid var(--colorBrandForeground1, #0f9b8e);
+    border-left: 3px solid var(--colorBrandForeground1, #6B4EAB);
     padding-left: 0.75rem;
     margin: 0.4em 0;
     opacity: 0.8;
 }
 
 .markdown-body a {
-    color: var(--colorBrandForeground1, #0f9b8e);
+    color: var(--colorBrandForeground1, #6B4EAB);
 }
 
 .markdown-body table {
