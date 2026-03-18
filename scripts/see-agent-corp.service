@@ -1,0 +1,18 @@
+# systemd user service for see-agent-corp
+# Install: cp see-agent-corp.service ~/.config/systemd/user/
+# Enable:  systemctl --user enable --now see-agent-corp
+
+[Unit]
+Description=see-agent-corp server
+After=network.target
+
+[Service]
+Type=forking
+PIDFile=%h/.see-agent-corp/server.pid
+ExecStart=/usr/local/bin/see-agent-corp start
+ExecStop=/usr/local/bin/see-agent-corp stop
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- launchd agent for see-agent-corp
+     Install: cp com.see-agent-corp.plist ~/Library/LaunchAgents/
+     Load:    launchctl load ~/Library/LaunchAgents/com.see-agent-corp.plist
+     Unload:  launchctl unload ~/Library/LaunchAgents/com.see-agent-corp.plist
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.see-agent-corp</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/bin/see-agent-corp</string>
+        <string>serve</string>
+    </array>
+    <key>KeepAlive</key>
+    <true/>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>/tmp/see-agent-corp.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/see-agent-corp.log</string>
+</dict>
+</plist>

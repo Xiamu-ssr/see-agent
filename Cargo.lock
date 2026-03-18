@@ -9,64 +9,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 
 [[package]]
-name = "agentcorp"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "base64",
- "chrono",
- "dirs",
- "image",
- "nix",
- "objc2",
- "reqwest",
- "schemars",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "agentcorp-app"
-version = "0.1.0"
-dependencies = [
- "agentcorp",
- "axum",
- "chrono",
- "clap",
- "libc",
- "mime_guess",
- "nix",
- "rust-embed",
- "schemars",
- "serde",
- "serde_json",
- "tokio",
- "tower-http",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
-name = "agentcorp-web"
-version = "0.1.0"
-dependencies = [
- "gloo-net",
- "gloo-timers",
- "leptos",
- "leptos_router",
- "pulldown-cmark",
- "serde",
- "serde_json",
- "wasm-bindgen",
- "wasm-bindgen-futures",
- "web-sys",
-]
-
-[[package]]
 name = "aho-corasick"
 version = "1.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2909,6 +2851,64 @@ checksum = "6ce2691df843ecc5d231c0b14ece2acc3efb62c0a398c7e1d875f3983ce020e3"
 dependencies = [
  "core-foundation-sys",
  "libc",
+]
+
+[[package]]
+name = "see-agent-corp"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "base64",
+ "chrono",
+ "dirs",
+ "image",
+ "nix",
+ "objc2",
+ "reqwest",
+ "schemars",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "see-agent-corp-app"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "chrono",
+ "clap",
+ "libc",
+ "mime_guess",
+ "nix",
+ "rust-embed",
+ "schemars",
+ "see-agent-corp",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tower-http",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "see-agent-corp-web"
+version = "0.1.0"
+dependencies = [
+ "gloo-net",
+ "gloo-timers",
+ "leptos",
+ "leptos_router",
+ "pulldown-cmark",
+ "serde",
+ "serde_json",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
 ]
 
 [[package]]
