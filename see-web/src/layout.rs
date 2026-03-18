@@ -4,6 +4,7 @@ use leptos_router::components::A;
 #[component]
 pub fn Layout(children: Children) -> impl IntoView {
     let (dark, set_dark) = signal(load_theme());
+    let (sidebar_open, set_sidebar_open) = signal(false);
 
     // Apply theme class to body
     Effect::new(move |_| {
@@ -13,9 +14,23 @@ pub fn Layout(children: Children) -> impl IntoView {
         save_theme(dark.get());
     });
 
+    let close_sidebar = move |_| set_sidebar_open.set(false);
+
     view! {
         <div class="app-layout">
-            <nav class="sidebar">
+            <button
+                class="hamburger"
+                on:click=move |_| set_sidebar_open.update(|v| *v = !*v)
+            >
+                {move || if sidebar_open.get() { "\u{2715}" } else { "\u{2630}" }}
+            </button>
+
+            <div
+                class=move || if sidebar_open.get() { "sidebar-overlay visible" } else { "sidebar-overlay" }
+                on:click=close_sidebar
+            />
+
+            <nav class=move || if sidebar_open.get() { "sidebar open" } else { "sidebar" }>
                 <div class="sidebar-header">
                     <h1 class="logo">"see-agent"</h1>
                     <button
@@ -26,14 +41,14 @@ pub fn Layout(children: Children) -> impl IntoView {
                     </button>
                 </div>
                 <ul class="nav-links">
-                    <li><A href="/">"Dashboard"</A></li>
-                    <li><A href="/agents">"Agents"</A></li>
-                    <li><A href="/teams">"Teams"</A></li>
-                    <li><A href="/config">"Config"</A></li>
-                    <li><A href="/skills">"Skills"</A></li>
-                    <li><A href="/tools">"Tools"</A></li>
-                    <li><A href="/mcp">"MCP"</A></li>
-                    <li><A href="/logs">"Logs"</A></li>
+                    <li><A href="/" on:click=close_sidebar>"Dashboard"</A></li>
+                    <li><A href="/agents" on:click=close_sidebar>"Agents"</A></li>
+                    <li><A href="/teams" on:click=close_sidebar>"Teams"</A></li>
+                    <li><A href="/config" on:click=close_sidebar>"Config"</A></li>
+                    <li><A href="/skills" on:click=close_sidebar>"Skills"</A></li>
+                    <li><A href="/tools" on:click=close_sidebar>"Tools"</A></li>
+                    <li><A href="/mcp" on:click=close_sidebar>"MCP"</A></li>
+                    <li><A href="/logs" on:click=close_sidebar>"Logs"</A></li>
                 </ul>
             </nav>
             <main class="content">
