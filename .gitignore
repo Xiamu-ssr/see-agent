@@ -1,6 +1,9 @@
 # Rust
 target/
 
+# Trunk (WASM build output)
+see-agent-corp-web/dist/
+
 # Python (legacy)
 __pycache__/
 *.pyc
@@ -12,5 +15,20 @@ __pycache__/
 dist/
 build/
 .coverage
+
+# Node
+node_modules/
+
+# Legacy Python code
+tmp/
+
+# Claude Code / IDE
 .claude
-.playwright-mcp
+.playwright-mcp/
+
+# Playwright screenshots
+*.png
+*.jpeg
+
+# OS
+.DS_Store
