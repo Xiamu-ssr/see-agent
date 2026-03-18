@@ -71,3 +71,13 @@ pub const DEFAULT_SCROLL_AMOUNT: i32 = 3;
 
 /// Version
 pub const VERSION: &str = "0.1.0";
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn worker_heartbeat_secs_is_300() {
+        assert_eq!(WORKER_HEARTBEAT_SECS, 300);
+    }
+}

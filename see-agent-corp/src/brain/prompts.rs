@@ -19,7 +19,9 @@ pub struct PromptContext<'a> {
 pub struct TeamContext<'a> {
     pub name: &'a str,
     pub my_role: &'a str, // "leader" or "worker"
+    pub leader_id: &'a str,
     pub members: &'a [TeamMember],
+    pub shared_dir: Option<&'a str>,
 }
 
 // ---------------------------------------------------------------------------
@@ -133,6 +135,7 @@ fn build_team_section(team: &TeamContext) -> String {
     let mut lines = vec!["<TEAM_CONTEXT>".to_owned()];
     lines.push(format!("团队名称: {}", team.name));
     lines.push(format!("你的角色: {}", team.my_role));
+    lines.push(format!("团队领导: {}", team.leader_id));
     lines.push("成员列表:".to_owned());
     for m in team.members {
         let location = if m.endpoint.is_some() {
@@ -143,6 +146,15 @@ fn build_team_section(team: &TeamContext) -> String {
         lines.push(format!("- {} ({}){}", m.id, m.role, location));
     }
     lines.push("你可以用 `send_message` 工具给队友发消息协作。".to_owned());
+    // Role-specific instructions
+    if team.my_role == "leader" {
+        lines.push("你是团队领导。使用 `create_task` 和 `assign_task` 分配工作给团队成员。".to_owned());
+    } else {
+        lines.push(format!("你是团队成员。使用 `claim_task` 领取任务，使用 `complete_task` 完成任务。向领导 {} 汇报进度。", team.leader_id));
+    }
+    if let Some(shared_path) = team.shared_dir {
+        lines.push(format!("\n## Team Shared Workspace\nFiles in {} are accessible to all team members.\nUse this directory for shared artifacts, notes, and outputs.", shared_path));
+    }
     lines.push("</TEAM_CONTEXT>".to_owned());
     lines.join("\n")
 }
@@ -250,7 +262,9 @@ mod tests {
             team: Some(TeamContext {
                 name: "research-team",
                 my_role: "leader",
+                leader_id: "agent-a",
                 members: &members,
+                shared_dir: None,
             }),
         };
 
@@ -259,6 +273,164 @@ mod tests {
         assert!(prompt.contains("research-team"));
         assert!(prompt.contains("agent-b (researcher) (远程)"));
         assert!(prompt.contains("send_message"));
+    }
+
+    #[test]
+    fn system_prompt_includes_shared_workspace_path() {
+        let dir = setup_agent_dir();
+        let members = vec![TeamMember {
+            id: "agent-a".to_owned(),
+            role: "worker".to_owned(),
+            endpoint: None,
+        }];
+
+        let ctx = PromptContext {
+            agent_dir: dir.path(),
+            max_steps: 50,
+            skills: &[],
+            team: Some(TeamContext {
+                name: "my-team",
+                my_role: "leader",
+                leader_id: "agent-a",
+                members: &members,
+                shared_dir: Some("/workspace/teams/abc123/shared"),
+            }),
+        };
+
+        let prompt = build_system_prompt(&ctx);
+        assert!(prompt.contains("Team Shared Workspace"));
+        assert!(prompt.contains("/workspace/teams/abc123/shared"));
+        assert!(prompt.contains("accessible to all team members"));
+    }
+
+    #[test]
+    fn system_prompt_no_shared_workspace_without_dir() {
+        let dir = setup_agent_dir();
+        let members = vec![TeamMember {
+            id: "agent-a".to_owned(),
+            role: "worker".to_owned(),
+            endpoint: None,
+        }];
+
+        let ctx = PromptContext {
+            agent_dir: dir.path(),
+            max_steps: 50,
+            skills: &[],
+            team: Some(TeamContext {
+                name: "my-team",
+                my_role: "leader",
+                leader_id: "agent-a",
+                members: &members,
+                shared_dir: None,
+            }),
+        };
+
+        let prompt = build_system_prompt(&ctx);
+        assert!(!prompt.contains("Team Shared Workspace"));
+    }
+
+    #[test]
+    fn system_prompt_includes_team_members() {
+        let dir = setup_agent_dir();
+        let members = vec![
+            TeamMember {
+                id: "alice".to_owned(),
+                role: "leader".to_owned(),
+                endpoint: None,
+            },
+            TeamMember {
+                id: "bob".to_owned(),
+                role: "dev".to_owned(),
+                endpoint: None,
+            },
+            TeamMember {
+                id: "charlie".to_owned(),
+                role: "tester".to_owned(),
+                endpoint: Some("10.0.0.5:9000".to_owned()),
+            },
+        ];
+
+        let ctx = PromptContext {
+            agent_dir: dir.path(),
+            max_steps: 50,
+            skills: &[],
+            team: Some(TeamContext {
+                name: "dev-team",
+                my_role: "leader",
+                leader_id: "alice",
+                members: &members,
+                shared_dir: None,
+            }),
+        };
+
+        let prompt = build_system_prompt(&ctx);
+        assert!(prompt.contains("alice (leader)"));
+        assert!(prompt.contains("bob (dev)"));
+        assert!(prompt.contains("charlie (tester) (远程)"));
+    }
+
+    #[test]
+    fn system_prompt_leader_instructions() {
+        let dir = setup_agent_dir();
+        let members = vec![TeamMember {
+            id: "alice".to_owned(),
+            role: "leader".to_owned(),
+            endpoint: None,
+        }];
+
+        let ctx = PromptContext {
+            agent_dir: dir.path(),
+            max_steps: 50,
+            skills: &[],
+            team: Some(TeamContext {
+                name: "t1",
+                my_role: "leader",
+                leader_id: "alice",
+                members: &members,
+                shared_dir: None,
+            }),
+        };
+
+        let prompt = build_system_prompt(&ctx);
+        assert!(prompt.contains("create_task"));
+        assert!(prompt.contains("assign_task"));
+        assert!(prompt.contains("你是团队领导"));
+    }
+
+    #[test]
+    fn system_prompt_worker_instructions() {
+        let dir = setup_agent_dir();
+        let members = vec![
+            TeamMember {
+                id: "alice".to_owned(),
+                role: "leader".to_owned(),
+                endpoint: None,
+            },
+            TeamMember {
+                id: "bob".to_owned(),
+                role: "dev".to_owned(),
+                endpoint: None,
+            },
+        ];
+
+        let ctx = PromptContext {
+            agent_dir: dir.path(),
+            max_steps: 50,
+            skills: &[],
+            team: Some(TeamContext {
+                name: "t1",
+                my_role: "worker",
+                leader_id: "alice",
+                members: &members,
+                shared_dir: None,
+            }),
+        };
+
+        let prompt = build_system_prompt(&ctx);
+        assert!(prompt.contains("claim_task"));
+        assert!(prompt.contains("complete_task"));
+        assert!(prompt.contains("alice")); // leader name in worker instructions
+        assert!(!prompt.contains("你是团队领导"));
     }
 
     #[test]

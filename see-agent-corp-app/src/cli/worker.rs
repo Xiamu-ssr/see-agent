@@ -47,12 +47,16 @@ pub async fn run(agent_id: &str, workspace_path: &str) {
     let eye: Arc<dyn see_agent_corp::eye::Eye> = create_eye();
 
     // 5. Create ToolContext and register builtin tools
+    let shared_dir = team_dir.as_ref().map(|td| td.shared());
+    let is_team_agent = team_dir.is_some();
+    let heartbeat_team_dir = team_dir.clone();
     let tool_ctx = Arc::new(ToolContext {
         agent_id: agent_id.to_owned(),
         agent_dir: agent_dir.clone(),
         team_dir,
         eye: eye.clone(),
         workspace: workspace.clone(),
+        shared_dir,
     });
 
     let mut registry = ToolRegistry::new();
@@ -141,9 +145,43 @@ pub async fn run(agent_id: &str, workspace_path: &str) {
         }
 
         // Wait for wake signal or timeout
-        let timeout =
-            tokio::time::Duration::from_secs(see_agent_corp::consts::WORKER_SIGNAL_TIMEOUT_SECS);
-        let _ = tokio::time::timeout(timeout, wake_rx.recv()).await;
+        // Team agents use a longer heartbeat interval to periodically check for tasks
+        let timeout_secs = if is_team_agent {
+            see_agent_corp::consts::WORKER_HEARTBEAT_SECS
+        } else {
+            see_agent_corp::consts::WORKER_SIGNAL_TIMEOUT_SECS
+        };
+        let timeout = tokio::time::Duration::from_secs(timeout_secs);
+        let wake_result = tokio::time::timeout(timeout, wake_rx.recv()).await;
+
+        // On heartbeat timeout for team agents: check TaskBoard for pending tasks
+        if wake_result.is_err()
+            && is_team_agent
+            && let Some(ref td) = heartbeat_team_dir
+        {
+            let board = see_agent_corp::team::TaskBoard::new(td.clone());
+            let has_work = board
+                .list_tasks(Some(see_agent_corp::types::TaskStatus::Pending))
+                .map(|tasks| {
+                    tasks.iter().any(|t| {
+                        t.assigned_to.is_none()
+                            || t.assigned_to.as_deref() == Some(agent_id)
+                    })
+                })
+                .unwrap_or(false);
+
+            if has_work {
+                info!(agent = agent_id, "heartbeat: found pending tasks, waking agent");
+                let heartbeat_msg = serde_json::json!({
+                    "content": "Heartbeat: there are pending tasks on the task board. Check list_tasks and work on available tasks.",
+                    "from": "system",
+                    "priority": "steer"
+                });
+                agent_loop
+                    .run_one_turn(&mut conv_ctx, &[heartbeat_msg], &system_prompt)
+                    .await;
+            }
+        }
     }
 
     // Suppress unreachable warning — loop is infinite but has `return` exits

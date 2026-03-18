@@ -4,11 +4,12 @@ use async_trait::async_trait;
 use serde_json::{json, Value};
 
 use crate::error::{Result, CorpError};
+use crate::io::read_json;
 use crate::supervisor::inbox::send_to_inbox_with_id;
 use crate::team::task_board::TaskBoard;
 use crate::tool::{Tool, ToolRegistry};
 use crate::types::paths::TeamDir;
-use crate::types::{Message, MessagePriority, TaskStatus, ToolResult};
+use crate::types::{Message, MessagePriority, TaskStatus, TeamDefinition, ToolResult};
 
 use super::ToolContext;
 
@@ -21,6 +22,22 @@ fn require_team_dir(ctx: &ToolContext) -> Result<&TeamDir> {
         tool: "team".to_owned(),
         message: "agent is not part of a team".to_owned(),
     })
+}
+
+fn require_leader(ctx: &ToolContext, tool_name: &str) -> Result<()> {
+    let team_dir = require_team_dir(ctx)?;
+    let team_json = team_dir.team_json();
+    let def: TeamDefinition = read_json(&team_json).map_err(|_| CorpError::Tool {
+        tool: tool_name.to_owned(),
+        message: "failed to read team.json".to_owned(),
+    })?;
+    if ctx.agent_id != def.leader {
+        return Err(CorpError::Tool {
+            tool: tool_name.to_owned(),
+            message: format!("only team leader can {tool_name}"),
+        });
+    }
+    Ok(())
 }
 
 fn parse_priority(s: &str) -> MessagePriority {
@@ -190,6 +207,7 @@ impl Tool for CreateTaskTool {
     }
 
     async fn execute(&self, args: Value) -> Result<ToolResult> {
+        require_leader(&self.ctx, "create_task")?;
         let team_dir = require_team_dir(&self.ctx)?;
         let board = TaskBoard::new(team_dir.clone());
 
@@ -354,7 +372,7 @@ impl Tool for UpdateTaskTool {
 // ---------------------------------------------------------------------------
 
 pub struct AssignTaskTool {
-    _ctx: Arc<ToolContext>,
+    ctx: Arc<ToolContext>,
 }
 
 #[async_trait]
@@ -377,7 +395,8 @@ impl Tool for AssignTaskTool {
     }
 
     async fn execute(&self, args: Value) -> Result<ToolResult> {
-        let team_dir = require_team_dir(&self._ctx)?;
+        require_leader(&self.ctx, "assign_task")?;
+        let team_dir = require_team_dir(&self.ctx)?;
         let board = TaskBoard::new(team_dir.clone());
 
         let task_id = args["task_id"].as_str().ok_or_else(|| CorpError::Tool {
@@ -424,5 +443,5 @@ pub fn register(registry: &mut ToolRegistry, ctx: &Arc<ToolContext>) {
     registry.register(Box::new(ClaimTaskTool { ctx: ctx.clone() }));
     registry.register(Box::new(CompleteTaskTool { ctx: ctx.clone() }));
     registry.register(Box::new(UpdateTaskTool { ctx: ctx.clone() }));
-    registry.register(Box::new(AssignTaskTool { _ctx: ctx.clone() }));
+    registry.register(Box::new(AssignTaskTool { ctx: ctx.clone() }));
 }

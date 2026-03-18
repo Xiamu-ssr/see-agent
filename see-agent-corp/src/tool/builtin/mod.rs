@@ -4,6 +4,7 @@ mod screen;
 mod shell;
 mod team;
 
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::eye::Eye;
@@ -17,20 +18,11 @@ pub struct ToolContext {
     pub team_dir: Option<TeamDir>,
     pub eye: Arc<dyn Eye>,
     pub workspace: WorkspaceDir,
+    pub shared_dir: Option<PathBuf>,
 }
 
-/// Register all 19 builtin tools with a shared ToolContext.
-pub fn register_builtin_tools(registry: &mut ToolRegistry, ctx: Arc<ToolContext>) {
-    shell::register(registry, &ctx);
-    screen::register(registry, &ctx);
-    memory::register(registry, &ctx);
-    team::register(registry, &ctx);
-    control::register(registry, &ctx);
-}
-
-/// Return (name, description) pairs for all builtin tools.
-/// For API listing without needing a ToolContext.
-pub fn builtin_tool_infos() -> Vec<(&'static str, &'static str)> {
+/// Core (non-team) tool info pairs.
+pub fn core_tool_infos() -> Vec<(&'static str, &'static str)> {
     vec![
         ("click", "Click at screen coordinates"),
         ("type_text", "Type text using keyboard"),
@@ -44,6 +36,12 @@ pub fn builtin_tool_infos() -> Vec<(&'static str, &'static str)> {
         ("call_user", "Request human intervention"),
         ("memory_search", "Search agent memory"),
         ("memory_write", "Write to agent memory"),
+    ]
+}
+
+/// Team-only tool info pairs.
+pub fn team_tool_infos() -> Vec<(&'static str, &'static str)> {
+    vec![
         ("send_message", "Send message to another agent"),
         ("list_tasks", "List team tasks"),
         ("create_task", "Create a team task"),
@@ -54,10 +52,31 @@ pub fn builtin_tool_infos() -> Vec<(&'static str, &'static str)> {
     ]
 }
 
+/// Register builtin tools. Team tools are only registered when ctx.team_dir is Some.
+pub fn register_builtin_tools(registry: &mut ToolRegistry, ctx: Arc<ToolContext>) {
+    shell::register(registry, &ctx);
+    screen::register(registry, &ctx);
+    memory::register(registry, &ctx);
+    control::register(registry, &ctx);
+    if ctx.team_dir.is_some() {
+        team::register(registry, &ctx);
+    }
+}
+
+/// Return (name, description) pairs for all builtin tools (core + team).
+/// For API listing without needing a ToolContext.
+pub fn builtin_tool_infos() -> Vec<(&'static str, &'static str)> {
+    let mut all = core_tool_infos();
+    all.extend(team_tool_infos());
+    all
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::eye::Screenshot;
+    use crate::io::write_json;
+    use crate::types::{TeamDefinition, TeamMember, TeamStatus};
     use async_trait::async_trait;
     use tempfile::TempDir;
 
@@ -90,6 +109,7 @@ mod tests {
             team_dir: None,
             eye: Arc::new(MockEye),
             workspace: ws,
+            shared_dir: None,
         })
     }
 
@@ -99,19 +119,75 @@ mod tests {
         let team_dir = ws.team("test-team");
         std::fs::create_dir_all(agent_dir.path()).unwrap();
         std::fs::create_dir_all(team_dir.path()).unwrap();
+        // Write team.json with test-agent as leader
+        let def = TeamDefinition {
+            id: "test-team".to_owned(),
+            name: "Test Team".to_owned(),
+            members: vec![
+                TeamMember { id: "test-agent".to_owned(), role: "leader".to_owned(), endpoint: None },
+                TeamMember { id: "worker-1".to_owned(), role: "dev".to_owned(), endpoint: None },
+            ],
+            leader: "test-agent".to_owned(),
+            status: TeamStatus::Running,
+            created_at: "2025-01-01T00:00:00Z".to_owned(),
+            config: None,
+        };
+        write_json(&team_dir.team_json(), &def).unwrap();
+        let shared = team_dir.shared();
         Arc::new(ToolContext {
             agent_id: "test-agent".to_owned(),
             agent_dir,
             team_dir: Some(team_dir),
             eye: Arc::new(MockEye),
             workspace: ws,
+            shared_dir: Some(shared),
+        })
+    }
+
+    /// Create a team context where the agent is NOT the leader.
+    fn test_ctx_non_leader(tmp: &TempDir) -> Arc<ToolContext> {
+        let ws = WorkspaceDir::new(tmp.path());
+        let agent_dir = ws.agent("worker-bob");
+        let team_dir = ws.team("test-team");
+        std::fs::create_dir_all(agent_dir.path()).unwrap();
+        std::fs::create_dir_all(team_dir.path()).unwrap();
+        let def = TeamDefinition {
+            id: "test-team".to_owned(),
+            name: "Test Team".to_owned(),
+            members: vec![
+                TeamMember { id: "alice".to_owned(), role: "leader".to_owned(), endpoint: None },
+                TeamMember { id: "worker-bob".to_owned(), role: "dev".to_owned(), endpoint: None },
+            ],
+            leader: "alice".to_owned(),
+            status: TeamStatus::Running,
+            created_at: "2025-01-01T00:00:00Z".to_owned(),
+            config: None,
+        };
+        write_json(&team_dir.team_json(), &def).unwrap();
+        let shared = team_dir.shared();
+        Arc::new(ToolContext {
+            agent_id: "worker-bob".to_owned(),
+            agent_dir,
+            team_dir: Some(team_dir),
+            eye: Arc::new(MockEye),
+            workspace: ws,
+            shared_dir: Some(shared),
         })
     }
 
     #[test]
-    fn registers_19_tools() {
+    fn registers_12_core_tools_without_team() {
         let tmp = TempDir::new().unwrap();
         let ctx = test_ctx(&tmp);
+        let mut reg = ToolRegistry::new();
+        register_builtin_tools(&mut reg, ctx);
+        assert_eq!(reg.len(), 12);
+    }
+
+    #[test]
+    fn registers_19_tools_with_team() {
+        let tmp = TempDir::new().unwrap();
+        let ctx = test_ctx_with_team(&tmp);
         let mut reg = ToolRegistry::new();
         register_builtin_tools(&mut reg, ctx);
         assert_eq!(reg.len(), 19);
@@ -120,7 +196,7 @@ mod tests {
     #[test]
     fn all_schemas_valid() {
         let tmp = TempDir::new().unwrap();
-        let ctx = test_ctx(&tmp);
+        let ctx = test_ctx_with_team(&tmp);
         let mut reg = ToolRegistry::new();
         register_builtin_tools(&mut reg, ctx);
         let schemas = reg.get_schemas();
@@ -135,7 +211,7 @@ mod tests {
     #[test]
     fn filter_disabled_tools() {
         let tmp = TempDir::new().unwrap();
-        let ctx = test_ctx(&tmp);
+        let ctx = test_ctx_with_team(&tmp);
         let mut reg = ToolRegistry::new();
         register_builtin_tools(&mut reg, ctx);
         let filtered = reg.get_schemas_filtered(&["shell".to_owned(), "click".to_owned()]);
@@ -257,7 +333,7 @@ mod tests {
     #[tokio::test]
     async fn send_message_tool_writes_inbox() {
         let tmp = TempDir::new().unwrap();
-        let ctx = test_ctx(&tmp);
+        let ctx = test_ctx_with_team(&tmp);
         // Create target agent directory
         let target_dir = ctx.workspace.agent("target-agent");
         std::fs::create_dir_all(target_dir.path()).unwrap();
@@ -283,6 +359,31 @@ mod tests {
         assert!(inbox_content.contains("hello from test"));
     }
 
+    #[test]
+    fn create_team_creates_shared_directory() {
+        use crate::config::ensure_workspace;
+        use crate::types::TeamMember;
+
+        let tmp = TempDir::new().unwrap();
+        let ws = WorkspaceDir::new(tmp.path());
+        ensure_workspace(&ws).unwrap();
+
+        let team = crate::team::create_team(
+            &ws,
+            "SharedTest",
+            vec![TeamMember {
+                id: "a1".into(),
+                role: "dev".into(),
+                endpoint: None,
+            }],
+            None,
+        )
+        .unwrap();
+
+        let team_dir = ws.team(&team.id);
+        assert!(team_dir.shared().exists());
+    }
+
     #[tokio::test]
     async fn finished_tool_returns_result() {
         let tmp = TempDir::new().unwrap();
@@ -297,5 +398,111 @@ mod tests {
             .await
             .unwrap();
         assert!(result.text.contains("task completed successfully"));
+    }
+
+    // -----------------------------------------------------------------------
+    // 3A: Leader enforcement tests
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn create_task_non_leader_returns_error() {
+        let tmp = TempDir::new().unwrap();
+        let ctx = test_ctx_non_leader(&tmp);
+        let mut reg = ToolRegistry::new();
+        register_builtin_tools(&mut reg, ctx);
+
+        let result = reg
+            .execute(
+                "create_task",
+                serde_json::json!({
+                    "title": "Should fail",
+                    "description": "Non-leader cannot create"
+                }),
+            )
+            .await;
+        let err = result.unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("only team leader can create_task"), "got: {msg}");
+    }
+
+    #[tokio::test]
+    async fn assign_task_non_leader_returns_error() {
+        let tmp = TempDir::new().unwrap();
+        let ctx = test_ctx_non_leader(&tmp);
+        let mut reg = ToolRegistry::new();
+        register_builtin_tools(&mut reg, ctx);
+
+        let result = reg
+            .execute(
+                "assign_task",
+                serde_json::json!({
+                    "task_id": "t1",
+                    "agent_id": "worker-bob"
+                }),
+            )
+            .await;
+        let err = result.unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("only team leader can assign_task"), "got: {msg}");
+    }
+
+    #[tokio::test]
+    async fn create_task_leader_succeeds() {
+        let tmp = TempDir::new().unwrap();
+        let ctx = test_ctx_with_team(&tmp);
+        let mut reg = ToolRegistry::new();
+        register_builtin_tools(&mut reg, ctx);
+
+        let result = reg
+            .execute(
+                "create_task",
+                serde_json::json!({
+                    "title": "Leader task",
+                    "description": "Should succeed"
+                }),
+            )
+            .await
+            .unwrap();
+        assert!(result.text.contains("Leader task"));
+    }
+
+    // -----------------------------------------------------------------------
+    // 3B: Conditional tool registration tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn no_team_tools_when_no_team_dir() {
+        let tmp = TempDir::new().unwrap();
+        let ctx = test_ctx(&tmp); // team_dir = None
+        let mut reg = ToolRegistry::new();
+        register_builtin_tools(&mut reg, ctx);
+
+        let schemas = reg.get_schemas();
+        let team_tool_names = ["create_task", "assign_task", "list_tasks", "claim_task",
+                               "complete_task", "update_task", "send_message"];
+        for name in &team_tool_names {
+            assert!(
+                !schemas.iter().any(|s| s.function.name == *name),
+                "team tool '{name}' should not be registered without team_dir"
+            );
+        }
+    }
+
+    #[test]
+    fn team_tools_present_when_team_dir_set() {
+        let tmp = TempDir::new().unwrap();
+        let ctx = test_ctx_with_team(&tmp);
+        let mut reg = ToolRegistry::new();
+        register_builtin_tools(&mut reg, ctx);
+
+        let schemas = reg.get_schemas();
+        let team_tool_names = ["create_task", "assign_task", "list_tasks", "claim_task",
+                               "complete_task", "update_task", "send_message"];
+        for name in &team_tool_names {
+            assert!(
+                schemas.iter().any(|s| s.function.name == *name),
+                "team tool '{name}' should be registered with team_dir"
+            );
+        }
     }
 }

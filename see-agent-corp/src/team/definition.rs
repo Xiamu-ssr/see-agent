@@ -104,6 +104,24 @@ pub fn delete_team(workspace: &WorkspaceDir, id: &str) -> Result<()> {
     Ok(())
 }
 
+/// Set a new leader for the team. The new leader must be an existing member.
+pub fn set_leader(workspace: &WorkspaceDir, team_id: &str, new_leader: &str) -> Result<()> {
+    let team_dir = workspace.team(team_id);
+    let mut def: TeamDefinition = read_json(&team_dir.team_json()).map_err(|_| CorpError::NotFound {
+        what: format!("team '{team_id}'"),
+    })?;
+
+    if !def.members.iter().any(|m| m.id == new_leader) {
+        return Err(CorpError::Team {
+            message: format!("'{new_leader}' is not a member of team '{team_id}'"),
+        });
+    }
+
+    def.leader = new_leader.to_owned();
+    write_json(&team_dir.team_json(), &def)?;
+    Ok(())
+}
+
 /// Generate an 8-character hex id for a team.
 fn generate_team_id() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -196,6 +214,44 @@ mod tests {
     fn delete_nonexistent_fails() {
         let (_tmp, ws) = setup();
         let result = delete_team(&ws, "nonexistent");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn set_leader_to_existing_member() {
+        let (_tmp, ws) = setup();
+
+        let members = vec![
+            TeamMember { id: "alice".into(), role: "leader".into(), endpoint: None },
+            TeamMember { id: "bob".into(), role: "dev".into(), endpoint: None },
+        ];
+        let team = create_team(&ws, "SetLeader", members, Some("alice")).unwrap();
+        assert_eq!(team.leader, "alice");
+
+        set_leader(&ws, &team.id, "bob").unwrap();
+        let loaded = load_team(&ws, &team.id).unwrap();
+        assert_eq!(loaded.leader, "bob");
+    }
+
+    #[test]
+    fn set_leader_non_member_fails() {
+        let (_tmp, ws) = setup();
+
+        let members = vec![
+            TeamMember { id: "alice".into(), role: "leader".into(), endpoint: None },
+        ];
+        let team = create_team(&ws, "T", members, Some("alice")).unwrap();
+
+        let result = set_leader(&ws, &team.id, "charlie");
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(msg.contains("charlie"), "error should mention the invalid member: {msg}");
+    }
+
+    #[test]
+    fn set_leader_nonexistent_team_fails() {
+        let (_tmp, ws) = setup();
+        let result = set_leader(&ws, "no-such-team", "alice");
         assert!(result.is_err());
     }
 
