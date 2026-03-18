@@ -8,6 +8,8 @@ struct DashboardData {
     agents_count: usize,
     agents_running: usize,
     teams_count: usize,
+    tools_count: usize,
+    skills_count: usize,
     version: String,
 }
 
@@ -40,6 +42,14 @@ pub fn Dashboard() -> impl IntoView {
                                 <div class="stat-card">
                                     <span class="stat-label">"Teams"</span>
                                     <span class="stat-value">{d.teams_count}</span>
+                                </div>
+                                <div class="stat-card">
+                                    <span class="stat-label">"Tools"</span>
+                                    <span class="stat-value">{d.tools_count}</span>
+                                </div>
+                                <div class="stat-card">
+                                    <span class="stat-label">"Skills"</span>
+                                    <span class="stat-value">{d.skills_count}</span>
                                 </div>
                             </div>
                         }.into_any(),

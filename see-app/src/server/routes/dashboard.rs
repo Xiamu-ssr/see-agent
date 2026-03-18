@@ -5,7 +5,9 @@ use axum::{Json, Router};
 use serde::Serialize;
 
 use see::agent::list_agents;
+use see::skill::{gate_skills, load_skills};
 use see::team::list_teams;
+use see::tool::builtin_tool_infos;
 
 use crate::server::AppState;
 
@@ -14,6 +16,8 @@ struct DashboardResponse {
     agents_count: usize,
     agents_running: usize,
     teams_count: usize,
+    tools_count: usize,
+    skills_count: usize,
     version: String,
 }
 
@@ -28,10 +32,16 @@ async fn get_dashboard_handler(
     let sup = state.inner.supervisor.read().await;
     let running = sup.running_agents().len();
 
+    let config = state.inner.config.read().await;
+    let tools_count = builtin_tool_infos().len();
+    let skills_count = gate_skills(load_skills(&config.skills.dirs)).len();
+
     Ok(Json(DashboardResponse {
         agents_count: agents.len(),
         agents_running: running,
         teams_count: teams.len(),
+        tools_count,
+        skills_count,
         version: see::consts::VERSION.into(),
     }))
 }

@@ -22,7 +22,7 @@ pub fn Mcp() -> impl IntoView {
             <Suspense fallback=|| view! { <p>"Loading..."</p> }>
                 {move || servers.get().map(|list| {
                     if list.is_empty() {
-                        view! { <p class="empty">"No MCP servers configured. MCP endpoint not yet available."</p> }.into_any()
+                        view! { <p class="empty">"No MCP servers configured."</p> }.into_any()
                     } else {
                         let items: Vec<_> = list.iter().cloned().collect();
                         view! {
