@@ -18,13 +18,17 @@ pub fn Logs() -> impl IntoView {
     });
 
     view! {
-        <div>
-            <Body1><b>"Logs"</b></Body1>
-            <Divider />
+        <div class="page-content">
+            <span class="page-header">"Logs"</span>
             <Suspense fallback=|| view! { <Spinner /> }>
                 {move || logs.get().map(|list| {
                     if list.is_empty() {
-                        view! { <MessageBar><MessageBarBody>"No log entries"</MessageBarBody></MessageBar> }.into_any()
+                        view! {
+                            <div class="empty-state">
+                                <div class="empty-state-icon">"📋"</div>
+                                <div class="empty-state-text">"No log entries"</div>
+                            </div>
+                        }.into_any()
                     } else {
                         let items: Vec<_> = list.iter().cloned().collect();
                         view! {

@@ -73,9 +73,8 @@ pub fn Config() -> impl IntoView {
     let initialized = RwSignal::new(false);
 
     view! {
-        <div>
-            <Body1><b>"Configuration"</b></Body1>
-            <Divider />
+        <div class="page-content">
+            <span class="page-header">"Configuration"</span>
             <Suspense fallback=|| view! { <Spinner /> }>
                 {move || {
                     let schema = schema_res.get();

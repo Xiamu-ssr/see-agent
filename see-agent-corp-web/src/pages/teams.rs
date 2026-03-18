@@ -65,14 +65,18 @@ pub fn Teams() -> impl IntoView {
     });
 
     view! {
-        <div>
-            <Body1><b>"Teams"</b></Body1>
-            <Divider />
+        <div class="page-content">
+            <span class="page-header">"Teams"</span>
             <Suspense fallback=|| view! { <Spinner /> }>
                 {move || teams.get().map(|list| {
                     let items: Vec<_> = list.iter().cloned().collect();
                     if items.is_empty() {
-                        view! { <MessageBar><MessageBarBody>"No teams yet"</MessageBarBody></MessageBar> }.into_any()
+                        view! {
+                            <div class="empty-state">
+                                <div class="empty-state-icon">"👥"</div>
+                                <div class="empty-state-text">"No teams yet"</div>
+                            </div>
+                        }.into_any()
                     } else {
                         view! {
                             <Grid cols=3 x_gap=12 y_gap=12>
@@ -84,7 +88,7 @@ pub fn Teams() -> impl IntoView {
                                     view! {
                                         <GridItem>
                                             <A href=href attr:style="text-decoration:none;color:inherit">
-                                                <Card>
+                                                <Card class="card-interactive">
                                                     <Caption1Strong>{name}</Caption1Strong>
                                                     <Badge color=BadgeColor::Informative>{status}</Badge>
                                                     <Caption1>{format!("{count} members")}</Caption1>

@@ -21,9 +21,8 @@ pub fn Dashboard() -> impl IntoView {
     });
 
     view! {
-        <div>
-            <Body1><b>"Dashboard"</b></Body1>
-            <Divider />
+        <div class="page-content">
+            <span class="page-header">"Dashboard"</span>
             <Suspense fallback=|| view! { <Spinner /> }>
                 {move || data.get().map(|d| {
                     match &*d {
@@ -95,9 +94,10 @@ pub fn Dashboard() -> impl IntoView {
                             }.into_any()
                         }
                         None => view! {
-                            <MessageBar>
-                                <MessageBarBody>"Could not connect to server"</MessageBarBody>
-                            </MessageBar>
+                            <div class="empty-state">
+                                <div class="empty-state-icon">"⚠️"</div>
+                                <div class="empty-state-text">"Could not connect to server"</div>
+                            </div>
                         }.into_any(),
                     }
                 })}

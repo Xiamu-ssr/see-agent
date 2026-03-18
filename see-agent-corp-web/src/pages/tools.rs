@@ -17,13 +17,17 @@ pub fn Tools() -> impl IntoView {
     });
 
     view! {
-        <div>
-            <Body1><b>"Tools"</b></Body1>
-            <Divider />
+        <div class="page-content">
+            <span class="page-header">"Tools"</span>
             <Suspense fallback=|| view! { <Spinner /> }>
                 {move || tools.get().map(|list| {
                     if list.is_empty() {
-                        view! { <MessageBar><MessageBarBody>"No tools registered"</MessageBarBody></MessageBar> }.into_any()
+                        view! {
+                            <div class="empty-state">
+                                <div class="empty-state-icon">"🔧"</div>
+                                <div class="empty-state-text">"No tools registered"</div>
+                            </div>
+                        }.into_any()
                     } else {
                         let items: Vec<_> = list.iter().cloned().collect();
                         view! {

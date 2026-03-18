@@ -29,12 +29,13 @@ impl TaskBoard {
         write_json(&self.team_dir.tasklist(), &tasks.to_vec())
     }
 
-    /// Create a new task.
+    /// Create a new task with optional dependencies.
     pub fn create_task(
         &self,
         title: &str,
         description: &str,
         created_by: &str,
+        depends_on: Vec<String>,
     ) -> Result<TaskItem> {
         let mut tasks = self.load_tasks()?;
         let now = Utc::now().to_rfc3339();
@@ -45,7 +46,7 @@ impl TaskBoard {
             description: description.to_owned(),
             status: TaskStatus::Pending,
             assigned_to: None,
-            depends_on: Vec::new(),
+            depends_on,
             result: None,
             created_by: created_by.to_owned(),
             created_at: now.clone(),
@@ -67,8 +68,39 @@ impl TaskBoard {
     }
 
     /// Claim a task (set status=claimed + assigned_to).
+    ///
+    /// Fails if the task is not pending or if any dependency is not Done.
     pub fn claim_task(&self, task_id: &str, agent_id: &str) -> Result<TaskItem> {
         let mut tasks = self.load_tasks()?;
+
+        // Check dependencies before mutably borrowing the target task.
+        let deps: Vec<String> = tasks
+            .iter()
+            .find(|t| t.id == task_id)
+            .ok_or_else(|| CorpError::NotFound { what: format!("task '{task_id}'") })?
+            .depends_on
+            .clone();
+
+        if !deps.is_empty() {
+            let blocked: Vec<&str> = deps
+                .iter()
+                .filter(|dep_id| {
+                    tasks.iter()
+                        .find(|t| t.id == **dep_id)
+                        .is_none_or(|t| t.status != TaskStatus::Done)
+                })
+                .map(|s| s.as_str())
+                .collect();
+            if !blocked.is_empty() {
+                return Err(CorpError::Team {
+                    message: format!(
+                        "task '{task_id}' is blocked by unfinished dependencies: {}",
+                        blocked.join(", ")
+                    ),
+                });
+            }
+        }
+
         let task = find_task_mut(&mut tasks, task_id)?;
 
         if task.status != TaskStatus::Pending {
@@ -203,8 +235,8 @@ mod tests {
         let (_tmp, team_dir) = setup();
         let board = TaskBoard::new(team_dir);
 
-        board.create_task("Task 1", "Do stuff", "a1").unwrap();
-        board.create_task("Task 2", "More stuff", "a1").unwrap();
+        board.create_task("Task 1", "Do stuff", "a1", vec![]).unwrap();
+        board.create_task("Task 2", "More stuff", "a1", vec![]).unwrap();
 
         let all = board.list_tasks(None).unwrap();
         assert_eq!(all.len(), 2);
@@ -218,7 +250,7 @@ mod tests {
         let (_tmp, team_dir) = setup();
         let board = TaskBoard::new(team_dir);
 
-        let task = board.create_task("T1", "desc", "a1").unwrap();
+        let task = board.create_task("T1", "desc", "a1", vec![]).unwrap();
         let claimed = board.claim_task(&task.id, "a1").unwrap();
         assert_eq!(claimed.status, TaskStatus::Claimed);
         assert_eq!(claimed.assigned_to.as_deref(), Some("a1"));
@@ -233,7 +265,7 @@ mod tests {
         let (_tmp, team_dir) = setup();
         let board = TaskBoard::new(team_dir);
 
-        let task = board.create_task("T1", "desc", "a1").unwrap();
+        let task = board.create_task("T1", "desc", "a1", vec![]).unwrap();
         board.claim_task(&task.id, "a1").unwrap();
 
         let result = board.claim_task(&task.id, "a1");
@@ -245,7 +277,7 @@ mod tests {
         let (_tmp, team_dir) = setup();
         let board = TaskBoard::new(team_dir);
 
-        let task = board.create_task("T1", "desc", "a1").unwrap();
+        let task = board.create_task("T1", "desc", "a1", vec![]).unwrap();
         board.claim_task(&task.id, "a1").unwrap();
 
         let result = board.complete_task(&task.id, "wrong-agent", "done");
@@ -257,11 +289,53 @@ mod tests {
         let (_tmp, team_dir) = setup();
         let board = TaskBoard::new(team_dir);
 
-        let task = board.create_task("T1", "desc", "a1").unwrap();
+        let task = board.create_task("T1", "desc", "a1", vec![]).unwrap();
         let updated = board
             .update_task(&task.id, Some(TaskStatus::InProgress), Some("a1"), None)
             .unwrap();
         assert_eq!(updated.status, TaskStatus::InProgress);
         assert_eq!(updated.assigned_to.as_deref(), Some("a1"));
+    }
+
+    #[test]
+    fn create_task_with_depends_on() {
+        let (_tmp, team_dir) = setup();
+        let board = TaskBoard::new(team_dir);
+
+        let t1 = board.create_task("T1", "first", "a1", vec![]).unwrap();
+        let t2 = board.create_task("T2", "depends on T1", "a1", vec![t1.id.clone()]).unwrap();
+        assert_eq!(t2.depends_on, vec![t1.id]);
+    }
+
+    #[test]
+    fn claim_blocked_by_unfinished_dependency() {
+        let (_tmp, team_dir) = setup();
+        let board = TaskBoard::new(team_dir);
+
+        let t1 = board.create_task("T1", "first", "a1", vec![]).unwrap();
+        let t2 = board.create_task("T2", "depends on T1", "a1", vec![t1.id.clone()]).unwrap();
+
+        // T1 is still pending, so claiming T2 should fail
+        let result = board.claim_task(&t2.id, "a1");
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(msg.contains("blocked"), "error should mention blocked: {msg}");
+    }
+
+    #[test]
+    fn claim_succeeds_after_dependency_done() {
+        let (_tmp, team_dir) = setup();
+        let board = TaskBoard::new(team_dir);
+
+        let t1 = board.create_task("T1", "first", "a1", vec![]).unwrap();
+        let t2 = board.create_task("T2", "depends on T1", "a1", vec![t1.id.clone()]).unwrap();
+
+        // Complete T1
+        board.claim_task(&t1.id, "a1").unwrap();
+        board.complete_task(&t1.id, "a1", "done").unwrap();
+
+        // Now T2 should be claimable
+        let claimed = board.claim_task(&t2.id, "a1").unwrap();
+        assert_eq!(claimed.status, TaskStatus::Claimed);
     }
 }

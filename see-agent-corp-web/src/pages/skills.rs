@@ -18,13 +18,17 @@ pub fn Skills() -> impl IntoView {
     });
 
     view! {
-        <div>
-            <Body1><b>"Skills"</b></Body1>
-            <Divider />
+        <div class="page-content">
+            <span class="page-header">"Skills"</span>
             <Suspense fallback=|| view! { <Spinner /> }>
                 {move || skills.get().map(|list| {
                     if list.is_empty() {
-                        view! { <MessageBar><MessageBarBody>"No skills loaded"</MessageBarBody></MessageBar> }.into_any()
+                        view! {
+                            <div class="empty-state">
+                                <div class="empty-state-icon">"⚡"</div>
+                                <div class="empty-state-text">"No skills loaded"</div>
+                            </div>
+                        }.into_any()
                     } else {
                         let items: Vec<_> = list.iter().cloned().collect();
                         view! {

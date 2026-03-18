@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -44,6 +45,12 @@ pub struct AgentLoop {
     // Derived from config
     max_steps: u32,
     max_images: u32,
+    /// Directory to save screenshots to disk (path-ref mode).
+    /// When set, screenshots are saved as files and referenced by path
+    /// instead of being stored inline as base64.
+    screenshots_dir: Option<PathBuf>,
+    /// Counter for screenshot file naming.
+    screenshot_counter: u32,
 }
 
 impl AgentLoop {
@@ -69,6 +76,8 @@ impl AgentLoop {
             compact_warned: false,
             max_steps,
             max_images,
+            screenshots_dir: None,
+            screenshot_counter: 0,
         }
     }
 
@@ -78,6 +87,40 @@ impl AgentLoop {
 
     pub fn set_on_user_input(&mut self, cb: UserInputCallback) {
         self.on_user_input = Some(cb);
+    }
+
+    /// Set the directory where screenshots are saved to disk.
+    /// When set, screenshots use path-ref mode (lazy base64 resolution at LLM call time).
+    pub fn set_screenshots_dir(&mut self, dir: PathBuf) {
+        self.screenshots_dir = Some(dir);
+    }
+
+    /// Save a screenshot to disk and add it to context as a path reference.
+    /// Falls back to inline base64 if no screenshots_dir is set or save fails.
+    fn save_screenshot_ref(
+        &mut self,
+        ctx: &mut ConversationContext,
+        screenshot: &Screenshot,
+    ) {
+        if let Some(ref dir) = self.screenshots_dir {
+            self.screenshot_counter += 1;
+            let file_path = dir.join(format!("step_{:03}.webp", self.screenshot_counter));
+            match screenshot.save(&file_path) {
+                Ok(()) => {
+                    ctx.add_screenshot_ref(
+                        file_path,
+                        screenshot.detail(),
+                        &screenshot.mime_type,
+                    );
+                    return;
+                }
+                Err(e) => {
+                    warn!("failed to save screenshot to disk: {e}, falling back to inline");
+                }
+            }
+        }
+        // Fallback: inline base64
+        ctx.add_screenshot(&screenshot.base64, screenshot.detail(), &screenshot.mime_type);
     }
 
     /// Check if the registry has any screen-interactive tools.
@@ -319,7 +362,7 @@ impl AgentLoop {
                 if tc.name == "screenshot"
                     && let Ok(new_ss) = self.eye.capture().await
                 {
-                    ctx.add_screenshot(&new_ss.base64, new_ss.detail(), &new_ss.mime_type);
+                    self.save_screenshot_ref(ctx, &new_ss);
                     step_had_screenshot = true;
                     no_screenshot.got_screenshot();
 
@@ -647,5 +690,112 @@ mod tests {
 
         // system + user_reply + assistant = 3
         assert_eq!(ctx.len(), 3);
+    }
+
+    #[test]
+    fn save_screenshot_ref_writes_file_and_stores_path_ref() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let screenshots_dir = tmp.path().join("screenshots");
+
+        let mut agent = make_loop(vec![]);
+        agent.set_screenshots_dir(screenshots_dir.clone());
+
+        let mut ctx = ConversationContext::new("sys", 5, None);
+
+        // Create a mock screenshot with real base64 data
+        use base64::Engine;
+        let fake_bytes = b"fake-screenshot-data";
+        let b64 = base64::engine::general_purpose::STANDARD.encode(fake_bytes);
+
+        let screenshot = Screenshot {
+            base64: b64,
+            width: 800,
+            height: 600,
+            scale_factor: 1.0,
+            mime_type: "image/webp".to_owned(),
+            screen_width: None,
+            screen_height: None,
+            image_bytes: None,
+        };
+
+        agent.save_screenshot_ref(&mut ctx, &screenshot);
+
+        // Verify file was saved to disk
+        let expected_path = screenshots_dir.join("step_001.webp");
+        assert!(expected_path.exists(), "screenshot file should exist on disk");
+        assert_eq!(
+            std::fs::read(&expected_path).unwrap(),
+            fake_bytes,
+            "file should contain decoded screenshot bytes"
+        );
+
+        // Verify context stores a path ref (not inline base64)
+        assert_eq!(ctx.len(), 2); // system + screenshot
+        let msgs = ctx.get_messages();
+        let parts = msgs[1]["content"].as_array().unwrap();
+        assert_eq!(parts[0]["type"], "image_path_ref");
+        assert_eq!(parts[0]["path"], expected_path.to_string_lossy().as_ref());
+    }
+
+    #[test]
+    fn save_screenshot_ref_increments_counter() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let screenshots_dir = tmp.path().join("screenshots");
+
+        let mut agent = make_loop(vec![]);
+        agent.set_screenshots_dir(screenshots_dir.clone());
+
+        let mut ctx = ConversationContext::new("sys", 5, None);
+
+        use base64::Engine;
+        let b64 = base64::engine::general_purpose::STANDARD.encode(b"data");
+        let screenshot = Screenshot {
+            base64: b64,
+            width: 100,
+            height: 100,
+            scale_factor: 1.0,
+            mime_type: "image/webp".to_owned(),
+            screen_width: None,
+            screen_height: None,
+            image_bytes: None,
+        };
+
+        agent.save_screenshot_ref(&mut ctx, &screenshot);
+        agent.save_screenshot_ref(&mut ctx, &screenshot);
+
+        assert!(screenshots_dir.join("step_001.webp").exists());
+        assert!(screenshots_dir.join("step_002.webp").exists());
+        assert_eq!(ctx.len(), 3); // system + 2 screenshots
+    }
+
+    #[test]
+    fn save_screenshot_ref_falls_back_to_inline_without_dir() {
+        let mut agent = make_loop(vec![]);
+        // No screenshots_dir set — should fall back to inline base64
+
+        let mut ctx = ConversationContext::new("sys", 5, None);
+
+        use base64::Engine;
+        let b64 = base64::engine::general_purpose::STANDARD.encode(b"data");
+        let screenshot = Screenshot {
+            base64: b64.clone(),
+            width: 100,
+            height: 100,
+            scale_factor: 1.0,
+            mime_type: "image/webp".to_owned(),
+            screen_width: None,
+            screen_height: None,
+            image_bytes: None,
+        };
+
+        agent.save_screenshot_ref(&mut ctx, &screenshot);
+
+        assert_eq!(ctx.len(), 2);
+        let msgs = ctx.get_messages();
+        let parts = msgs[1]["content"].as_array().unwrap();
+        // Should be inline image_url, not path_ref
+        assert_eq!(parts[0]["type"], "image_url");
+        let url = parts[0]["image_url"]["url"].as_str().unwrap();
+        assert!(url.contains(&b64));
     }
 }

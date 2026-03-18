@@ -104,6 +104,56 @@
     text-align: left;
 }
 
+/* Page header — larger than Body1 since Thaw 0.4 has no Title component */
+.page-header {
+    font-size: 1.5rem;
+    font-weight: 600;
+    line-height: 1.3;
+    color: var(--colorNeutralForeground1);
+    margin: 0 0 4px;
+}
+
+/* Page content vertical spacing */
+.page-content {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+/* Interactive card hover (agent/team list cards) */
+.card-interactive.thaw-card {
+    transition: box-shadow 0.2s, transform 0.15s;
+    cursor: pointer;
+}
+
+.card-interactive.thaw-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow8);
+}
+
+/* Table row hover highlight */
+.thaw-table-body .thaw-table-row:hover {
+    background: var(--colorNeutralBackground1Hover);
+}
+
+/* Empty state — centered placeholder for empty lists */
+.empty-state {
+    text-align: center;
+    padding: 48px 24px;
+    color: var(--colorNeutralForeground3);
+}
+
+.empty-state-icon {
+    font-size: 3rem;
+    margin-bottom: 12px;
+    opacity: 0.6;
+}
+
+.empty-state-text {
+    font-size: 1.1rem;
+    margin-bottom: 16px;
+}
+
 /* Desktop sider visible, mobile header hidden on wide screens */
 .desktop-sider {
     display: block;

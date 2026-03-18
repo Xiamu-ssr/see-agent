@@ -101,14 +101,16 @@ impl Supervisor {
     /// Sends a "shutdown" message first (graceful), then waits briefly,
     /// and kills if still alive.
     pub async fn stop_agent(&mut self, agent_id: &str) -> Result<()> {
-        // Send shutdown message
+        // Send shutdown message with metadata flag
         let agent_dir = self.workspace.agent(agent_id);
+        let mut shutdown_metadata = HashMap::new();
+        shutdown_metadata.insert("shutdown".into(), "true".into());
         let shutdown_msg = Message {
             msg_id: None,
             sender: "supervisor".into(),
-            content: "shutdown".into(),
+            content: "[system] 系统即将关闭。请立即完成当前工作，保存重要信息到记忆系统，为下次复苏做准备。".into(),
             priority: MessagePriority::Steer,
-            metadata: Default::default(),
+            metadata: shutdown_metadata,
             timestamp: chrono::Utc::now().to_rfc3339(),
         };
         let _ = send_to_inbox_with_id(&agent_dir.inbox(), shutdown_msg);
@@ -118,10 +120,10 @@ impl Supervisor {
             signal_process(handle.pid);
         }
 
-        // Wait briefly for graceful exit, then kill
+        // Wait for graceful exit (120s), then kill
         if let Some(mut handle) = self.processes.remove(agent_id) {
             let timeout =
-                tokio::time::Duration::from_secs(crate::consts::WORKER_SIGNAL_TIMEOUT_SECS);
+                tokio::time::Duration::from_secs(crate::consts::WORKER_SHUTDOWN_TIMEOUT_SECS);
 
             match tokio::time::timeout(timeout, handle.child.wait()).await {
                 Ok(Ok(status)) => {
@@ -343,6 +345,29 @@ mod tests {
         let (_tmp, ws) = make_workspace();
         let sup = Supervisor::new(ws);
         assert_eq!(sup.agent_state("any"), AgentState::Sleeping);
+    }
+
+    #[tokio::test]
+    async fn stop_agent_sends_shutdown_with_metadata() {
+        let (_tmp, ws) = make_workspace();
+
+        let agent_dir = ws.agent("stopper");
+        std::fs::create_dir_all(agent_dir.path()).unwrap();
+
+        let mut sup = Supervisor::new(ws);
+        sup.set_binary_path(std::path::PathBuf::from("/usr/bin/true"));
+
+        // Start the agent so stop_agent has a process to stop
+        sup.start_agent("stopper").await.unwrap();
+        sup.stop_agent("stopper").await.unwrap();
+
+        // Read inbox to verify shutdown message format
+        let inbox: Vec<Message> = read_jsonl(&agent_dir.inbox()).unwrap();
+        assert!(!inbox.is_empty());
+        let last = inbox.last().unwrap();
+        assert!(last.is_shutdown());
+        assert_eq!(last.metadata.get("shutdown").map(|s| s.as_str()), Some("true"));
+        assert!(last.content.contains("系统即将关闭"));
     }
 
     #[tokio::test]

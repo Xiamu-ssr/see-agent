@@ -3,7 +3,9 @@ use std::sync::Arc;
 use tracing::info;
 
 use see_agent_corp::agent::{AgentLoop, ConversationContext};
-use see_agent_corp::brain::{build_system_prompt, OpenAiBrain, PromptContext};
+use see_agent_corp::brain::{build_system_prompt, OpenAiBrain, PromptContext, TeamContext};
+use see_agent_corp::io::read_json;
+use see_agent_corp::types::TeamDefinition;
 use see_agent_corp::config::load_agent_config;
 use see_agent_corp::tool::{register_builtin_tools, ToolContext, ToolRegistry};
 use see_agent_corp::types::WorkspaceDir;
@@ -56,7 +58,7 @@ pub async fn run(agent_id: &str, workspace_path: &str) {
         team_dir,
         eye: eye.clone(),
         workspace: workspace.clone(),
-        shared_dir,
+        shared_dir: shared_dir.clone(),
     });
 
     let mut registry = ToolRegistry::new();
@@ -71,12 +73,30 @@ pub async fn run(agent_id: &str, workspace_path: &str) {
         agent_id.to_owned(),
     );
 
-    // 7. Build system prompt
+    // 6b. Screenshots saved to disk (path-ref mode) to avoid base64 bloat in memory
+    let screenshots_dir = agent_dir.session().screenshots();
+    agent_loop.set_screenshots_dir(screenshots_dir);
+
+    // 7. Build system prompt (with team context if agent belongs to a team)
+    let team_def: Option<TeamDefinition> = heartbeat_team_dir.as_ref().and_then(|td| {
+        read_json::<TeamDefinition>(&td.team_json()).ok()
+    });
+    let shared_dir_str = shared_dir.as_ref().map(|p| p.to_string_lossy().into_owned());
+    let team_context = team_def.as_ref().map(|def| {
+        let my_role = if def.leader == agent_id { "leader" } else { "worker" };
+        TeamContext {
+            name: &def.name,
+            my_role,
+            leader_id: &def.leader,
+            members: &def.members,
+            shared_dir: shared_dir_str.as_deref(),
+        }
+    });
     let prompt_ctx = PromptContext {
         agent_dir: agent_dir.path(),
         max_steps: config.agent.max_steps,
         skills: &[],
-        team: None,
+        team: team_context,
     };
     let system_prompt = build_system_prompt(&prompt_ctx);
 
@@ -145,13 +165,8 @@ pub async fn run(agent_id: &str, workspace_path: &str) {
         }
 
         // Wait for wake signal or timeout
-        // Team agents use a longer heartbeat interval to periodically check for tasks
-        let timeout_secs = if is_team_agent {
-            see_agent_corp::consts::WORKER_HEARTBEAT_SECS
-        } else {
-            see_agent_corp::consts::WORKER_SIGNAL_TIMEOUT_SECS
-        };
-        let timeout = tokio::time::Duration::from_secs(timeout_secs);
+        // All agents use the heartbeat interval; SIGUSR1 provides instant wake on new messages.
+        let timeout = tokio::time::Duration::from_secs(see_agent_corp::consts::WORKER_HEARTBEAT_SECS);
         let wake_result = tokio::time::timeout(timeout, wake_rx.recv()).await;
 
         // On heartbeat timeout for team agents: check TaskBoard for pending tasks
@@ -292,5 +307,102 @@ mod tests {
         std::fs::write(team_dir.team_json(), serde_json::to_string(&team_json).unwrap()).unwrap();
 
         assert!(find_agent_team(&ws, "charlie").is_none());
+    }
+
+    #[test]
+    fn system_prompt_includes_team_context_for_leader() {
+        use see_agent_corp::brain::{build_system_prompt, PromptContext, TeamContext};
+        use see_agent_corp::types::TeamMember;
+
+        let (_tmp, ws) = make_workspace();
+
+        let agent_dir = ws.agent("alice");
+        std::fs::create_dir_all(agent_dir.path()).unwrap();
+        std::fs::write(agent_dir.path().join("IDENTITY.md"), "I am Alice.").unwrap();
+
+        let team = see_agent_corp::team::create_team(
+            &ws,
+            "Alpha Team",
+            vec![
+                TeamMember { id: "alice".into(), role: "leader".into(), endpoint: None },
+                TeamMember { id: "bob".into(), role: "dev".into(), endpoint: None },
+            ],
+            Some("alice"),
+        ).unwrap();
+
+        let team_dir = ws.team(&team.id);
+        let def: TeamDefinition = see_agent_corp::io::read_json(&team_dir.team_json()).unwrap();
+        let shared_path = team_dir.shared().to_string_lossy().into_owned();
+
+        let my_role = if def.leader == "alice" { "leader" } else { "worker" };
+        let team_ctx = TeamContext {
+            name: &def.name,
+            my_role,
+            leader_id: &def.leader,
+            members: &def.members,
+            shared_dir: Some(&shared_path),
+        };
+
+        let prompt_ctx = PromptContext {
+            agent_dir: agent_dir.path(),
+            max_steps: 50,
+            skills: &[],
+            team: Some(team_ctx),
+        };
+
+        let prompt = build_system_prompt(&prompt_ctx);
+        assert!(prompt.contains("<TEAM_CONTEXT>"), "prompt should contain TEAM_CONTEXT block");
+        assert!(prompt.contains("Alpha Team"), "prompt should contain team name");
+        assert!(prompt.contains("alice"), "prompt should contain leader id");
+        assert!(prompt.contains("bob (dev)"), "prompt should list members");
+        assert!(prompt.contains("你是团队领导"), "leader should get leader instructions");
+        assert!(prompt.contains("Team Shared Workspace"), "prompt should mention shared workspace");
+    }
+
+    #[test]
+    fn system_prompt_worker_role_for_non_leader() {
+        use see_agent_corp::brain::{build_system_prompt, PromptContext, TeamContext};
+        use see_agent_corp::types::TeamMember;
+
+        let (_tmp, ws) = make_workspace();
+
+        let agent_dir = ws.agent("bob");
+        std::fs::create_dir_all(agent_dir.path()).unwrap();
+        std::fs::write(agent_dir.path().join("IDENTITY.md"), "I am Bob.").unwrap();
+
+        let team = see_agent_corp::team::create_team(
+            &ws,
+            "Beta Team",
+            vec![
+                TeamMember { id: "alice".into(), role: "leader".into(), endpoint: None },
+                TeamMember { id: "bob".into(), role: "dev".into(), endpoint: None },
+            ],
+            Some("alice"),
+        ).unwrap();
+
+        let team_dir = ws.team(&team.id);
+        let def: TeamDefinition = see_agent_corp::io::read_json(&team_dir.team_json()).unwrap();
+
+        let my_role = if def.leader == "bob" { "leader" } else { "worker" };
+        let team_ctx = TeamContext {
+            name: &def.name,
+            my_role,
+            leader_id: &def.leader,
+            members: &def.members,
+            shared_dir: None,
+        };
+
+        let prompt_ctx = PromptContext {
+            agent_dir: agent_dir.path(),
+            max_steps: 50,
+            skills: &[],
+            team: Some(team_ctx),
+        };
+
+        let prompt = build_system_prompt(&prompt_ctx);
+        assert!(prompt.contains("<TEAM_CONTEXT>"), "prompt should contain TEAM_CONTEXT block");
+        assert!(prompt.contains("claim_task"), "worker should see claim_task instruction");
+        assert!(prompt.contains("complete_task"), "worker should see complete_task instruction");
+        assert!(!prompt.contains("你是团队领导"), "worker should NOT get leader instructions");
     }
 }

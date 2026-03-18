@@ -16,7 +16,7 @@ struct AgentSummary {
     id: String,
     name: String,
     emoji: String,
-    status: String,
+    state: String,
     #[allow(dead_code)]
     team_id: Option<String>,
 }
@@ -26,7 +26,7 @@ struct AgentDetailData {
     id: String,
     name: String,
     emoji: String,
-    status: String,
+    state: String,
     #[allow(dead_code)]
     tools: Vec<String>,
     #[allow(dead_code)]
@@ -131,26 +131,30 @@ pub fn Agents() -> impl IntoView {
     });
 
     view! {
-        <div>
-            <Body1><b>"Agents"</b></Body1>
-            <Divider />
+        <div class="page-content">
+            <span class="page-header">"Agents"</span>
             <Suspense fallback=|| view! { <Spinner /> }>
                 {move || agents.get().map(|list| {
                     let items: Vec<_> = list.iter().cloned().collect();
                     if items.is_empty() {
-                        view! { <MessageBar><MessageBarBody>"No agents yet"</MessageBarBody></MessageBar> }.into_any()
+                        view! {
+                            <div class="empty-state">
+                                <div class="empty-state-icon">"🤖"</div>
+                                <div class="empty-state-text">"No agents yet"</div>
+                            </div>
+                        }.into_any()
                     } else {
                         view! {
                             <Grid cols=3 x_gap=12 y_gap=12>
                                 {items.into_iter().map(|a| {
                                     let href = format!("/agents/{}", a.id);
-                                    let badge_color = status_badge_color(&a.status);
-                                    let status_text = a.status;
+                                    let badge_color = status_badge_color(&a.state);
+                                    let status_text = a.state;
                                     view! {
                                         <GridItem>
                                             <A href=href attr:style="text-decoration:none;color:inherit">
-                                                <Card>
-                                                    <Caption1>{a.emoji}</Caption1>
+                                                <Card class="card-interactive">
+                                                    <span style="font-size:1.5rem">{a.emoji}</span>
                                                     <Caption1Strong>{a.name}</Caption1Strong>
                                                     <Badge color=badge_color>{status_text}</Badge>
                                                 </Card>
@@ -200,7 +204,7 @@ pub fn AgentDetail() -> impl IntoView {
             } else {
                 let result = api::get::<AgentDetailData>(&format!("/agents/{id}")).await.ok();
                 if let Some(ref data) = result {
-                    agent_status.set(data.status.clone());
+                    agent_status.set(data.state.clone());
                 }
                 result
             }
@@ -385,7 +389,7 @@ pub fn AgentDetail() -> impl IntoView {
     // ---------------------------------------------------------------------------
 
     view! {
-        <div>
+        <div style="flex:1;display:flex;flex-direction:column;min-height:0">
             <Suspense fallback=|| view! { <Spinner /> }>
                 {move || agent.get().map(|a| {
                     match &*a {
@@ -421,7 +425,7 @@ pub fn AgentDetail() -> impl IntoView {
                                     <Tab value="skills">"Skills"</Tab>
                                 </TabList>
 
-                                <div style="margin-top:12px">
+                                <div style="margin-top:12px;flex:1;display:flex;flex-direction:column;min-height:0">
                                     {
                                         let id_for_tab = id.clone();
                                         let location_for_tab = location.clone();
@@ -476,8 +480,8 @@ pub fn AgentDetail() -> impl IntoView {
                                             "chat" => {
                                                 let send = send_msg;
                                                 view! {
-                                                    <Card>
-                                                        <div style="height:400px;overflow-y:auto;padding:8px">
+                                                    <Card attr:style="flex:1;display:flex;flex-direction:column;min-height:0">
+                                                        <div style="flex:1;overflow-y:auto;padding:8px;min-height:200px">
                                                             {move || {
                                                                 let msgs = chat_messages.get();
                                                                 if msgs.is_empty() {
@@ -520,7 +524,7 @@ pub fn AgentDetail() -> impl IntoView {
                                                         </div>
                                                         <Divider />
                                                         <Flex vertical=false gap=FlexGap::Small align=FlexAlign::Center>
-                                                            <div on:keydown=move |ev: web_sys::KeyboardEvent| {
+                                                            <div style="flex:1;min-width:0" on:keydown=move |ev: web_sys::KeyboardEvent| {
                                                                 if ev.key() == "Enter" {
                                                                     send();
                                                                 }
@@ -816,20 +820,22 @@ mod tests {
     }
 
     #[test]
-    fn agent_summary_deserialize() {
-        let json = r#"{"id":"a1","name":"bot","emoji":"🤖","status":"running","team_id":null}"#;
+    fn agent_summary_deserialize_backend_format() {
+        // Backend sends "state" not "status"
+        let json = r#"{"id":"a1","name":"bot","emoji":"🤖","state":"running","team_id":null}"#;
         let a: AgentSummary = serde_json::from_str(json).unwrap();
         assert_eq!(a.id, "a1");
-        assert_eq!(a.status, "running");
+        assert_eq!(a.state, "running");
     }
 
     #[test]
-    fn agent_detail_deserialize() {
+    fn agent_detail_deserialize_backend_format() {
+        // Backend sends "state" not "status"
         let json = r#"{
             "id": "a1",
             "name": "bot",
             "emoji": "🤖",
-            "status": "idle",
+            "state": "idle",
             "tools": ["shell"],
             "skills": [],
             "has_soul": true,
@@ -838,6 +844,6 @@ mod tests {
         let d: AgentDetailData = serde_json::from_str(json).unwrap();
         assert_eq!(d.id, "a1");
         assert!(d.has_soul);
-        assert_eq!(d.location, "/tmp/agent");
+        assert_eq!(d.state, "idle");
     }
 }

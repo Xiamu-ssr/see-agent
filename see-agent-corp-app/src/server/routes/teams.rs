@@ -86,6 +86,8 @@ struct CreateTaskRequest {
     #[serde(default)]
     description: String,
     created_by: String,
+    #[serde(default)]
+    depends_on: Vec<String>,
 }
 
 #[derive(Deserialize)]
@@ -231,7 +233,7 @@ async fn create_task_handler(
 
     let board = TaskBoard::new(team_dir);
     let task = board
-        .create_task(&req.title, &req.description, &req.created_by)
+        .create_task(&req.title, &req.description, &req.created_by, req.depends_on)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     Ok((

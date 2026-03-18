@@ -200,7 +200,12 @@ impl Tool for CreateTaskTool {
             "type": "object",
             "properties": {
                 "title": { "type": "string", "description": "Task title" },
-                "description": { "type": "string", "description": "Task description" }
+                "description": { "type": "string", "description": "Task description" },
+                "depends_on": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "description": "Task IDs that must be completed before this task can be claimed (optional)"
+                }
             },
             "required": ["title", "description"]
         })
@@ -213,8 +218,12 @@ impl Tool for CreateTaskTool {
 
         let title = args["title"].as_str().unwrap_or("untitled");
         let description = args["description"].as_str().unwrap_or("");
+        let depends_on: Vec<String> = args["depends_on"]
+            .as_array()
+            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_owned())).collect())
+            .unwrap_or_default();
 
-        let task = board.create_task(title, description, &self.ctx.agent_id)?;
+        let task = board.create_task(title, description, &self.ctx.agent_id, depends_on)?;
 
         Ok(ToolResult {
             text: format!("created task '{}' (id: {})", task.title, task.id),

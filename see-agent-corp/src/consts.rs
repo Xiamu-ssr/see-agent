@@ -29,6 +29,7 @@ pub const MAX_SUMMARIZE_MSG_CHARS: usize = 500;
 /// Worker
 pub const WORKER_HEARTBEAT_SECS: u64 = 300;
 pub const WORKER_SIGNAL_TIMEOUT_SECS: u64 = 5;
+pub const WORKER_SHUTDOWN_TIMEOUT_SECS: u64 = 120;
 pub const WORKER_WAKE_CHANNEL_SIZE: usize = 16;
 
 /// Screen
@@ -48,7 +49,7 @@ pub const TOKENS_PER_IMAGE: usize = 765;
 pub const DEFAULT_SERVER_PORT: u16 = 28789;
 pub const DAEMON_STARTUP_WAIT_MS: u64 = 500;
 pub const DAEMON_STOP_POLL_MS: u64 = 100;
-pub const DAEMON_STOP_MAX_POLLS: usize = 50;
+pub const DAEMON_STOP_MAX_POLLS: usize = 1200;
 pub const DAEMON_RESTART_WAIT_MS: u64 = 200;
 pub const LOG_TAIL_LINES: usize = 200;
 
@@ -79,5 +80,20 @@ mod tests {
     #[test]
     fn worker_heartbeat_secs_is_300() {
         assert_eq!(WORKER_HEARTBEAT_SECS, 300);
+    }
+
+    #[test]
+    fn worker_shutdown_timeout_is_120() {
+        assert_eq!(WORKER_SHUTDOWN_TIMEOUT_SECS, 120);
+    }
+
+    #[test]
+    fn daemon_stop_polls_cover_shutdown_window() {
+        let shutdown_window_ms = WORKER_SHUTDOWN_TIMEOUT_SECS * 1000;
+        let poll_window_ms = DAEMON_STOP_MAX_POLLS as u64 * DAEMON_STOP_POLL_MS;
+        assert!(
+            poll_window_ms >= shutdown_window_ms,
+            "daemon stop poll window ({poll_window_ms}ms) must cover shutdown timeout ({shutdown_window_ms}ms)"
+        );
     }
 }

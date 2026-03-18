@@ -18,13 +18,17 @@ pub fn Mcp() -> impl IntoView {
     });
 
     view! {
-        <div>
-            <Body1><b>"MCP Servers"</b></Body1>
-            <Divider />
+        <div class="page-content">
+            <span class="page-header">"MCP Servers"</span>
             <Suspense fallback=|| view! { <Spinner /> }>
                 {move || servers.get().map(|list| {
                     if list.is_empty() {
-                        view! { <MessageBar><MessageBarBody>"No MCP servers configured."</MessageBarBody></MessageBar> }.into_any()
+                        view! {
+                            <div class="empty-state">
+                                <div class="empty-state-icon">"🔌"</div>
+                                <div class="empty-state-text">"No MCP servers configured"</div>
+                            </div>
+                        }.into_any()
                     } else {
                         let items: Vec<_> = list.iter().cloned().collect();
                         view! {

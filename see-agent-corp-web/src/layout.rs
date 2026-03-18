@@ -1,11 +1,30 @@
 use leptos::prelude::*;
 use leptos_router::components::A;
+use leptos_router::hooks::use_location;
 use thaw::*;
 
 #[component]
 pub fn AppLayout(is_dark: RwSignal<bool>, children: Children) -> impl IntoView {
     let selected_nav = RwSignal::new(String::from("dashboard"));
     let drawer_open = RwSignal::new(false);
+    let location = use_location();
+
+    // Sync nav selection with current route
+    Effect::new(move |_| {
+        let path = location.pathname.get();
+        let nav_value = match path.split('/').nth(1).unwrap_or("") {
+            "" => "dashboard",
+            "agents" => "agents",
+            "teams" => "teams",
+            "config" => "config",
+            "skills" => "skills",
+            "tools" => "tools",
+            "mcp" => "mcp",
+            "logs" => "logs",
+            _ => "dashboard",
+        };
+        selected_nav.set(nav_value.to_string());
+    });
 
     // Persist theme
     Effect::new(move |_| {
@@ -72,7 +91,7 @@ pub fn AppLayout(is_dark: RwSignal<bool>, children: Children) -> impl IntoView {
                         </NavDrawer>
                     </DrawerBody>
                 </OverlayDrawer>
-                <div style="padding:24px;min-width:0;max-width:1200px">
+                <div style="padding:24px;min-width:0;max-width:1200px;flex:1;display:flex;flex-direction:column;min-height:0">
                     {children()}
                 </div>
             </Layout>
