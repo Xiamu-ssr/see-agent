@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>see-agent</title>
+    <link rel="stylesheet" href="/main-4ec67d08d6881f0.css" integrity="sha384-7Qvg3dfKnuZzYapyKUthNR9Oa+hNT0EJZp0AUDw0eVTsYuyJRAnEh1tTYiVXVW5r"/>
+<link rel="modulepreload" href="/see-web-ae8fb42716102a4b.js" crossorigin="anonymous" integrity="sha384-GMhP8ylhwy0gcTYQgsFU7u6M6J5AAO3ARBZo9mqz+4t2UbEfrj5v2jnkfIFjeMfM"><link rel="preload" href="/see-web-ae8fb42716102a4b_bg.wasm" crossorigin="anonymous" integrity="sha384-wUuzVEaRO3Glknq/ck5pYMWnY8PST/xa06e0iuh1FOCrse1DZtm+JM/fOfxJqwM3" as="fetch" type="application/wasm"></head>
+<body>
+
+<script type="module">
+import init, * as bindings from '/see-web-ae8fb42716102a4b.js';
+const wasm = await init({ module_or_path: '/see-web-ae8fb42716102a4b_bg.wasm' });
+
+
+window.wasmBindings = bindings;
+
+
+dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
+
+</script></body>
+</html>

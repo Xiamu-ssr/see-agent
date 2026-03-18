@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# see-agent installer
-# Usage: curl -fsSL https://raw.githubusercontent.com/OWNER/see-agent/main/scripts/install.sh | sh
+# agentcorp installer
+# Usage: curl -fsSL https://raw.githubusercontent.com/OWNER/agentcorp/main/scripts/install.sh | sh
 
-REPO="${SEE_REPO:-OWNER/see-agent}"
+REPO="${AGENTCORP_REPO:-OWNER/agentcorp}"
 VERSION="${1:-latest}"
 INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
 
@@ -21,24 +21,24 @@ case "${OS}_${ARCH}" in
 esac
 
 if [ "$VERSION" = "latest" ]; then
-    URL="https://github.com/${REPO}/releases/latest/download/see-${TARGET}.tar.gz"
+    URL="https://github.com/${REPO}/releases/latest/download/agentcorp-${TARGET}.tar.gz"
 else
-    URL="https://github.com/${REPO}/releases/download/${VERSION}/see-${TARGET}.tar.gz"
+    URL="https://github.com/${REPO}/releases/download/${VERSION}/agentcorp-${TARGET}.tar.gz"
 fi
 
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 
-echo "Downloading see-agent for ${TARGET}..."
+echo "Downloading agentcorp for ${TARGET}..."
 curl -fsSL "$URL" | tar xz -C "$TMP"
-chmod +x "$TMP/see-${TARGET}"
+chmod +x "$TMP/agentcorp-${TARGET}"
 
-echo "Installing to ${INSTALL_DIR}/see (may require sudo)..."
+echo "Installing to ${INSTALL_DIR}/agentcorp (may require sudo)..."
 if [ -w "$INSTALL_DIR" ]; then
-    mv "$TMP/see-${TARGET}" "${INSTALL_DIR}/see"
+    mv "$TMP/agentcorp-${TARGET}" "${INSTALL_DIR}/agentcorp"
 else
-    sudo mv "$TMP/see-${TARGET}" "${INSTALL_DIR}/see"
+    sudo mv "$TMP/agentcorp-${TARGET}" "${INSTALL_DIR}/agentcorp"
 fi
 
-echo "Installed see-agent to ${INSTALL_DIR}/see"
-see --version
+echo "Installed agentcorp to ${INSTALL_DIR}/agentcorp"
+agentcorp --version

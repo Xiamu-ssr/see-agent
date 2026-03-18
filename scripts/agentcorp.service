@@ -1,0 +1,18 @@
+# systemd user service for agentcorp
+# Install: cp agentcorp.service ~/.config/systemd/user/
+# Enable:  systemctl --user enable --now agentcorp
+
+[Unit]
+Description=agentcorp server
+After=network.target
+
+[Service]
+Type=forking
+PIDFile=%h/.agentcorp/server.pid
+ExecStart=/usr/local/bin/agentcorp start
+ExecStop=/usr/local/bin/agentcorp stop
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

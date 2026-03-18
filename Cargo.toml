@@ -1,5 +1,5 @@
 [workspace]
-members = ["see", "see-app", "see-web"]
+members = ["agentcorp", "agentcorp-app", "agentcorp-web"]
 resolver = "2"
 
 [workspace.package]
