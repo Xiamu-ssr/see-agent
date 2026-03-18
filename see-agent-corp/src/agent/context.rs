@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use serde_json::{json, Value};
 
-use crate::consts::{CHARS_PER_TOKEN, TOKENS_PER_IMAGE};
+use crate::consts::{CHARS_PER_TOKEN, IMAGE_LEVEL1_COUNT, IMAGE_LEVEL2_COUNT, TOKENS_PER_IMAGE};
 
 // ---------------------------------------------------------------------------
 // Tool result image (from tool execution)
@@ -35,6 +35,17 @@ pub enum ImageContent {
         detail: String,
         mime_type: String,
     },
+}
+
+// ---------------------------------------------------------------------------
+// ImageAction (for four-level lifecycle in get_messages_for_llm)
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ImageAction {
+    KeepHigh,
+    Downgrade,
+    TextOnly,
 }
 
 // ---------------------------------------------------------------------------
@@ -354,124 +365,85 @@ impl ConversationContext {
     }
 
     /// Get messages for LLM call, resolving path refs to base64 and applying
-    /// the sliding window.
+    /// the four-level image lifecycle.
     ///
-    /// This is the method to use when actually calling the LLM. Path refs
-    /// are read from disk and converted to inline base64 data URLs.
+    /// Level 1: Latest IMAGE_LEVEL1_COUNT images — full fidelity (detail: high)
+    /// Level 2: Next IMAGE_LEVEL2_COUNT images — low fidelity (detail: low)
+    /// Level 3: Older images — replaced with text placeholder
+    /// Level 4: Images discarded at full compact (handled by apply_compaction)
     pub fn get_messages_for_llm(&self) -> Vec<Value> {
         // 1. Resolve all image_path_ref entries to image_url
         let resolved: Vec<Value> = self
             .messages
             .iter()
-            .map(|msg| {
-                if let Some(parts) = msg.get("content").and_then(|c| c.as_array()) {
-                    let new_parts: Vec<Value> = parts
-                        .iter()
-                        .map(|part| {
-                            if part.get("type").and_then(|t| t.as_str())
-                                == Some("image_path_ref")
-                            {
-                                let path_str = part
-                                    .get("path")
-                                    .and_then(|v| v.as_str())
-                                    .unwrap_or("");
-                                let detail = part
-                                    .get("detail")
-                                    .and_then(|v| v.as_str())
-                                    .unwrap_or("auto");
-                                let mime = part
-                                    .get("mime_type")
-                                    .and_then(|v| v.as_str())
-                                    .unwrap_or("image/png");
-
-                                match std::fs::read(path_str) {
-                                    Ok(bytes) => {
-                                        use base64::Engine;
-                                        let b64 = base64::engine::general_purpose::STANDARD
-                                            .encode(&bytes);
-                                        json!({
-                                            "type": "image_url",
-                                            "image_url": {
-                                                "url": format!("data:{mime};base64,{b64}"),
-                                                "detail": detail,
-                                            }
-                                        })
-                                    }
-                                    Err(_) => {
-                                        json!({"type": "text", "text": "[Screenshot file not found]"})
-                                    }
-                                }
-                            } else {
-                                part.clone()
-                            }
-                        })
-                        .collect();
-                    let role = msg.get("role").cloned().unwrap_or(json!("user"));
-                    json!({"role": role, "content": new_parts})
-                } else {
-                    msg.clone()
-                }
-            })
+            .map(Self::resolve_path_refs)
             .collect();
 
-        // 2. Apply sliding window on the resolved messages
-        let mut image_positions: Vec<(usize, Option<usize>)> = Vec::new();
+        // 2. Find all image positions
+        let mut image_positions: Vec<(usize, usize)> = Vec::new();
         for (msg_idx, msg) in resolved.iter().enumerate() {
             if let Some(parts) = msg.get("content").and_then(|c| c.as_array()) {
                 for (part_idx, part) in parts.iter().enumerate() {
                     if part.get("type").and_then(|t| t.as_str()) == Some("image_url") {
-                        image_positions.push((msg_idx, Some(part_idx)));
+                        image_positions.push((msg_idx, part_idx));
                     }
                 }
             }
         }
 
-        if image_positions.len() <= self.max_images {
+        if image_positions.is_empty() {
             return resolved;
         }
 
-        let drop_count = image_positions.len() - self.max_images;
-        let to_drop: std::collections::HashSet<(usize, Option<usize>)> =
-            image_positions[..drop_count].iter().copied().collect();
+        // 3. Classify images by level (newest-first)
+        let total = image_positions.len();
+        let level1_start = total.saturating_sub(IMAGE_LEVEL1_COUNT);
+        let level2_start = level1_start.saturating_sub(IMAGE_LEVEL2_COUNT);
 
-        let mut msgs_with_drops: std::collections::HashMap<usize, Vec<usize>> =
+        // Build action map: (msg_idx, part_idx) -> action
+        let mut actions: std::collections::HashMap<(usize, usize), ImageAction> =
             std::collections::HashMap::new();
-        for &(msg_idx, part_idx) in &to_drop {
-            if let Some(pi) = part_idx {
-                msgs_with_drops.entry(msg_idx).or_default().push(pi);
-            }
+        for (i, &pos) in image_positions.iter().enumerate() {
+            let action = if i >= level1_start {
+                ImageAction::KeepHigh
+            } else if i >= level2_start {
+                ImageAction::Downgrade
+            } else {
+                ImageAction::TextOnly
+            };
+            actions.insert(pos, action);
         }
 
+        // 4. Rebuild output with lifecycle applied
         let mut output = Vec::with_capacity(resolved.len());
-        for (idx, msg) in resolved.iter().enumerate() {
-            if let Some(drop_parts) = msgs_with_drops.get(&idx) {
-                let drop_set: std::collections::HashSet<usize> =
-                    drop_parts.iter().copied().collect();
-
-                if let Some(parts) = msg.get("content").and_then(|c| c.as_array()) {
-                    let remaining: Vec<&Value> = parts
+        for (msg_idx, msg) in resolved.iter().enumerate() {
+            if let Some(parts) = msg.get("content").and_then(|c| c.as_array()) {
+                let has_actions = parts.iter().enumerate().any(|(pi, _)| {
+                    actions.contains_key(&(msg_idx, pi))
+                });
+                if has_actions {
+                    let new_parts: Vec<Value> = parts
                         .iter()
                         .enumerate()
-                        .filter(|(pi, _)| !drop_set.contains(pi))
-                        .map(|(_, p)| p)
+                        .map(|(pi, part)| {
+                            match actions.get(&(msg_idx, pi)) {
+                                Some(ImageAction::KeepHigh) => part.clone(),
+                                Some(ImageAction::Downgrade) => {
+                                    let mut p = part.clone();
+                                    if let Some(img) = p.get_mut("image_url") {
+                                        img["detail"] = json!("low");
+                                    }
+                                    p
+                                }
+                                Some(ImageAction::TextOnly) => {
+                                    json!({"type": "text", "text": "[Screenshot omitted]"})
+                                }
+                                None => part.clone(),
+                            }
+                        })
                         .collect();
-
                     let role = msg.get("role").cloned().unwrap_or(json!("user"));
-                    let placeholder = json!({"type": "text", "text": "[Screenshot omitted]"});
-
-                    if remaining.is_empty() {
-                        output.push(json!({
-                            "role": role,
-                            "content": [placeholder],
-                        }));
-                    } else {
-                        let mut new_parts = vec![placeholder];
-                        new_parts.extend(remaining.into_iter().cloned());
-                        output.push(json!({
-                            "role": role,
-                            "content": new_parts,
-                        }));
-                    }
+                    output.push(json!({"role": role, "content": new_parts}));
                 } else {
                     output.push(msg.clone());
                 }
@@ -483,8 +455,89 @@ impl ConversationContext {
         output
     }
 
+    /// Resolve image_path_ref entries in a single message to image_url.
+    fn resolve_path_refs(msg: &Value) -> Value {
+        if let Some(parts) = msg.get("content").and_then(|c| c.as_array()) {
+            let new_parts: Vec<Value> = parts
+                .iter()
+                .map(|part| {
+                    if part.get("type").and_then(|t| t.as_str()) == Some("image_path_ref") {
+                        let path_str =
+                            part.get("path").and_then(|v| v.as_str()).unwrap_or("");
+                        let detail =
+                            part.get("detail").and_then(|v| v.as_str()).unwrap_or("auto");
+                        let mime = part
+                            .get("mime_type")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("image/png");
+
+                        match std::fs::read(path_str) {
+                            Ok(bytes) => {
+                                use base64::Engine;
+                                let b64 =
+                                    base64::engine::general_purpose::STANDARD.encode(&bytes);
+                                json!({
+                                    "type": "image_url",
+                                    "image_url": {
+                                        "url": format!("data:{mime};base64,{b64}"),
+                                        "detail": detail,
+                                    }
+                                })
+                            }
+                            Err(_) => {
+                                json!({"type": "text", "text": "[Screenshot file not found]"})
+                            }
+                        }
+                    } else {
+                        part.clone()
+                    }
+                })
+                .collect();
+            let role = msg.get("role").cloned().unwrap_or(json!("user"));
+            json!({"role": role, "content": new_parts})
+        } else {
+            msg.clone()
+        }
+    }
+
     // -----------------------------------------------------------------------
-    // Compaction
+    // Microcompact (Layer 2)
+    // -----------------------------------------------------------------------
+
+    /// Clear old tool_result content to save tokens (memory-only, no JSONL change).
+    ///
+    /// Keeps the most recent `keep_recent` messages untouched.
+    /// Returns the estimated tokens saved.
+    pub fn apply_microcompact(&mut self, keep_recent: usize) -> usize {
+        let safe_boundary = self.messages.len().saturating_sub(keep_recent);
+        let mut saved = 0usize;
+
+        for msg in self.messages[..safe_boundary].iter_mut() {
+            if msg.get("role").and_then(|r| r.as_str()) == Some("tool")
+                && let Some(content) = msg.get("content").and_then(|c| c.as_str())
+            {
+                let old_tokens = content.len() / CHARS_PER_TOKEN;
+                let placeholder = "[tool output cleared — microcompact]";
+                let new_tokens = placeholder.len() / CHARS_PER_TOKEN;
+                if old_tokens > new_tokens {
+                    saved += old_tokens - new_tokens;
+                    msg["content"] = serde_json::json!(placeholder);
+                }
+            }
+        }
+
+        if saved > 0 {
+            self.fire_append(serde_json::json!({
+                "type": "microcompact",
+                "tokens_saved": saved,
+            }));
+        }
+
+        saved
+    }
+
+    // -----------------------------------------------------------------------
+    // Compaction (Layer 3)
     // -----------------------------------------------------------------------
 
     /// Apply compaction: keep system prompt + summary + last N messages.
@@ -885,32 +938,156 @@ mod tests {
     }
 
     #[test]
-    fn get_messages_for_llm_sliding_window_on_path_refs() {
+    fn get_messages_for_llm_four_level_on_path_refs() {
         let tmp = tempfile::TempDir::new().unwrap();
 
-        // Create 4 image files, max_images = 2
-        let mut ctx = ConversationContext::new("sys", 2, None);
+        // 4 images: with L1=3, L2=3 → img0=Downgrade, img1-3=KeepHigh
+        let mut ctx = ConversationContext::new("sys", 100, None);
         for i in 0..4 {
             let img_path = tmp.path().join(format!("img{i}.png"));
             std::fs::write(&img_path, format!("data-{i}").as_bytes()).unwrap();
-            ctx.add_screenshot_ref(img_path, "low", "image/png");
+            ctx.add_screenshot_ref(img_path, "high", "image/png");
         }
 
         let msgs = ctx.get_messages_for_llm();
         assert_eq!(msgs.len(), 5); // system + 4 screenshot messages
 
-        // First 2 should be replaced with [Screenshot omitted]
+        // img0 → Downgrade (detail: "low")
         let first_content = msgs[1]["content"].as_array().unwrap();
-        assert_eq!(first_content[0]["text"], "[Screenshot omitted]");
+        assert_eq!(first_content[0]["type"], "image_url");
+        assert_eq!(first_content[0]["image_url"]["detail"], "low");
 
-        let second_content = msgs[2]["content"].as_array().unwrap();
-        assert_eq!(second_content[0]["text"], "[Screenshot omitted]");
+        // img1-3 → KeepHigh (detail remains "high")
+        for msg in &msgs[2..=4] {
+            let parts = msg["content"].as_array().unwrap();
+            assert_eq!(parts[0]["type"], "image_url");
+            assert_eq!(parts[0]["image_url"]["detail"], "high");
+        }
+    }
 
-        // Last 2 should have resolved image_url
-        let third_content = msgs[3]["content"].as_array().unwrap();
-        assert_eq!(third_content[0]["type"], "image_url");
+    // -----------------------------------------------------------------------
+    // Microcompact tests
+    // -----------------------------------------------------------------------
 
-        let fourth_content = msgs[4]["content"].as_array().unwrap();
-        assert_eq!(fourth_content[0]["type"], "image_url");
+    #[test]
+    fn microcompact_clears_old_tool_results() {
+        let mut ctx = make_ctx();
+        // Add assistant + tool result with large content
+        let raw = json!({
+            "role": "assistant",
+            "tool_calls": [{"id": "c1", "type": "function", "function": {"name": "shell", "arguments": "{}"}}]
+        });
+        ctx.add_assistant(&raw);
+        ctx.add_tool_result("c1", &"x".repeat(1000), &[]);
+        // Add a recent message
+        ctx.add_user_task_text_only("recent", "user", "collect");
+
+        let saved = ctx.apply_microcompact(1); // keep last 1 message
+        assert!(saved > 0, "should save tokens");
+        // Tool result content should be replaced
+        let tool_msg = &ctx.messages[2];
+        assert_eq!(tool_msg["content"], "[tool output cleared — microcompact]");
+    }
+
+    #[test]
+    fn microcompact_preserves_recent_messages() {
+        let mut ctx = make_ctx();
+        let raw = json!({
+            "role": "assistant",
+            "tool_calls": [{"id": "c1", "type": "function", "function": {"name": "shell", "arguments": "{}"}}]
+        });
+        ctx.add_assistant(&raw);
+        ctx.add_tool_result("c1", &"x".repeat(1000), &[]);
+
+        // keep_recent = 10 — everything is "recent"
+        let saved = ctx.apply_microcompact(10);
+        assert_eq!(saved, 0, "all messages within keep_recent, nothing cleared");
+        let tool_msg = &ctx.messages[2];
+        assert_ne!(tool_msg["content"], "[tool output cleared — microcompact]");
+    }
+
+    #[test]
+    fn microcompact_skips_small_tool_results() {
+        let mut ctx = make_ctx();
+        let raw = json!({
+            "role": "assistant",
+            "tool_calls": [{"id": "c1", "type": "function", "function": {"name": "shell", "arguments": "{}"}}]
+        });
+        ctx.add_assistant(&raw);
+        ctx.add_tool_result("c1", "ok", &[]); // tiny content
+        ctx.add_user_task_text_only("recent", "user", "collect");
+
+        let saved = ctx.apply_microcompact(1);
+        // "ok" (2 chars → 0 tokens) is not bigger than placeholder, so no savings
+        assert_eq!(saved, 0);
+    }
+
+    // -----------------------------------------------------------------------
+    // Four-level image lifecycle tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn four_level_lifecycle_keep_high_downgrade_text_only() {
+        let tmp = tempfile::TempDir::new().unwrap();
+
+        // Create 8 images: 2 → TextOnly, 3 → Downgrade, 3 → KeepHigh
+        // max_images is big enough to not trigger old sliding window
+        let mut ctx = ConversationContext::new("sys", 100, None);
+        for i in 0..8 {
+            let img_path = tmp.path().join(format!("img{i}.png"));
+            std::fs::write(&img_path, format!("data-{i}").as_bytes()).unwrap();
+            ctx.add_screenshot_ref(img_path, "high", "image/png");
+        }
+
+        let msgs = ctx.get_messages_for_llm();
+        assert_eq!(msgs.len(), 9); // system + 8
+
+        // Images 0,1 → TextOnly (indices 1,2 in msgs)
+        for (i, msg) in msgs[1..=2].iter().enumerate() {
+            let parts = msg["content"].as_array().unwrap();
+            assert_eq!(
+                parts[0]["text"], "[Screenshot omitted]",
+                "image {i} should be TextOnly"
+            );
+        }
+
+        // Images 2,3,4 → Downgrade (indices 3,4,5 in msgs)
+        for (i, msg) in msgs[3..=5].iter().enumerate() {
+            let parts = msg["content"].as_array().unwrap();
+            assert_eq!(parts[0]["type"], "image_url", "image {i}+2 should be image_url");
+            assert_eq!(
+                parts[0]["image_url"]["detail"], "low",
+                "image {i}+2 should be downgraded to low detail"
+            );
+        }
+
+        // Images 5,6,7 → KeepHigh (indices 6,7,8 in msgs)
+        for (i, msg) in msgs[6..=8].iter().enumerate() {
+            let parts = msg["content"].as_array().unwrap();
+            assert_eq!(parts[0]["type"], "image_url", "image {i}+5 should be image_url");
+            assert_eq!(
+                parts[0]["image_url"]["detail"], "high",
+                "image {i}+5 should keep high detail"
+            );
+        }
+    }
+
+    #[test]
+    fn four_level_lifecycle_few_images_all_keep_high() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        // Only 2 images — both within IMAGE_LEVEL1_COUNT, all KeepHigh
+        let mut ctx = ConversationContext::new("sys", 100, None);
+        for i in 0..2 {
+            let img_path = tmp.path().join(format!("img{i}.png"));
+            std::fs::write(&img_path, format!("data-{i}").as_bytes()).unwrap();
+            ctx.add_screenshot_ref(img_path, "high", "image/png");
+        }
+
+        let msgs = ctx.get_messages_for_llm();
+        for msg in &msgs[1..=2] {
+            let parts = msg["content"].as_array().unwrap();
+            assert_eq!(parts[0]["type"], "image_url");
+            assert_eq!(parts[0]["image_url"]["detail"], "high");
+        }
     }
 }

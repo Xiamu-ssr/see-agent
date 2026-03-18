@@ -5,7 +5,7 @@ use std::time::Instant;
 use tracing::{info, warn};
 
 use crate::brain::Brain;
-use crate::consts::MAX_CONSECUTIVE_ERRORS;
+use crate::consts::{FULL_COMPACT_RATIO, MAX_CONSECUTIVE_ERRORS, MICROCOMPACT_RATIO};
 use crate::eye::{scale_tool_args, Eye, Screenshot};
 use crate::tool::ToolRegistry;
 use crate::types::{Config, ToolResult};
@@ -522,33 +522,46 @@ impl AgentLoop {
     async fn maybe_compact(&mut self, ctx: &mut ConversationContext) {
         let messages = ctx.get_messages();
         let tokens = estimate_tokens(&messages);
-        let threshold = (self.config.agent.compact.context_window as f64
-            * self.config.agent.compact.target_ratio) as usize;
+        let window = self.config.agent.compact.context_window as f64;
+        let keep_recent = self.config.agent.compact.keep_recent as usize;
 
-        if tokens < threshold {
+        // Layer 2: Microcompact — clear old tool outputs (rules only, no LLM)
+        let micro_threshold = (window * MICROCOMPACT_RATIO) as usize;
+        if tokens >= micro_threshold {
+            let saved = ctx.apply_microcompact(keep_recent);
+            if saved > 0 {
+                info!("microcompact saved ~{saved} tokens");
+            }
+        }
+
+        // Layer 3: Full compact — LLM summarization
+        let full_threshold = (window * FULL_COMPACT_RATIO) as usize;
+        // Re-estimate after microcompact
+        let tokens_after = estimate_tokens(&ctx.get_messages());
+        if tokens_after < full_threshold {
             return;
         }
 
         if !self.compact_warned {
             self.compact_warned = true;
             ctx.add_system_hint(
-                "[系统提示] 上下文即将达到窗口上限，请立即用 write_memory 保存重要信息，下一轮将执行上下文压缩。",
+                "[系统提示] 上下文即将达到窗口上限，请立即用 memory_write 保存重要信息，下一轮将执行上下文压缩。",
             );
             return;
         }
 
         self.compact_warned = false;
-        let keep_recent = self.config.agent.compact.keep_recent as usize;
 
-        let end = messages.len().saturating_sub(keep_recent);
+        let current_messages = ctx.get_messages();
+        let end = current_messages.len().saturating_sub(keep_recent);
         if end <= 1 {
             return;
         }
-        let to_summarize = &messages[1..end];
+        let to_summarize = &current_messages[1..end];
 
         match self.brain.summarize(to_summarize).await {
             Ok(summary) => {
-                info!("compaction complete, summary length: {}", summary.len());
+                info!("full compact complete, summary length: {}", summary.len());
                 ctx.apply_compaction(&summary, keep_recent);
             }
             Err(e) => {

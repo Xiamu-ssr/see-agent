@@ -64,11 +64,20 @@ pub const MAX_INSTALLED_APPS_LIST: usize = 40;
 pub const MCP_PROTOCOL_VERSION: &str = "2024-11-05";
 
 /// Tool execution
-pub const SHELL_OUTPUT_MAX_CHARS: usize = 10_000;
+pub const SHELL_OUTPUT_MAX_CHARS: usize = 30_000;
 pub const SHELL_TIMEOUT_SECS: u64 = 30;
 pub const MEMORY_SEARCH_LIMIT: usize = 10;
 pub const DEFAULT_WAIT_SECS: f64 = 2.0;
 pub const DEFAULT_SCROLL_AMOUNT: i32 = 3;
+pub const READ_MAX_FILE_CHARS: usize = 50_000;
+
+/// Compression thresholds
+pub const MICROCOMPACT_RATIO: f64 = 0.30;
+pub const FULL_COMPACT_RATIO: f64 = 0.95;
+
+/// Image lifecycle levels
+pub const IMAGE_LEVEL1_COUNT: usize = 3;
+pub const IMAGE_LEVEL2_COUNT: usize = 3;
 
 /// Version
 pub const VERSION: &str = "0.1.0";

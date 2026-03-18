@@ -90,10 +90,13 @@ impl Tool for ShellTool {
             text.push_str(&format!("stderr:\n{stderr}\n"));
         }
 
-        // Truncate to avoid blowing up context
+        // Truncate with head+tail preservation to keep both beginning and end visible
         if text.len() > SHELL_OUTPUT_MAX_CHARS {
-            text.truncate(SHELL_OUTPUT_MAX_CHARS);
-            text.push_str("\n... (truncated)");
+            let half = SHELL_OUTPUT_MAX_CHARS / 2;
+            let head = &text[..half];
+            let tail = &text[text.len() - half..];
+            let omitted_lines = text[half..text.len() - half].lines().count();
+            text = format!("{head}\n[... {omitted_lines} lines omitted ...]\n{tail}");
         }
 
         Ok(ToolResult {

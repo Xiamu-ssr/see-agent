@@ -1,5 +1,6 @@
 mod control;
 mod memory;
+mod read;
 mod screen;
 mod shell;
 mod team;
@@ -36,6 +37,7 @@ pub fn core_tool_infos() -> Vec<(&'static str, &'static str)> {
         ("call_user", "Request human intervention"),
         ("memory_search", "Search agent memory"),
         ("memory_write", "Write to agent memory"),
+        ("read", "Read a file (text or image)"),
     ]
 }
 
@@ -58,6 +60,7 @@ pub fn register_builtin_tools(registry: &mut ToolRegistry, ctx: Arc<ToolContext>
     screen::register(registry, &ctx);
     memory::register(registry, &ctx);
     control::register(registry, &ctx);
+    read::register(registry, &ctx);
     if ctx.team_dir.is_some() {
         team::register(registry, &ctx);
     }
@@ -176,21 +179,21 @@ mod tests {
     }
 
     #[test]
-    fn registers_12_core_tools_without_team() {
+    fn registers_13_core_tools_without_team() {
         let tmp = TempDir::new().unwrap();
         let ctx = test_ctx(&tmp);
         let mut reg = ToolRegistry::new();
         register_builtin_tools(&mut reg, ctx);
-        assert_eq!(reg.len(), 12);
+        assert_eq!(reg.len(), 13);
     }
 
     #[test]
-    fn registers_19_tools_with_team() {
+    fn registers_20_tools_with_team() {
         let tmp = TempDir::new().unwrap();
         let ctx = test_ctx_with_team(&tmp);
         let mut reg = ToolRegistry::new();
         register_builtin_tools(&mut reg, ctx);
-        assert_eq!(reg.len(), 19);
+        assert_eq!(reg.len(), 20);
     }
 
     #[test]
@@ -200,7 +203,7 @@ mod tests {
         let mut reg = ToolRegistry::new();
         register_builtin_tools(&mut reg, ctx);
         let schemas = reg.get_schemas();
-        assert_eq!(schemas.len(), 19);
+        assert_eq!(schemas.len(), 20);
         for s in &schemas {
             assert_eq!(s.schema_type, "function");
             assert!(!s.function.name.is_empty());
@@ -215,13 +218,13 @@ mod tests {
         let mut reg = ToolRegistry::new();
         register_builtin_tools(&mut reg, ctx);
         let filtered = reg.get_schemas_filtered(&["shell".to_owned(), "click".to_owned()]);
-        assert_eq!(filtered.len(), 17);
+        assert_eq!(filtered.len(), 18);
     }
 
     #[test]
-    fn builtin_tool_infos_has_19() {
+    fn builtin_tool_infos_has_20() {
         let infos = builtin_tool_infos();
-        assert_eq!(infos.len(), 19);
+        assert_eq!(infos.len(), 20);
         for (name, desc) in &infos {
             assert!(!name.is_empty());
             assert!(!desc.is_empty());
@@ -382,6 +385,58 @@ mod tests {
 
         let team_dir = ws.team(&team.id);
         assert!(team_dir.shared().exists());
+    }
+
+    #[tokio::test]
+    async fn read_tool_reads_text_file() {
+        let tmp = TempDir::new().unwrap();
+        let ctx = test_ctx(&tmp);
+        // Write a text file in the agent dir
+        let file_path = ctx.agent_dir.path().join("hello.txt");
+        std::fs::write(&file_path, "Hello, World!").unwrap();
+
+        let mut reg = ToolRegistry::new();
+        register_builtin_tools(&mut reg, ctx);
+
+        let result = reg
+            .execute("read", serde_json::json!({"path": "hello.txt"}))
+            .await
+            .unwrap();
+        assert!(result.text.contains("Hello, World!"));
+        assert!(result.images.is_empty());
+    }
+
+    #[tokio::test]
+    async fn read_tool_reads_image_file() {
+        let tmp = TempDir::new().unwrap();
+        let ctx = test_ctx(&tmp);
+        let file_path = ctx.agent_dir.path().join("test.png");
+        std::fs::write(&file_path, b"fake-png-bytes").unwrap();
+
+        let mut reg = ToolRegistry::new();
+        register_builtin_tools(&mut reg, ctx);
+
+        let result = reg
+            .execute("read", serde_json::json!({"path": "test.png"}))
+            .await
+            .unwrap();
+        assert!(result.text.contains("test.png"));
+        assert_eq!(result.images.len(), 1);
+        assert_eq!(result.images[0].mime_type, "image/png");
+    }
+
+    #[tokio::test]
+    async fn read_tool_file_not_found() {
+        let tmp = TempDir::new().unwrap();
+        let ctx = test_ctx(&tmp);
+        let mut reg = ToolRegistry::new();
+        register_builtin_tools(&mut reg, ctx);
+
+        let result = reg
+            .execute("read", serde_json::json!({"path": "nope.txt"}))
+            .await
+            .unwrap();
+        assert!(result.text.contains("file not found"));
     }
 
     #[tokio::test]
