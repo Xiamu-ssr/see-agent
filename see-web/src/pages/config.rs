@@ -8,12 +8,23 @@ use crate::api;
 // ---------------------------------------------------------------------------
 
 fn resolve_ref<'a>(schema: &'a Value, definitions: &'a Value) -> &'a Value {
+    // Direct $ref
     if let Some(ref_path) = schema.get("$ref").and_then(|r| r.as_str()) {
         let name = ref_path.strip_prefix("#/definitions/").unwrap_or(ref_path);
-        definitions.get(name).unwrap_or(schema)
-    } else {
-        schema
+        return definitions.get(name).unwrap_or(schema);
     }
+    // allOf: [{$ref: ...}] wrapper (schemars default format)
+    if let Some(all_of) = schema.get("allOf").and_then(|a| a.as_array()) {
+        for item in all_of {
+            if let Some(ref_path) = item.get("$ref").and_then(|r| r.as_str()) {
+                let name = ref_path.strip_prefix("#/definitions/").unwrap_or(ref_path);
+                if let Some(resolved) = definitions.get(name) {
+                    return resolved;
+                }
+            }
+        }
+    }
+    schema
 }
 
 fn format_section_name(name: &str) -> String {
