@@ -23,8 +23,16 @@ pub async fn run(agent_id: &str, workspace_path: &str) {
 
     info!(agent = agent_id, "worker starting");
 
-    // 1. Load merged config: default < config.json < agent.json < env vars
-    let config = match load_agent_config(&workspace, agent_id) {
+    // 1. Look up team membership (needed for config merge chain)
+    let team_dir = find_agent_team(&workspace, agent_id);
+    let team_id = team_dir.as_ref().and_then(|td| {
+        td.path()
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+    });
+
+    // 2. Load merged config: default < config.json < team.json.config < agent.json < env vars
+    let config = match load_agent_config(&workspace, agent_id, team_id.as_deref()) {
         Ok(c) => c,
         Err(e) => {
             eprintln!("Failed to load config: {e}");
@@ -32,14 +40,11 @@ pub async fn run(agent_id: &str, workspace_path: &str) {
         }
     };
 
-    // 2. Create Brain (LLM client)
+    // 3. Create Brain (LLM client)
     let brain = Box::new(OpenAiBrain::new(&config.llm));
 
-    // 3. Create Eye (screen capture)
+    // 4. Create Eye (screen capture)
     let eye: Arc<dyn see_agent_corp::eye::Eye> = create_eye();
-
-    // 4. Look up team membership (optional)
-    let team_dir = find_agent_team(&workspace, agent_id);
 
     // 5. Create ToolContext and register builtin tools
     let tool_ctx = Arc::new(ToolContext {
@@ -73,7 +78,7 @@ pub async fn run(agent_id: &str, workspace_path: &str) {
 
     // 8. Create conversation context
     let mut conv_ctx =
-        ConversationContext::new(&system_prompt, config.screen.max_images as usize, None);
+        ConversationContext::new(&system_prompt, config.agent.max_images as usize, None);
 
     // 9. Set up SIGUSR1 handler to wake the inbox drain loop
     let (wake_tx, mut wake_rx) =

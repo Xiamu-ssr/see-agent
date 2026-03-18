@@ -301,8 +301,9 @@ pub fn AgentDetail() -> impl IntoView {
         });
     };
 
-    // --- Tool toggle handler ---
+    // --- Tool toggle handler (per-agent) ---
     let toggle_tool = move |name: String, new_disabled: bool| {
+        let id = agent_id.get_untracked();
         let body = serde_json::json!({ "disabled": new_disabled });
         tools_list.update(|list| {
             if let Some(tool) = list.iter_mut().find(|t| t.name == name) {
@@ -310,8 +311,11 @@ pub fn AgentDetail() -> impl IntoView {
             }
         });
         wasm_bindgen_futures::spawn_local(async move {
-            let _ =
-                api::post::<serde_json::Value>(&format!("/tools/{name}/toggle"), &body).await;
+            let _ = api::post::<serde_json::Value>(
+                &format!("/agents/{id}/tools/{name}/toggle"),
+                &body,
+            )
+            .await;
         });
     };
 

@@ -54,4 +54,6 @@ pub struct TeamDefinition {
     pub leader: String,
     pub status: TeamStatus,
     pub created_at: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub config: Option<serde_json::Value>,
 }

@@ -3,6 +3,7 @@ use axum::http::StatusCode;
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 use see_agent_corp::tool::builtin_tool_infos;
 
@@ -43,37 +44,73 @@ async fn list_tools_handler(
     Ok(Json(tools))
 }
 
-async fn toggle_tool_handler(
+/// Per-agent tool toggle: reads/writes to agent.json, not config.json.
+async fn toggle_agent_tool_handler(
     State(state): State<AppState>,
-    Path(tool_name): Path<String>,
+    Path((agent_id, tool_name)): Path<(String, String)>,
     Json(req): Json<ToggleRequest>,
 ) -> Result<Json<StatusResponse>, StatusCode> {
-    let mut config = state.inner.config.write().await;
+    let agent_dir = state.workspace().agent(&agent_id);
+    let agent_json_path = agent_dir.agent_json();
 
-    if req.disabled {
-        if !config.tools.disabled.contains(&tool_name) {
-            config.tools.disabled.push(tool_name.clone());
-        }
+    // Read existing agent.json (or start from minimal object)
+    let mut agent_value: Value = if agent_json_path.exists() {
+        let content =
+            std::fs::read_to_string(&agent_json_path).map_err(|_| StatusCode::NOT_FOUND)?;
+        serde_json::from_str(&content).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
     } else {
-        config.tools.disabled.retain(|t| t != &tool_name);
+        return Err(StatusCode::NOT_FOUND);
+    };
+
+    // Ensure tools.disabled array exists
+    let obj = agent_value
+        .as_object_mut()
+        .ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
+    if !obj.contains_key("tools") {
+        obj.insert(
+            "tools".to_owned(),
+            serde_json::json!({"disabled": []}),
+        );
+    }
+    let tools_obj = obj
+        .get_mut("tools")
+        .and_then(|v| v.as_object_mut())
+        .ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
+    if !tools_obj.contains_key("disabled") {
+        tools_obj.insert("disabled".to_owned(), serde_json::json!([]));
     }
 
-    // Persist to disk
-    let config_path = state.workspace().config();
-    let config_json = serde_json::to_string_pretty(&*config)
+    let disabled_arr = tools_obj
+        .get_mut("disabled")
+        .and_then(|v| v.as_array_mut())
+        .ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    if req.disabled {
+        let tool_val = Value::String(tool_name.clone());
+        if !disabled_arr.contains(&tool_val) {
+            disabled_arr.push(tool_val);
+        }
+    } else {
+        disabled_arr.retain(|v| v.as_str() != Some(&tool_name));
+    }
+
+    // Write back to agent.json
+    let json_str = serde_json::to_string_pretty(&agent_value)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    std::fs::write(&config_path, config_json)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    std::fs::write(&agent_json_path, json_str).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let action = if req.disabled { "disabled" } else { "enabled" };
     Ok(Json(StatusResponse {
-        status: format!("{tool_name} {action}"),
+        status: format!("{tool_name} {action} for agent {agent_id}"),
     }))
 }
 
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/tools", get(list_tools_handler))
-        .route("/tools/{tool_name}/toggle", post(toggle_tool_handler))
+        .route(
+            "/agents/{agent_id}/tools/{tool_name}/toggle",
+            post(toggle_agent_tool_handler),
+        )
         .with_state(state)
 }

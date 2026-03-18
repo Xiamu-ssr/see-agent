@@ -36,10 +36,17 @@ pub fn load_config(workspace: &WorkspaceDir) -> Result<Config> {
     Ok(config)
 }
 
-/// Load agent-specific config, merging global → agent.json → env vars.
+/// Load agent-specific config with full merge chain:
 ///
-///   DEFAULT_CONFIG < config.json < agent.json < SAC_* env vars
-pub fn load_agent_config(workspace: &WorkspaceDir, agent_id: &str) -> Result<Config> {
+///   DEFAULT_CONFIG < config.json < team.json.config < agent.json < SAC_* env vars
+///
+/// Pass `team_id = None` when the agent is not part of any team.
+pub fn load_agent_config(
+    workspace: &WorkspaceDir,
+    agent_id: &str,
+    team_id: Option<&str>,
+) -> Result<Config> {
+    // 1. DEFAULT < config.json
     let global = {
         let default = serde_json::to_value(Config::default())?;
         if workspace.config().exists() {
@@ -54,6 +61,33 @@ pub fn load_agent_config(workspace: &WorkspaceDir, agent_id: &str) -> Result<Con
         }
     };
 
+    // 2. < team.json.config (if team_id provided)
+    let after_team = if let Some(tid) = team_id {
+        let team_dir = workspace.team(tid);
+        let team_json_path = team_dir.team_json();
+        if team_json_path.exists() {
+            let team_content = std::fs::read_to_string(&team_json_path)?;
+            let team_value: Value =
+                serde_json::from_str(&team_content).map_err(|e| CorpError::Config {
+                    message: format!("invalid team.json for {tid}: {e}"),
+                })?;
+            if let Some(team_config) = team_value.get("config") {
+                if team_config.is_object() {
+                    deep_merge(&global, team_config)
+                } else {
+                    global
+                }
+            } else {
+                global
+            }
+        } else {
+            global
+        }
+    } else {
+        global
+    };
+
+    // 3. < agent.json
     let agent_dir = workspace.agent(agent_id);
     let merged = if agent_dir.agent_json().exists() {
         let agent_content = std::fs::read_to_string(agent_dir.agent_json())?;
@@ -65,11 +99,12 @@ pub fn load_agent_config(workspace: &WorkspaceDir, agent_id: &str) -> Result<Con
         if let Some(obj) = agent_value.as_object_mut() {
             obj.remove("id");
         }
-        deep_merge(&global, &agent_value)
+        deep_merge(&after_team, &agent_value)
     } else {
-        global
+        after_team
     };
 
+    // 4. < SAC_* env vars
     let merged = apply_env_overrides(merged, |k| std::env::var(k));
 
     let config: Config = serde_json::from_value(merged).map_err(|e| CorpError::Config {
@@ -138,7 +173,6 @@ mod tests {
         let config = load_config(&ws).unwrap();
         assert_eq!(config.llm.model, "gpt-4o");
         assert_eq!(config.agent.max_steps, 50);
-        assert_eq!(config.screen.max_images, 5);
     }
 
     #[test]
@@ -155,7 +189,6 @@ mod tests {
         assert_eq!(config.llm.model, "claude-opus-4-6");
         assert_eq!(config.agent.max_steps, 100);
         assert_eq!(config.llm.base_url, "https://api.openai.com/v1");
-        assert_eq!(config.screen.max_images, 5);
     }
 
     #[test]
@@ -176,7 +209,7 @@ mod tests {
         )
         .unwrap();
 
-        let config = load_agent_config(&ws, "test-agent").unwrap();
+        let config = load_agent_config(&ws, "test-agent", None).unwrap();
         assert_eq!(config.llm.model, "claude-opus-4-6");
         assert_eq!(config.llm.api_key, "sk-global");
         assert_eq!(config.tools.disabled, vec!["shell"]);
@@ -240,7 +273,122 @@ mod tests {
     fn agent_config_without_agent_json() {
         let (_tmp, ws) = setup_workspace();
 
-        let config = load_agent_config(&ws, "nonexistent").unwrap();
+        let config = load_agent_config(&ws, "nonexistent", None).unwrap();
         assert_eq!(config.llm.model, "gpt-4o");
+    }
+
+    #[test]
+    fn three_level_merge_global_team_agent() {
+        let (_tmp, ws) = setup_workspace();
+
+        // Global config: model = gpt-4o, api_key = sk-global
+        std::fs::write(
+            ws.config(),
+            r#"{"llm": {"model": "gpt-4o", "api_key": "sk-global"}, "agent": {"max_steps": 30}}"#,
+        )
+        .unwrap();
+
+        // Team config: overrides model, adds max_steps override
+        let team_dir = ws.team("team-alpha");
+        std::fs::create_dir_all(team_dir.path()).unwrap();
+        std::fs::write(
+            team_dir.team_json(),
+            r#"{"id": "team-alpha", "name": "Alpha", "members": [], "leader": "a1", "status": "created", "created_at": "2025-01-01",
+                "config": {"llm": {"model": "claude-opus-4-6"}, "agent": {"max_steps": 80}}}"#,
+        )
+        .unwrap();
+
+        // Agent config: overrides model again
+        let agent_dir = ws.agent("a1");
+        std::fs::create_dir_all(agent_dir.path()).unwrap();
+        std::fs::write(
+            agent_dir.agent_json(),
+            r#"{"id": "a1", "llm": {"model": "gpt-4o-mini"}, "tools": {"disabled": ["shell"]}}"#,
+        )
+        .unwrap();
+
+        let config = load_agent_config(&ws, "a1", Some("team-alpha")).unwrap();
+        // Agent level wins for model
+        assert_eq!(config.llm.model, "gpt-4o-mini");
+        // Global level api_key preserved through team + agent merges
+        assert_eq!(config.llm.api_key, "sk-global");
+        // Team level max_steps wins (agent didn't override it)
+        assert_eq!(config.agent.max_steps, 80);
+        // Agent level tools
+        assert_eq!(config.tools.disabled, vec!["shell"]);
+    }
+
+    #[test]
+    fn team_config_overrides_global() {
+        let (_tmp, ws) = setup_workspace();
+
+        std::fs::write(
+            ws.config(),
+            r#"{"llm": {"model": "gpt-4o"}, "agent": {"max_steps": 50}}"#,
+        )
+        .unwrap();
+
+        let team_dir = ws.team("team-beta");
+        std::fs::create_dir_all(team_dir.path()).unwrap();
+        std::fs::write(
+            team_dir.team_json(),
+            r#"{"id": "team-beta", "name": "Beta", "members": [], "leader": "b1", "status": "created", "created_at": "2025-01-01",
+                "config": {"llm": {"model": "claude-opus-4-6"}, "agent": {"max_steps": 100}}}"#,
+        )
+        .unwrap();
+
+        // No agent.json — just global + team
+        let config = load_agent_config(&ws, "b1", Some("team-beta")).unwrap();
+        assert_eq!(config.llm.model, "claude-opus-4-6");
+        assert_eq!(config.agent.max_steps, 100);
+    }
+
+    #[test]
+    fn agent_config_overrides_team() {
+        let (_tmp, ws) = setup_workspace();
+
+        let team_dir = ws.team("team-gamma");
+        std::fs::create_dir_all(team_dir.path()).unwrap();
+        std::fs::write(
+            team_dir.team_json(),
+            r#"{"id": "team-gamma", "name": "Gamma", "members": [], "leader": "g1", "status": "created", "created_at": "2025-01-01",
+                "config": {"tools": {"disabled": ["shell", "drag"]}}}"#,
+        )
+        .unwrap();
+
+        let agent_dir = ws.agent("g1");
+        std::fs::create_dir_all(agent_dir.path()).unwrap();
+        std::fs::write(
+            agent_dir.agent_json(),
+            r#"{"id": "g1", "tools": {"disabled": ["screenshot"]}}"#,
+        )
+        .unwrap();
+
+        let config = load_agent_config(&ws, "g1", Some("team-gamma")).unwrap();
+        // Agent array replaces team array entirely (deep_merge behavior)
+        assert_eq!(config.tools.disabled, vec!["screenshot"]);
+    }
+
+    #[test]
+    fn no_team_id_still_works() {
+        let (_tmp, ws) = setup_workspace();
+
+        std::fs::write(
+            ws.config(),
+            r#"{"llm": {"model": "gpt-4o", "api_key": "sk-global"}}"#,
+        )
+        .unwrap();
+
+        let agent_dir = ws.agent("solo");
+        std::fs::create_dir_all(agent_dir.path()).unwrap();
+        std::fs::write(
+            agent_dir.agent_json(),
+            r#"{"id": "solo", "llm": {"model": "claude-opus-4-6"}}"#,
+        )
+        .unwrap();
+
+        let config = load_agent_config(&ws, "solo", None).unwrap();
+        assert_eq!(config.llm.model, "claude-opus-4-6");
+        assert_eq!(config.llm.api_key, "sk-global");
     }
 }
