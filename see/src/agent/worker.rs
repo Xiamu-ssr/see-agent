@@ -182,7 +182,7 @@ mod tests {
         send_to_inbox(&inbox, &make_msg("shutdown", MessagePriority::Collect)).unwrap();
 
         let brain = Box::new(MockBrain);
-        let eye = Box::new(MockEye);
+        let eye: std::sync::Arc<dyn crate::eye::Eye> = std::sync::Arc::new(MockEye);
         let registry = ToolRegistry::new();
         let config = Config::default();
         let agent_loop = crate::agent::AgentLoop::new(brain, eye, registry, config, "test".into());

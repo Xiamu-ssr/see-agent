@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use std::time::Instant;
 
 use tracing::{info, warn};
@@ -31,7 +32,7 @@ const SCREEN_TOOLS: &[&str] = &[
 /// - **Mode B** (`run_one_turn`): Inbox/ReAct — hot-reload prompt → LLM → tool → back to idle.
 pub struct AgentLoop {
     brain: Box<dyn Brain>,
-    eye: Box<dyn Eye>,
+    eye: Arc<dyn Eye>,
     registry: ToolRegistry,
     config: Config,
     on_step: Option<StepCallback>,
@@ -51,7 +52,7 @@ pub struct AgentLoop {
 impl AgentLoop {
     pub fn new(
         brain: Box<dyn Brain>,
-        eye: Box<dyn Eye>,
+        eye: Arc<dyn Eye>,
         registry: ToolRegistry,
         config: Config,
         agent_id: String,
@@ -622,7 +623,7 @@ mod tests {
 
     fn make_loop(responses: Vec<BrainResponse>) -> AgentLoop {
         let brain = Box::new(MockBrain::new(responses));
-        let eye = Box::new(MockEye);
+        let eye: Arc<dyn Eye> = Arc::new(MockEye);
         let registry = ToolRegistry::new();
         let config = Config::default();
         AgentLoop::new(brain, eye, registry, config, "test-agent".to_owned())

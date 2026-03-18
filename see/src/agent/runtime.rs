@@ -179,7 +179,7 @@ mod tests {
 
     fn make_runtime() -> AgentRuntime {
         let brain = Box::new(MockBrain);
-        let eye = Box::new(MockEye);
+        let eye: std::sync::Arc<dyn crate::eye::Eye> = std::sync::Arc::new(MockEye);
         let registry = ToolRegistry::new();
         let config = Config::default();
         let agent_loop = AgentLoop::new(brain, eye, registry, config, "test".into());
