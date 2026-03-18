@@ -28,12 +28,15 @@ struct MemberInfo {
 struct TaskItem {
     id: String,
     title: String,
+    #[allow(dead_code)]
     description: String,
     status: String,
     assigned_to: Option<String>,
     #[allow(dead_code)]
     depends_on: Vec<String>,
+    #[allow(dead_code)]
     result: Option<String>,
+    #[allow(dead_code)]
     created_by: String,
     #[allow(dead_code)]
     created_at: String,
@@ -100,13 +103,12 @@ pub fn Teams() -> impl IntoView {
 }
 
 // ---------------------------------------------------------------------------
-// Detail page — tabbed view
+// Detail page — single-page view (Members + Tasks + Messages all visible)
 // ---------------------------------------------------------------------------
 
 #[component]
 pub fn TeamDetail() -> impl IntoView {
     let params = use_params_map();
-    let selected_tab = RwSignal::new(String::from("members"));
     let tasks = RwSignal::new(Vec::<TaskItem>::new());
     let messages = RwSignal::new(Vec::<TeamMessage>::new());
     let new_task_title = RwSignal::new(String::new());
@@ -216,173 +218,138 @@ pub fn TeamDetail() -> impl IntoView {
                                 </Flex>
                                 <Divider />
 
-                                <TabList selected_value=selected_tab>
-                                    <Tab value="members">"Members"</Tab>
-                                    <Tab value="tasks">"Task Board"</Tab>
-                                    <Tab value="messages">"Messages"</Tab>
-                                </TabList>
+                                // --- Members section ---
+                                <Card>
+                                    <Caption1Strong>"Members"</Caption1Strong>
+                                    <Table>
+                                        <TableHeader>
+                                            <TableRow>
+                                                <TableHeaderCell>"Agent ID"</TableHeaderCell>
+                                                <TableHeaderCell>"Role"</TableHeaderCell>
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {members.into_iter().map(|m| {
+                                                let agent_href = format!("/agents/{}", m.id);
+                                                let mid = m.id;
+                                                let role = m.role;
+                                                view! {
+                                                    <TableRow>
+                                                        <TableCell><TableCellLayout><A href=agent_href>{mid}</A></TableCellLayout></TableCell>
+                                                        <TableCell><TableCellLayout>{role}</TableCellLayout></TableCell>
+                                                    </TableRow>
+                                                }
+                                            }).collect_view()}
+                                        </TableBody>
+                                    </Table>
+                                </Card>
 
-                                <div style="margin-top:12px">
+                                // --- Task Board section ---
+                                <Card>
+                                    <Caption1Strong>"Task Board"</Caption1Strong>
+                                    <Flex vertical=false gap=FlexGap::Small align=FlexAlign::Center>
+                                        <Input value=new_task_title placeholder="Task title..." />
+                                        <Input value=new_task_desc placeholder="Description (optional)" />
+                                        <Button appearance=ButtonAppearance::Primary on_click=create_task>"Create"</Button>
+                                    </Flex>
+                                    <Divider />
                                     {move || {
-                                        let current_tab = selected_tab.get();
-                                        match current_tab.as_str() {
-                                            // ----- Members -----
-                                            "members" => {
-                                                let members = members.clone();
-                                                view! {
-                                                    <Table>
-                                                        <TableHeader>
-                                                            <TableRow>
-                                                                <TableHeaderCell>"Agent ID"</TableHeaderCell>
-                                                                <TableHeaderCell>"Role"</TableHeaderCell>
-                                                            </TableRow>
-                                                        </TableHeader>
-                                                        <TableBody>
-                                                            {members.into_iter().map(|m| {
-                                                                let agent_href = format!("/agents/{}", m.id);
-                                                                let mid = m.id;
-                                                                let role = m.role;
-                                                                view! {
-                                                                    <TableRow>
-                                                                        <TableCell><TableCellLayout><A href=agent_href>{mid}</A></TableCellLayout></TableCell>
-                                                                        <TableCell><TableCellLayout>{role}</TableCellLayout></TableCell>
-                                                                    </TableRow>
-                                                                }
-                                                            }).collect_view()}
-                                                        </TableBody>
-                                                    </Table>
-                                                }.into_any()
-                                            }
-
-                                            // ----- Task Board -----
-                                            "tasks" => {
-                                                view! {
-                                                    <Card>
-                                                        <Flex vertical=false gap=FlexGap::Small align=FlexAlign::Center>
-                                                            <Input value=new_task_title placeholder="Task title..." />
-                                                            <Input value=new_task_desc placeholder="Description (optional)" />
-                                                            <Button appearance=ButtonAppearance::Primary on_click=create_task>"Create Task"</Button>
-                                                        </Flex>
-                                                    </Card>
-                                                    <Grid cols=4 x_gap=8 y_gap=8>
-                                                        {["pending", "claimed", "in_progress", "done"].into_iter().map(|status| {
-                                                            let status_label = match status {
-                                                                "pending" => "Pending",
-                                                                "claimed" => "Claimed",
-                                                                "in_progress" => "In Progress",
-                                                                "done" => "Done",
-                                                                _ => status,
+                                        let all_tasks = tasks.get();
+                                        if all_tasks.is_empty() {
+                                            view! { <Caption1>"No tasks yet"</Caption1> }.into_any()
+                                        } else {
+                                            view! {
+                                                <Table>
+                                                    <TableHeader>
+                                                        <TableRow>
+                                                            <TableHeaderCell>"Title"</TableHeaderCell>
+                                                            <TableHeaderCell>"Status"</TableHeaderCell>
+                                                            <TableHeaderCell>"Assignee"</TableHeaderCell>
+                                                            <TableHeaderCell>"Action"</TableHeaderCell>
+                                                        </TableRow>
+                                                    </TableHeader>
+                                                    <TableBody>
+                                                        {all_tasks.into_iter().map(|task| {
+                                                            let task_id = task.id.clone();
+                                                            let status_color = match task.status.as_str() {
+                                                                "done" => BadgeColor::Success,
+                                                                "in_progress" => BadgeColor::Brand,
+                                                                "claimed" => BadgeColor::Informative,
+                                                                _ => BadgeColor::Subtle,
                                                             };
-                                                            let status_owned = status.to_string();
+                                                            let next_status = match task.status.as_str() {
+                                                                "pending" => Some(("claimed", "Claim")),
+                                                                "claimed" => Some(("in_progress", "Start")),
+                                                                "in_progress" => Some(("done", "Complete")),
+                                                                _ => None,
+                                                            };
+                                                            let assignee = task.assigned_to.unwrap_or_else(|| "—".into());
+                                                            let status_label = task.status;
                                                             view! {
-                                                                <GridItem>
-                                                                    <Card>
-                                                                        <Caption1Strong>{status_label}</Caption1Strong>
-                                                                        <Divider />
-                                                                        {move || {
-                                                                            let all_tasks = tasks.get();
-                                                                            let filtered: Vec<_> = all_tasks.into_iter()
-                                                                                .filter(|t| t.status == status_owned)
-                                                                                .collect();
-
-                                                                            if filtered.is_empty() {
-                                                                                view! { <Caption1>"—"</Caption1> }.into_any()
-                                                                            } else {
-                                                                                filtered.into_iter().map(|task| {
-                                                                                    let task_id = task.id.clone();
-                                                                                    let next_status = match task.status.as_str() {
-                                                                                        "pending" => Some("claimed"),
-                                                                                        "claimed" => Some("in_progress"),
-                                                                                        "in_progress" => Some("done"),
-                                                                                        _ => None,
-                                                                                    };
-                                                                                    view! {
-                                                                                        <Card>
-                                                                                            <Body1><b>{task.title}</b></Body1>
-                                                                                            {if !task.description.is_empty() {
-                                                                                                Some(view! { <Caption1>{task.description}</Caption1> })
-                                                                                            } else { None }}
-                                                                                            <Flex vertical=false gap=FlexGap::Small>
-                                                                                                {task.assigned_to.map(|a| view! {
-                                                                                                    <Badge color=BadgeColor::Brand>{a}</Badge>
-                                                                                                })}
-                                                                                                <Caption1>{format!("by {}", task.created_by)}</Caption1>
-                                                                                            </Flex>
-                                                                                            {task.result.map(|r| view! {
-                                                                                                <MessageBar><MessageBarBody>{r}</MessageBarBody></MessageBar>
-                                                                                            })}
-                                                                                            {next_status.map(|ns| {
-                                                                                                let tid = task_id.clone();
-                                                                                                let ns_str = ns.to_string();
-                                                                                                let label = match ns {
-                                                                                                    "claimed" => "Claim",
-                                                                                                    "in_progress" => "Start",
-                                                                                                    "done" => "Complete",
-                                                                                                    _ => ns,
-                                                                                                };
-                                                                                                view! {
-                                                                                                    <Button
-                                                                                                        appearance=ButtonAppearance::Primary
-                                                                                                        on_click=move |_| update_task_status(tid.clone(), ns_str.clone())
-                                                                                                    >{label}</Button>
-                                                                                                }
-                                                                                            })}
-                                                                                        </Card>
-                                                                                    }
-                                                                                }).collect_view().into_any()
+                                                                <TableRow>
+                                                                    <TableCell><TableCellLayout>
+                                                                        <Body1>{task.title}</Body1>
+                                                                    </TableCellLayout></TableCell>
+                                                                    <TableCell><TableCellLayout>
+                                                                        <Badge color=status_color>{status_label}</Badge>
+                                                                    </TableCellLayout></TableCell>
+                                                                    <TableCell><TableCellLayout>{assignee}</TableCellLayout></TableCell>
+                                                                    <TableCell><TableCellLayout>
+                                                                        {next_status.map(|(ns, label)| {
+                                                                            let tid = task_id.clone();
+                                                                            let ns_str = ns.to_string();
+                                                                            view! {
+                                                                                <Button
+                                                                                    size=ButtonSize::Small
+                                                                                    appearance=ButtonAppearance::Primary
+                                                                                    on_click=move |_| update_task_status(tid.clone(), ns_str.clone())
+                                                                                >{label}</Button>
                                                                             }
-                                                                        }}
-                                                                    </Card>
-                                                                </GridItem>
+                                                                        })}
+                                                                    </TableCellLayout></TableCell>
+                                                                </TableRow>
                                                             }
                                                         }).collect_view()}
-                                                    </Grid>
-                                                }.into_any()
-                                            }
-
-                                            // ----- Messages -----
-                                            "messages" => {
-                                                view! {
-                                                    <div>
-                                                        {move || {
-                                                            let msgs = messages.get();
-                                                            if msgs.is_empty() {
-                                                                view! { <MessageBar><MessageBarBody>"No messages yet"</MessageBarBody></MessageBar> }.into_any()
-                                                            } else {
-                                                                msgs.into_iter().map(|m| {
-                                                                    let priority_color = match m.priority.as_str() {
-                                                                        "steer" => BadgeColor::Warning,
-                                                                        _ => BadgeColor::Brand,
-                                                                    };
-                                                                    let sender = m.sender;
-                                                                    let priority = m.priority;
-                                                                    let timestamp = m.timestamp;
-                                                                    let content = m.content;
-                                                                    view! {
-                                                                        <Card>
-                                                                            <Flex vertical=false justify=FlexJustify::SpaceBetween align=FlexAlign::Center>
-                                                                                <Body1><b>{sender}</b></Body1>
-                                                                                <Flex vertical=false gap=FlexGap::Small align=FlexAlign::Center>
-                                                                                    <Badge color=priority_color>{priority}</Badge>
-                                                                                    <Caption1>{timestamp}</Caption1>
-                                                                                </Flex>
-                                                                            </Flex>
-                                                                            <Body1>{content}</Body1>
-                                                                        </Card>
-                                                                    }
-                                                                }).collect_view().into_any()
-                                                            }
-                                                        }}
-                                                    </div>
-                                                }.into_any()
-                                            }
-
-                                            _ => view! {
-                                                <MessageBar><MessageBarBody>"Unknown tab"</MessageBarBody></MessageBar>
-                                            }.into_any(),
+                                                    </TableBody>
+                                                </Table>
+                                            }.into_any()
                                         }
                                     }}
-                                </div>
+                                </Card>
+
+                                // --- Messages section ---
+                                <Card>
+                                    <Caption1Strong>"Messages"</Caption1Strong>
+                                    {move || {
+                                        let msgs = messages.get();
+                                        if msgs.is_empty() {
+                                            view! { <Caption1>"No messages yet"</Caption1> }.into_any()
+                                        } else {
+                                            msgs.into_iter().map(|m| {
+                                                let priority_color = match m.priority.as_str() {
+                                                    "steer" => BadgeColor::Warning,
+                                                    _ => BadgeColor::Brand,
+                                                };
+                                                let sender = m.sender;
+                                                let priority = m.priority;
+                                                let timestamp = m.timestamp;
+                                                let content = m.content;
+                                                view! {
+                                                    <div style="padding:8px 0;border-bottom:1px solid var(--colorNeutralStroke2)">
+                                                        <Flex vertical=false justify=FlexJustify::SpaceBetween align=FlexAlign::Center>
+                                                            <Body1><b>{sender}</b></Body1>
+                                                            <Flex vertical=false gap=FlexGap::Small align=FlexAlign::Center>
+                                                                <Badge color=priority_color>{priority}</Badge>
+                                                                <Caption1>{timestamp}</Caption1>
+                                                            </Flex>
+                                                        </Flex>
+                                                        <Body1>{content}</Body1>
+                                                    </div>
+                                                }
+                                            }).collect_view().into_any()
+                                        }
+                                    }}
+                                </Card>
                             }.into_any()
                         }
                         None => view! {
