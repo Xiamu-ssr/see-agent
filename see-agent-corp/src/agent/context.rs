@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use serde_json::{json, Value};
 
 use crate::consts::{CHARS_PER_TOKEN, TOKENS_PER_IMAGE};
@@ -12,6 +14,27 @@ pub struct ToolResultImage {
     pub base64: String,
     pub mime_type: String,
     pub detail: String,
+}
+
+// ---------------------------------------------------------------------------
+// ImageContent
+// ---------------------------------------------------------------------------
+
+/// How an image is stored in the conversation context.
+#[derive(Debug, Clone)]
+pub enum ImageContent {
+    /// Path to screenshot file on disk — resolved to base64 only at LLM call time.
+    PathRef {
+        path: PathBuf,
+        detail: String,
+        mime_type: String,
+    },
+    /// Inline base64 data — used only at the LLM call boundary.
+    Inline {
+        base64: String,
+        detail: String,
+        mime_type: String,
+    },
 }
 
 // ---------------------------------------------------------------------------
@@ -197,6 +220,27 @@ impl ConversationContext {
         }));
     }
 
+    /// Store a path reference to a screenshot on disk.
+    ///
+    /// The image is NOT loaded into memory here — it will be resolved to base64
+    /// only when `get_messages_for_llm()` is called.
+    pub fn add_screenshot_ref(&mut self, path: PathBuf, detail: &str, mime_type: &str) {
+        let msg = json!({
+            "role": "user",
+            "content": [{
+                "type": "image_path_ref",
+                "path": path.to_string_lossy(),
+                "detail": detail,
+                "mime_type": mime_type,
+            }]
+        });
+        self.messages.push(msg);
+        self.fire_append(json!({
+            "type": "screenshot",
+            "detail": detail,
+        }));
+    }
+
     /// Add a user reply (from call_user or inbox).
     pub fn add_user_reply(&mut self, text: &str, sender: &str, priority: &str) {
         let msg = json!({"role": "user", "content": text});
@@ -270,6 +314,136 @@ impl ConversationContext {
         // 4. Rebuild output
         let mut output = Vec::with_capacity(self.messages.len());
         for (idx, msg) in self.messages.iter().enumerate() {
+            if let Some(drop_parts) = msgs_with_drops.get(&idx) {
+                let drop_set: std::collections::HashSet<usize> =
+                    drop_parts.iter().copied().collect();
+
+                if let Some(parts) = msg.get("content").and_then(|c| c.as_array()) {
+                    let remaining: Vec<&Value> = parts
+                        .iter()
+                        .enumerate()
+                        .filter(|(pi, _)| !drop_set.contains(pi))
+                        .map(|(_, p)| p)
+                        .collect();
+
+                    let role = msg.get("role").cloned().unwrap_or(json!("user"));
+                    let placeholder = json!({"type": "text", "text": "[Screenshot omitted]"});
+
+                    if remaining.is_empty() {
+                        output.push(json!({
+                            "role": role,
+                            "content": [placeholder],
+                        }));
+                    } else {
+                        let mut new_parts = vec![placeholder];
+                        new_parts.extend(remaining.into_iter().cloned());
+                        output.push(json!({
+                            "role": role,
+                            "content": new_parts,
+                        }));
+                    }
+                } else {
+                    output.push(msg.clone());
+                }
+            } else {
+                output.push(msg.clone());
+            }
+        }
+
+        output
+    }
+
+    /// Get messages for LLM call, resolving path refs to base64 and applying
+    /// the sliding window.
+    ///
+    /// This is the method to use when actually calling the LLM. Path refs
+    /// are read from disk and converted to inline base64 data URLs.
+    pub fn get_messages_for_llm(&self) -> Vec<Value> {
+        // 1. Resolve all image_path_ref entries to image_url
+        let resolved: Vec<Value> = self
+            .messages
+            .iter()
+            .map(|msg| {
+                if let Some(parts) = msg.get("content").and_then(|c| c.as_array()) {
+                    let new_parts: Vec<Value> = parts
+                        .iter()
+                        .map(|part| {
+                            if part.get("type").and_then(|t| t.as_str())
+                                == Some("image_path_ref")
+                            {
+                                let path_str = part
+                                    .get("path")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("");
+                                let detail = part
+                                    .get("detail")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("auto");
+                                let mime = part
+                                    .get("mime_type")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("image/png");
+
+                                match std::fs::read(path_str) {
+                                    Ok(bytes) => {
+                                        use base64::Engine;
+                                        let b64 = base64::engine::general_purpose::STANDARD
+                                            .encode(&bytes);
+                                        json!({
+                                            "type": "image_url",
+                                            "image_url": {
+                                                "url": format!("data:{mime};base64,{b64}"),
+                                                "detail": detail,
+                                            }
+                                        })
+                                    }
+                                    Err(_) => {
+                                        json!({"type": "text", "text": "[Screenshot file not found]"})
+                                    }
+                                }
+                            } else {
+                                part.clone()
+                            }
+                        })
+                        .collect();
+                    let role = msg.get("role").cloned().unwrap_or(json!("user"));
+                    json!({"role": role, "content": new_parts})
+                } else {
+                    msg.clone()
+                }
+            })
+            .collect();
+
+        // 2. Apply sliding window on the resolved messages
+        let mut image_positions: Vec<(usize, Option<usize>)> = Vec::new();
+        for (msg_idx, msg) in resolved.iter().enumerate() {
+            if let Some(parts) = msg.get("content").and_then(|c| c.as_array()) {
+                for (part_idx, part) in parts.iter().enumerate() {
+                    if part.get("type").and_then(|t| t.as_str()) == Some("image_url") {
+                        image_positions.push((msg_idx, Some(part_idx)));
+                    }
+                }
+            }
+        }
+
+        if image_positions.len() <= self.max_images {
+            return resolved;
+        }
+
+        let drop_count = image_positions.len() - self.max_images;
+        let to_drop: std::collections::HashSet<(usize, Option<usize>)> =
+            image_positions[..drop_count].iter().copied().collect();
+
+        let mut msgs_with_drops: std::collections::HashMap<usize, Vec<usize>> =
+            std::collections::HashMap::new();
+        for &(msg_idx, part_idx) in &to_drop {
+            if let Some(pi) = part_idx {
+                msgs_with_drops.entry(msg_idx).or_default().push(pi);
+            }
+        }
+
+        let mut output = Vec::with_capacity(resolved.len());
+        for (idx, msg) in resolved.iter().enumerate() {
             if let Some(drop_parts) = msgs_with_drops.get(&idx) {
                 let drop_set: std::collections::HashSet<usize> =
                     drop_parts.iter().copied().collect();
@@ -631,5 +805,112 @@ mod tests {
         assert_eq!(last["role"], "user");
         let parts = last["content"].as_array().unwrap();
         assert_eq!(parts[0]["type"], "image_url");
+    }
+
+    // -----------------------------------------------------------------------
+    // ImageContent / path-ref tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn add_screenshot_ref_stores_path_placeholder() {
+        let mut ctx = make_ctx();
+        ctx.add_screenshot_ref(
+            PathBuf::from("/tmp/test.png"),
+            "low",
+            "image/png",
+        );
+
+        assert_eq!(ctx.len(), 2);
+        let msg = &ctx.messages[1];
+        assert_eq!(msg["role"], "user");
+        let parts = msg["content"].as_array().unwrap();
+        assert_eq!(parts[0]["type"], "image_path_ref");
+        assert_eq!(parts[0]["path"], "/tmp/test.png");
+        assert_eq!(parts[0]["detail"], "low");
+        assert_eq!(parts[0]["mime_type"], "image/png");
+    }
+
+    #[test]
+    fn get_messages_returns_path_refs_unresolved() {
+        let mut ctx = make_ctx();
+        ctx.add_screenshot_ref(
+            PathBuf::from("/tmp/test.png"),
+            "low",
+            "image/png",
+        );
+
+        let msgs = ctx.get_messages();
+        // get_messages() should return raw messages — path refs stay as-is
+        let parts = msgs[1]["content"].as_array().unwrap();
+        assert_eq!(parts[0]["type"], "image_path_ref");
+    }
+
+    #[test]
+    fn get_messages_for_llm_resolves_path_ref_to_base64() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let img_path = tmp.path().join("test.png");
+        // Write some fake image bytes
+        std::fs::write(&img_path, b"fake-png-data").unwrap();
+
+        let mut ctx = make_ctx();
+        ctx.add_screenshot_ref(img_path, "low", "image/png");
+
+        let msgs = ctx.get_messages_for_llm();
+        let parts = msgs[1]["content"].as_array().unwrap();
+        assert_eq!(parts[0]["type"], "image_url");
+        let url = parts[0]["image_url"]["url"].as_str().unwrap();
+        assert!(url.starts_with("data:image/png;base64,"));
+        // Verify the base64 decodes to our fake data
+        let b64_part = url.strip_prefix("data:image/png;base64,").unwrap();
+        use base64::Engine;
+        let decoded = base64::engine::general_purpose::STANDARD
+            .decode(b64_part)
+            .unwrap();
+        assert_eq!(decoded, b"fake-png-data");
+    }
+
+    #[test]
+    fn get_messages_for_llm_missing_file_becomes_placeholder() {
+        let mut ctx = make_ctx();
+        ctx.add_screenshot_ref(
+            PathBuf::from("/nonexistent/path.png"),
+            "low",
+            "image/png",
+        );
+
+        let msgs = ctx.get_messages_for_llm();
+        let parts = msgs[1]["content"].as_array().unwrap();
+        assert_eq!(parts[0]["type"], "text");
+        assert_eq!(parts[0]["text"], "[Screenshot file not found]");
+    }
+
+    #[test]
+    fn get_messages_for_llm_sliding_window_on_path_refs() {
+        let tmp = tempfile::TempDir::new().unwrap();
+
+        // Create 4 image files, max_images = 2
+        let mut ctx = ConversationContext::new("sys", 2, None);
+        for i in 0..4 {
+            let img_path = tmp.path().join(format!("img{i}.png"));
+            std::fs::write(&img_path, format!("data-{i}").as_bytes()).unwrap();
+            ctx.add_screenshot_ref(img_path, "low", "image/png");
+        }
+
+        let msgs = ctx.get_messages_for_llm();
+        assert_eq!(msgs.len(), 5); // system + 4 screenshot messages
+
+        // First 2 should be replaced with [Screenshot omitted]
+        let first_content = msgs[1]["content"].as_array().unwrap();
+        assert_eq!(first_content[0]["text"], "[Screenshot omitted]");
+
+        let second_content = msgs[2]["content"].as_array().unwrap();
+        assert_eq!(second_content[0]["text"], "[Screenshot omitted]");
+
+        // Last 2 should have resolved image_url
+        let third_content = msgs[3]["content"].as_array().unwrap();
+        assert_eq!(third_content[0]["type"], "image_url");
+
+        let fourth_content = msgs[4]["content"].as_array().unwrap();
+        assert_eq!(fourth_content[0]["type"], "image_url");
     }
 }

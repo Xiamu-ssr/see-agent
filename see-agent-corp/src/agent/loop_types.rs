@@ -22,7 +22,6 @@ pub struct StepEvent {
     pub tool_args: serde_json::Value,
     pub tool_result: String,
     pub screenshot_path: Option<String>,
-    pub wait_ms: u64,
     /// Screen-space coordinates (after scaling), None if no scaling applied.
     pub screen_tool_args: Option<serde_json::Value>,
 }

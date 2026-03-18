@@ -5,7 +5,7 @@ use tracing::{info, warn};
 
 use crate::brain::Brain;
 use crate::consts::MAX_CONSECUTIVE_ERRORS;
-use crate::eye::{find_target_resolution, scale_screenshot, scale_tool_args, Eye, Screenshot};
+use crate::eye::{scale_tool_args, Eye, Screenshot};
 use crate::tool::ToolRegistry;
 use crate::types::{Config, ToolResult};
 
@@ -44,9 +44,6 @@ pub struct AgentLoop {
     // Derived from config
     max_steps: u32,
     max_images: u32,
-    scaling_enabled: bool,
-    scaling_match: String,
-    tool_delay_ms: u64,
 }
 
 impl AgentLoop {
@@ -58,14 +55,7 @@ impl AgentLoop {
         agent_id: String,
     ) -> Self {
         let max_steps = config.agent.max_steps;
-        let max_images = config.screen.max_images;
-        let scaling_enabled = config.screen.scaling_enabled;
-        let scaling_match = match config.screen.scaling_match {
-            crate::types::ScalingMatch::AspectRatio => "aspect_ratio",
-            crate::types::ScalingMatch::PixelCount => "pixel_count",
-        }
-        .to_owned();
-        let tool_delay_ms = config.screen.tool_delay_ms;
+        let max_images = config.agent.max_images;
 
         Self {
             brain,
@@ -79,9 +69,6 @@ impl AgentLoop {
             compact_warned: false,
             max_steps,
             max_images,
-            scaling_enabled,
-            scaling_match,
-            tool_delay_ms,
         }
     }
 
@@ -99,16 +86,6 @@ impl AgentLoop {
         SCREEN_TOOLS
             .iter()
             .any(|t| names.contains(&t.to_string()))
-    }
-
-    /// Maybe scale a screenshot for the LLM.
-    fn maybe_scale(&self, screenshot: &Screenshot) -> Option<Screenshot> {
-        if !self.scaling_enabled {
-            return None;
-        }
-        let target =
-            find_target_resolution(screenshot.width, screenshot.height, &self.scaling_match)?;
-        scale_screenshot(screenshot, target.0, target.1).ok()
     }
 
     /// Convert tool schemas to serde_json::Value array for the Brain trait.
@@ -138,28 +115,23 @@ impl AgentLoop {
         let has_screen = self.has_screen_tools();
 
         // Initial screenshot
-        let (screenshot, scaled) = if has_screen {
+        let screenshot = if has_screen {
             match self.eye.capture().await {
-                Ok(ss) => {
-                    let sc = self.maybe_scale(&ss);
-                    (Some(ss), sc)
-                }
+                Ok(ss) => Some(ss),
                 Err(e) => {
                     warn!("initial capture failed: {e}");
-                    (None, None)
+                    None
                 }
             }
         } else {
-            (None, None)
+            None
         };
 
         // Build context
         let mut ctx = ConversationContext::new(system_prompt, self.max_images as usize, None);
 
         // Add initial user task
-        if let Some(ref sc) = scaled {
-            ctx.add_user_task(task, &sc.base64, sc.detail(), &sc.mime_type);
-        } else if let Some(ref ss) = screenshot {
+        if let Some(ref ss) = screenshot {
             ctx.add_user_task(task, &ss.base64, ss.detail(), &ss.mime_type);
         } else {
             ctx.add_user_task_text_only(task, "user", "collect");
@@ -167,7 +139,7 @@ impl AgentLoop {
 
         // Run the core loop
         let result = self
-            .run_loop(&mut ctx, scaled.as_ref().or(screenshot.as_ref()), t0)
+            .run_loop(&mut ctx, screenshot.as_ref(), t0)
             .await;
 
         RunResult {
@@ -221,7 +193,7 @@ impl AgentLoop {
             }
 
             // LLM call
-            let messages = ctx.get_messages();
+            let messages = ctx.get_messages_for_llm();
             let response = match self.brain.chat(&messages, &tools_schema).await {
                 Ok(r) => {
                     error_tracker.success();
@@ -347,12 +319,11 @@ impl AgentLoop {
                 if tc.name == "screenshot"
                     && let Ok(new_ss) = self.eye.capture().await
                 {
-                    let sc = self.maybe_scale(&new_ss).unwrap_or(new_ss);
-                    ctx.add_screenshot(&sc.base64, sc.detail(), &sc.mime_type);
+                    ctx.add_screenshot(&new_ss.base64, new_ss.detail(), &new_ss.mime_type);
                     step_had_screenshot = true;
                     no_screenshot.got_screenshot();
 
-                    let prefix = &sc.base64[..std::cmp::min(crate::consts::SCREENSHOT_PREFIX_LEN, sc.base64.len())];
+                    let prefix = &new_ss.base64[..std::cmp::min(crate::consts::SCREENSHOT_PREFIX_LEN, new_ss.base64.len())];
                     if let DetectorAction::Warn(msg) = no_progress.check(prefix) {
                         ctx.add_system_hint(&msg);
                     }
@@ -392,7 +363,6 @@ impl AgentLoop {
                         tool_args: tc.arguments.clone(),
                         tool_result: result_text.clone(),
                         screenshot_path: None,
-                        wait_ms: self.tool_delay_ms,
                         screen_tool_args: if exec_args != tc.arguments {
                             Some(exec_args.clone())
                         } else {
@@ -400,12 +370,6 @@ impl AgentLoop {
                         },
                     };
                     cb(event).await;
-                }
-
-                // Inter-tool delay
-                if self.tool_delay_ms > 0 {
-                    tokio::time::sleep(tokio::time::Duration::from_millis(self.tool_delay_ms))
-                        .await;
                 }
             }
 
@@ -470,7 +434,7 @@ impl AgentLoop {
                 }
             }
 
-            let llm_messages = ctx.get_messages();
+            let llm_messages = ctx.get_messages_for_llm();
             let response = match self.brain.chat(&llm_messages, &tools_schema).await {
                 Ok(r) => r,
                 Err(e) => {

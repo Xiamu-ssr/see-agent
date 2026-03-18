@@ -19,8 +19,6 @@ pub struct AgentDefinition {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub agent: Option<serde_json::Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub screen: Option<serde_json::Value>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tools: Option<ToolsConfig>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub skills: Option<SkillsConfig>,
@@ -39,7 +37,6 @@ impl AgentDefinition {
             id: id.into(),
             llm: None,
             agent: None,
-            screen: None,
             tools: None,
             skills: None,
             mcp: None,

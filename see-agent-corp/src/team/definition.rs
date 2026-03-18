@@ -32,6 +32,7 @@ pub fn create_team(
         leader: leader_id,
         status: TeamStatus::Created,
         created_at: Utc::now().to_rfc3339(),
+        config: None,
     };
 
     write_json(&team_dir.team_json(), &definition)?;

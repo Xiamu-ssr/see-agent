@@ -17,8 +17,6 @@ pub struct Config {
     #[serde(default)]
     pub agent: AgentBehaviorConfig,
     #[serde(default)]
-    pub screen: ScreenConfig,
-    #[serde(default)]
     pub skills: SkillsConfig,
     #[serde(default)]
     pub mcp: McpConfig,
@@ -86,6 +84,8 @@ impl Default for LlmConfig {
 pub struct AgentBehaviorConfig {
     #[serde(default = "default_max_steps")]
     pub max_steps: u32,
+    #[serde(default = "default_max_images")]
+    pub max_images: u32,
     #[serde(default)]
     pub compact: CompactConfig,
 }
@@ -94,10 +94,15 @@ fn default_max_steps() -> u32 {
     consts::DEFAULT_MAX_STEPS
 }
 
+fn default_max_images() -> u32 {
+    consts::DEFAULT_MAX_CONTEXT_IMAGES
+}
+
 impl Default for AgentBehaviorConfig {
     fn default() -> Self {
         Self {
             max_steps: default_max_steps(),
+            max_images: default_max_images(),
             compact: CompactConfig::default(),
         }
     }
@@ -135,67 +140,6 @@ impl Default for CompactConfig {
             target_ratio: default_target_ratio(),
             keep_recent: default_keep_recent(),
             summary_model: String::new(),
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// ScreenConfig
-// ---------------------------------------------------------------------------
-
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum ScalingMatch {
-    #[default]
-    AspectRatio,
-    PixelCount,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct ScreenConfig {
-    #[serde(default = "default_max_images")]
-    pub max_images: u32,
-    #[serde(default = "default_screenshot_interval_ms")]
-    pub screenshot_interval_ms: u64,
-    #[serde(default = "default_tool_delay_ms")]
-    pub tool_delay_ms: u64,
-    #[serde(default = "default_scaling_enabled")]
-    pub scaling_enabled: bool,
-    #[serde(default)]
-    pub scaling_match: ScalingMatch,
-    #[serde(default = "default_show_overlay")]
-    pub show_overlay: bool,
-}
-
-fn default_max_images() -> u32 {
-    consts::DEFAULT_MAX_CONTEXT_IMAGES
-}
-
-fn default_screenshot_interval_ms() -> u64 {
-    consts::DEFAULT_SCREENSHOT_INTERVAL_MS
-}
-
-fn default_tool_delay_ms() -> u64 {
-    consts::DEFAULT_TOOL_DELAY_MS
-}
-
-fn default_scaling_enabled() -> bool {
-    true
-}
-
-fn default_show_overlay() -> bool {
-    true
-}
-
-impl Default for ScreenConfig {
-    fn default() -> Self {
-        Self {
-            max_images: default_max_images(),
-            screenshot_interval_ms: default_screenshot_interval_ms(),
-            tool_delay_ms: default_tool_delay_ms(),
-            scaling_enabled: default_scaling_enabled(),
-            scaling_match: ScalingMatch::default(),
-            show_overlay: default_show_overlay(),
         }
     }
 }
