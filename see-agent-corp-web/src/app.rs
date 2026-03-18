@@ -46,8 +46,8 @@ pub fn App() -> impl IntoView {
             <AppLayout is_dark=is_dark>
                 <Routes fallback=|| pages::NotFound>
                     <Route path=path!("/") view=pages::Dashboard />
-                    <Route path=path!("/agents") view=pages::Agents />
-                    <Route path=path!("/agents/:id") view=pages::AgentDetail />
+                    <Route path=path!("/agents") view=pages::AgentsPage />
+                    <Route path=path!("/agents/:id") view=pages::AgentsPage />
                     <Route path=path!("/teams") view=pages::Teams />
                     <Route path=path!("/teams/:id") view=pages::TeamDetail />
                     <Route path=path!("/config") view=pages::Config />

@@ -8,7 +8,7 @@ mod skills;
 mod teams;
 mod tools;
 
-pub use agents::{AgentDetail, Agents};
+pub use agents::AgentsPage;
 pub use config::Config;
 pub use dashboard::Dashboard;
 pub use logs::Logs;

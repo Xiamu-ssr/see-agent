@@ -77,7 +77,7 @@ async fn list_agents_handler(
     let ws = state.workspace();
     let agents = list_agents(ws).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    let sup = state.inner.supervisor.read().await;
+    let mut sup = state.inner.supervisor.write().await;
     let summaries: Vec<AgentSummaryResponse> = agents
         .into_iter()
         .map(|a| {
@@ -106,7 +106,7 @@ async fn get_agent_handler(
     let has_soul = agent_dir.soul_md().exists();
     let (name, emoji) = parse_identity(ws, &agent_id);
 
-    let sup = state.inner.supervisor.read().await;
+    let mut sup = state.inner.supervisor.write().await;
     let agent_state = sup.agent_state(&agent_id);
 
     Ok(Json(AgentDetailResponse {

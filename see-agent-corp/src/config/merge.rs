@@ -19,8 +19,15 @@ pub fn deep_merge(base: &Value, overlay: &Value) -> Value {
             }
             Value::Object(result)
         }
-        // Non-dict: overlay wins entirely
-        (_, overlay) => overlay.clone(),
+        // Non-dict: overlay wins, except empty string cannot override structured data
+        (_, overlay) => {
+            if overlay == &Value::String(String::new())
+                && matches!(base, Value::Object(_) | Value::Array(_))
+            {
+                return base.clone();
+            }
+            overlay.clone()
+        }
     }
 }
 
@@ -87,5 +94,32 @@ mod tests {
         let base = json!({"a": 1});
         let overlay = json!(null);
         assert_eq!(deep_merge(&base, &overlay), json!(null));
+    }
+
+    #[test]
+    fn empty_string_does_not_override_object() {
+        let base = json!({"llm": {"model": "gpt-4o", "api_key": "sk-xxx"}});
+        let overlay = json!({"llm": ""});
+        let result = deep_merge(&base, &overlay);
+        assert_eq!(
+            result,
+            json!({"llm": {"model": "gpt-4o", "api_key": "sk-xxx"}})
+        );
+    }
+
+    #[test]
+    fn empty_string_does_not_override_array() {
+        let base = json!({"tools": {"disabled": ["shell"]}});
+        let overlay = json!({"tools": {"disabled": ""}});
+        let result = deep_merge(&base, &overlay);
+        assert_eq!(result, json!({"tools": {"disabled": ["shell"]}}));
+    }
+
+    #[test]
+    fn non_empty_string_still_overrides() {
+        let base = json!({"name": {"first": "John"}});
+        let overlay = json!({"name": "Jane"});
+        let result = deep_merge(&base, &overlay);
+        assert_eq!(result, json!({"name": "Jane"}));
     }
 }

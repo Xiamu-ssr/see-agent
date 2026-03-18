@@ -37,7 +37,9 @@ pub async fn run(agent_id: &str, workspace_path: &str) {
     let config = match load_agent_config(&workspace, agent_id, team_id.as_deref()) {
         Ok(c) => c,
         Err(e) => {
-            eprintln!("Failed to load config: {e}");
+            let msg = format!("Failed to load config: {e}");
+            eprintln!("{msg}");
+            let _ = std::fs::write(agent_dir.path().join("worker_error.log"), &msg);
             std::process::exit(1);
         }
     };

@@ -105,7 +105,7 @@ pub fn Teams() -> impl IntoView {
 }
 
 // ---------------------------------------------------------------------------
-// Detail page
+// Detail page — master-detail: members sidebar + task board & messages
 // ---------------------------------------------------------------------------
 
 #[component]
@@ -201,7 +201,7 @@ pub fn TeamDetail() -> impl IntoView {
     };
 
     view! {
-        <div>
+        <div class="flex h-full min-h-0">
             <Suspense fallback=|| view! { <span class="loading loading-spinner loading-lg"></span> }>
                 {move || team.get().map(|t| {
                     match &*t {
@@ -211,152 +211,146 @@ pub fn TeamDetail() -> impl IntoView {
                             let team_status = t.status.clone();
 
                             view! {
-                                // Header
-                                <div class="flex items-center gap-2 mb-2">
-                                    <A href="/teams">
-                                        <button class="btn btn-ghost btn-sm">"< Teams"</button>
-                                    </A>
-                                    <span class="font-bold text-lg">{team_name}</span>
-                                    <span class="badge badge-info">{team_status}</span>
-                                </div>
-                                <div class="divider my-1"></div>
-
-                                // --- Members section ---
-                                <div class="card bg-base-100 shadow-xl mb-4">
-                                    <div class="card-body">
-                                        <h3 class="card-title text-sm">"Members"</h3>
-                                        <div class="overflow-x-auto">
-                                            <table class="table">
-                                                <thead>
-                                                    <tr>
-                                                        <th>"Agent ID"</th>
-                                                        <th>"Role"</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    {members.into_iter().map(|m| {
-                                                        let agent_href = format!("/agents/{}", m.id);
-                                                        view! {
-                                                            <tr>
-                                                                <td><A href=agent_href attr:class="link link-primary">{m.id}</A></td>
-                                                                <td>{m.role}</td>
-                                                            </tr>
-                                                        }
-                                                    }).collect_view()}
-                                                </tbody>
-                                            </table>
+                                // --- Left sidebar: team members ---
+                                <div class="w-56 shrink-0 border-r border-base-300 overflow-y-auto bg-base-200">
+                                    <div class="p-3">
+                                        <div class="flex items-center gap-2 mb-2">
+                                            <A href="/teams">
+                                                <button class="btn btn-ghost btn-xs">"< Teams"</button>
+                                            </A>
                                         </div>
+                                        <h3 class="font-bold text-sm mb-1">{team_name}</h3>
+                                        <span class="badge badge-info badge-sm">{team_status}</span>
                                     </div>
-                                </div>
-
-                                // --- Task Board section ---
-                                <div class="card bg-base-100 shadow-xl mb-4">
-                                    <div class="card-body">
-                                        <h3 class="card-title text-sm">"Task Board"</h3>
-                                        <div class="flex items-center gap-2">
-                                            <input class="input input-bordered input-sm flex-1"
-                                                placeholder="Task title..."
-                                                prop:value=move || new_task_title.get()
-                                                on:input=move |ev: ev::Event| new_task_title.set(event_target_value(&ev))
-                                            />
-                                            <input class="input input-bordered input-sm flex-1"
-                                                placeholder="Description (optional)"
-                                                prop:value=move || new_task_desc.get()
-                                                on:input=move |ev: ev::Event| new_task_desc.set(event_target_value(&ev))
-                                            />
-                                            <button class="btn btn-primary btn-sm" on:click=create_task>"Create"</button>
-                                        </div>
-                                        <div class="divider my-1"></div>
-                                        {move || {
-                                            let all_tasks = tasks.get();
-                                            if all_tasks.is_empty() {
-                                                view! { <span class="text-sm opacity-70">"No tasks yet"</span> }.into_any()
-                                            } else {
-                                                view! {
-                                                    <div class="overflow-x-auto">
-                                                        <table class="table">
-                                                            <thead>
-                                                                <tr>
-                                                                    <th>"Title"</th>
-                                                                    <th>"Status"</th>
-                                                                    <th>"Assignee"</th>
-                                                                    <th>"Action"</th>
-                                                                </tr>
-                                                            </thead>
-                                                            <tbody>
-                                                                {all_tasks.into_iter().map(|task| {
-                                                                    let task_id = task.id.clone();
-                                                                    let status_class = match task.status.as_str() {
-                                                                        "done" => "badge badge-success",
-                                                                        "in_progress" => "badge badge-primary",
-                                                                        "claimed" => "badge badge-info",
-                                                                        _ => "badge badge-ghost",
-                                                                    };
-                                                                    let next_status = match task.status.as_str() {
-                                                                        "pending" => Some(("claimed", "Claim")),
-                                                                        "claimed" => Some(("in_progress", "Start")),
-                                                                        "in_progress" => Some(("done", "Complete")),
-                                                                        _ => None,
-                                                                    };
-                                                                    let assignee = task.assigned_to.unwrap_or_else(|| "\u{2014}".into());
-                                                                    let status_label = task.status;
-                                                                    view! {
-                                                                        <tr>
-                                                                            <td>{task.title}</td>
-                                                                            <td><span class=status_class>{status_label}</span></td>
-                                                                            <td>{assignee}</td>
-                                                                            <td>
-                                                                                {next_status.map(|(ns, label)| {
-                                                                                    let tid = task_id.clone();
-                                                                                    let ns_str = ns.to_string();
-                                                                                    view! {
-                                                                                        <button class="btn btn-primary btn-xs"
-                                                                                            on:click=move |_| update_task_status(tid.clone(), ns_str.clone())
-                                                                                        >{label}</button>
-                                                                                    }
-                                                                                })}
-                                                                            </td>
-                                                                        </tr>
-                                                                    }
-                                                                }).collect_view()}
-                                                            </tbody>
-                                                        </table>
+                                    <div class="divider my-0 mx-2"></div>
+                                    <div class="p-2">
+                                        <h4 class="text-xs font-bold opacity-70 px-2 mb-1">"Members"</h4>
+                                        {members.into_iter().map(|m| {
+                                            let agent_href = format!("/agents/{}", m.id);
+                                            let role_class = if m.role == "leader" { "badge badge-warning badge-xs" } else { "badge badge-ghost badge-xs" };
+                                            view! {
+                                                <A href=agent_href attr:class="block px-3 py-2 hover:bg-base-300 no-underline text-inherit transition-colors">
+                                                    <div class="flex items-center justify-between">
+                                                        <span class="text-sm font-bold truncate">{m.id}</span>
+                                                        <span class=role_class>{m.role}</span>
                                                     </div>
-                                                }.into_any()
+                                                </A>
                                             }
-                                        }}
+                                        }).collect_view()}
                                     </div>
                                 </div>
 
-                                // --- Messages section ---
-                                <div class="card bg-base-100 shadow-xl">
-                                    <div class="card-body">
-                                        <h3 class="card-title text-sm">"Messages"</h3>
-                                        {move || {
-                                            let msgs = messages.get();
-                                            if msgs.is_empty() {
-                                                view! { <span class="text-sm opacity-70">"No messages yet"</span> }.into_any()
-                                            } else {
-                                                msgs.into_iter().map(|m| {
-                                                    let priority_class = match m.priority.as_str() {
-                                                        "steer" => "badge badge-warning",
-                                                        _ => "badge badge-primary",
-                                                    };
+                                // --- Right panel: Task Board + Messages ---
+                                <div class="flex-1 flex flex-col min-h-0 overflow-y-auto p-4">
+                                    // --- Task Board ---
+                                    <div class="card bg-base-100 shadow-xl mb-4">
+                                        <div class="card-body">
+                                            <h3 class="card-title text-sm">"Task Board"</h3>
+                                            <div class="flex items-center gap-2">
+                                                <input class="input input-bordered input-sm flex-1"
+                                                    placeholder="Task title..."
+                                                    prop:value=move || new_task_title.get()
+                                                    on:input=move |ev: ev::Event| new_task_title.set(event_target_value(&ev))
+                                                />
+                                                <input class="input input-bordered input-sm flex-1"
+                                                    placeholder="Description (optional)"
+                                                    prop:value=move || new_task_desc.get()
+                                                    on:input=move |ev: ev::Event| new_task_desc.set(event_target_value(&ev))
+                                                />
+                                                <button class="btn btn-primary btn-sm" on:click=create_task>"Create"</button>
+                                            </div>
+                                            <div class="divider my-1"></div>
+                                            {move || {
+                                                let all_tasks = tasks.get();
+                                                if all_tasks.is_empty() {
+                                                    view! { <span class="text-sm opacity-70">"No tasks yet"</span> }.into_any()
+                                                } else {
                                                     view! {
-                                                        <div class="py-2 border-b border-base-300">
-                                                            <div class="flex justify-between items-center">
-                                                                <span class="font-bold">{m.sender}</span>
-                                                                <div class="flex items-center gap-2">
-                                                                    <span class=priority_class>{m.priority}</span>
-                                                                    <span class="text-sm opacity-70">{m.timestamp}</span>
-                                                                </div>
-                                                            </div>
-                                                            <p>{m.content}</p>
+                                                        <div class="overflow-x-auto">
+                                                            <table class="table">
+                                                                <thead>
+                                                                    <tr>
+                                                                        <th>"Title"</th>
+                                                                        <th>"Status"</th>
+                                                                        <th>"Assignee"</th>
+                                                                        <th>"Action"</th>
+                                                                    </tr>
+                                                                </thead>
+                                                                <tbody>
+                                                                    {all_tasks.into_iter().map(|task| {
+                                                                        let task_id = task.id.clone();
+                                                                        let status_class = match task.status.as_str() {
+                                                                            "done" => "badge badge-success",
+                                                                            "in_progress" => "badge badge-primary",
+                                                                            "claimed" => "badge badge-info",
+                                                                            _ => "badge badge-ghost",
+                                                                        };
+                                                                        let next_status = match task.status.as_str() {
+                                                                            "pending" => Some(("claimed", "Claim")),
+                                                                            "claimed" => Some(("in_progress", "Start")),
+                                                                            "in_progress" => Some(("done", "Complete")),
+                                                                            _ => None,
+                                                                        };
+                                                                        let assignee = task.assigned_to.unwrap_or_else(|| "\u{2014}".into());
+                                                                        let status_label = task.status;
+                                                                        view! {
+                                                                            <tr>
+                                                                                <td>{task.title}</td>
+                                                                                <td><span class=status_class>{status_label}</span></td>
+                                                                                <td>{assignee}</td>
+                                                                                <td>
+                                                                                    {next_status.map(|(ns, label)| {
+                                                                                        let tid = task_id.clone();
+                                                                                        let ns_str = ns.to_string();
+                                                                                        view! {
+                                                                                            <button class="btn btn-primary btn-xs"
+                                                                                                on:click=move |_| update_task_status(tid.clone(), ns_str.clone())
+                                                                                            >{label}</button>
+                                                                                        }
+                                                                                    })}
+                                                                                </td>
+                                                                            </tr>
+                                                                        }
+                                                                    }).collect_view()}
+                                                                </tbody>
+                                                            </table>
                                                         </div>
-                                                    }
-                                                }).collect_view().into_any()
-                                            }
-                                        }}
+                                                    }.into_any()
+                                                }
+                                            }}
+                                        </div>
+                                    </div>
+
+                                    // --- Messages ---
+                                    <div class="card bg-base-100 shadow-xl">
+                                        <div class="card-body">
+                                            <h3 class="card-title text-sm">"Messages"</h3>
+                                            {move || {
+                                                let msgs = messages.get();
+                                                if msgs.is_empty() {
+                                                    view! { <span class="text-sm opacity-70">"No messages yet"</span> }.into_any()
+                                                } else {
+                                                    msgs.into_iter().map(|m| {
+                                                        let priority_class = match m.priority.as_str() {
+                                                            "steer" => "badge badge-warning",
+                                                            _ => "badge badge-primary",
+                                                        };
+                                                        view! {
+                                                            <div class="py-2 border-b border-base-300">
+                                                                <div class="flex justify-between items-center">
+                                                                    <span class="font-bold">{m.sender}</span>
+                                                                    <div class="flex items-center gap-2">
+                                                                        <span class=priority_class>{m.priority}</span>
+                                                                        <span class="text-sm opacity-70">{m.timestamp}</span>
+                                                                    </div>
+                                                                </div>
+                                                                <p>{m.content}</p>
+                                                            </div>
+                                                        }
+                                                    }).collect_view().into_any()
+                                                }
+                                            }}
+                                        </div>
                                     </div>
                                 </div>
                             }.into_any()

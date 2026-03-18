@@ -165,14 +165,31 @@ impl Supervisor {
         Ok(())
     }
 
-    /// Check if an agent's worker process is running.
-    pub fn is_running(&self, agent_id: &str) -> bool {
-        self.processes.contains_key(agent_id)
+    /// Check if an agent's worker process is actually running.
+    /// Uses try_wait() to detect crashed processes and cleans them up.
+    pub fn is_running(&mut self, agent_id: &str) -> bool {
+        if let Some(handle) = self.processes.get_mut(agent_id) {
+            match handle.child.try_wait() {
+                Ok(Some(status)) => {
+                    warn!(agent = agent_id, ?status, "worker process exited, cleaning up");
+                    self.processes.remove(agent_id);
+                    false
+                }
+                Ok(None) => true,
+                Err(e) => {
+                    warn!(agent = agent_id, "try_wait failed: {e}, cleaning up");
+                    self.processes.remove(agent_id);
+                    false
+                }
+            }
+        } else {
+            false
+        }
     }
 
     /// Get the lifecycle state of an agent.
-    pub fn agent_state(&self, agent_id: &str) -> AgentState {
-        if self.processes.contains_key(agent_id) {
+    pub fn agent_state(&mut self, agent_id: &str) -> AgentState {
+        if self.is_running(agent_id) {
             AgentState::Active
         } else {
             AgentState::Sleeping
@@ -329,7 +346,7 @@ mod tests {
     #[test]
     fn is_running_false_by_default() {
         let (_tmp, ws) = make_workspace();
-        let sup = Supervisor::new(ws);
+        let mut sup = Supervisor::new(ws);
         assert!(!sup.is_running("any"));
     }
 
@@ -343,7 +360,7 @@ mod tests {
     #[test]
     fn agent_state_sleeping_by_default() {
         let (_tmp, ws) = make_workspace();
-        let sup = Supervisor::new(ws);
+        let mut sup = Supervisor::new(ws);
         assert_eq!(sup.agent_state("any"), AgentState::Sleeping);
     }
 
@@ -371,7 +388,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn agent_state_active_after_start() {
+    async fn agent_state_tracks_liveness() {
         let (_tmp, ws) = make_workspace();
 
         let agent_dir = ws.agent("test");
@@ -383,6 +400,10 @@ mod tests {
         assert_eq!(sup.agent_state("test"), AgentState::Sleeping);
 
         sup.start_agent("test").await.unwrap();
-        assert_eq!(sup.agent_state("test"), AgentState::Active);
+        // /usr/bin/true exits immediately, so after a brief wait the process is dead
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+        // is_running should detect the exited process and clean up
+        assert!(!sup.is_running("test"));
+        assert_eq!(sup.agent_state("test"), AgentState::Sleeping);
     }
 }

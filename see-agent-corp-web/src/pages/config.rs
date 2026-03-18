@@ -157,23 +157,17 @@ pub fn Config() -> impl IntoView {
                                                         match field_type.as_str() {
                                                             "boolean" => {
                                                                 let on_change = on_change.clone();
-                                                                let current_val_a = current_val.clone();
-                                                                let current_val_b = current_val.clone();
-                                                                let checked = RwSignal::new(current_val_a().as_bool().unwrap_or(false));
-                                                                Effect::new(move |_| {
-                                                                    let c = checked.get();
-                                                                    let cur = current_val_b().as_bool().unwrap_or(false);
-                                                                    if c != cur {
-                                                                        on_change(Value::Bool(c));
-                                                                    }
-                                                                });
+                                                                let init = current_val().as_bool().unwrap_or(false);
                                                                 view! {
                                                                     <div class="md:col-span-2">
                                                                         <label class="flex items-center gap-2 cursor-pointer">
                                                                             <input type="checkbox" class="toggle"
-                                                                                prop:checked=move || checked.get()
-                                                                                on:change=move |ev: ev::Event| {
-                                                                                    checked.set(event_target_checked(&ev));
+                                                                                checked=init
+                                                                                on:change={
+                                                                                    let on_change = on_change.clone();
+                                                                                    move |ev: ev::Event| {
+                                                                                        on_change(Value::Bool(event_target_checked(&ev)));
+                                                                                    }
                                                                                 }
                                                                             />
                                                                             <span>{label}</span>
@@ -190,19 +184,22 @@ pub fn Config() -> impl IntoView {
                                                                     Value::Number(n) => n.to_string(),
                                                                     _ => String::new(),
                                                                 });
-                                                                Effect::new(move |_| {
-                                                                    let text = input_val.get();
-                                                                    if let Ok(n) = text.parse::<f64>() {
-                                                                        on_change(serde_json::json!(n));
-                                                                    }
-                                                                });
                                                                 view! {
                                                                     <div>
                                                                         <label class="label"><span class="label-text font-bold">{label}</span></label>
                                                                         <input class="input input-bordered w-full"
                                                                             placeholder=placeholder
                                                                             prop:value=move || input_val.get()
-                                                                            on:input=move |ev: ev::Event| input_val.set(event_target_value(&ev))
+                                                                            on:input={
+                                                                                let on_change = on_change.clone();
+                                                                                move |ev: ev::Event| {
+                                                                                    let text = event_target_value(&ev);
+                                                                                    input_val.set(text.clone());
+                                                                                    if let Ok(n) = text.parse::<f64>() {
+                                                                                        on_change(serde_json::json!(n));
+                                                                                    }
+                                                                                }
+                                                                            }
                                                                         />
                                                                         {if !description.is_empty() {
                                                                             Some(view! { <p class="text-sm opacity-70 mt-1">{description.clone()}</p> })
@@ -216,10 +213,6 @@ pub fn Config() -> impl IntoView {
                                                                 let input_val = RwSignal::new(
                                                                     current_val().as_str().unwrap_or("").to_string()
                                                                 );
-                                                                Effect::new(move |_| {
-                                                                    let text = input_val.get();
-                                                                    on_change(Value::String(text));
-                                                                });
                                                                 view! {
                                                                     <div>
                                                                         <label class="label"><span class="label-text font-bold">{label}</span></label>
@@ -227,7 +220,14 @@ pub fn Config() -> impl IntoView {
                                                                             r#type={if is_key { "password" } else { "text" }}
                                                                             placeholder=placeholder
                                                                             prop:value=move || input_val.get()
-                                                                            on:input=move |ev: ev::Event| input_val.set(event_target_value(&ev))
+                                                                            on:input={
+                                                                                let on_change = on_change.clone();
+                                                                                move |ev: ev::Event| {
+                                                                                    let text = event_target_value(&ev);
+                                                                                    input_val.set(text.clone());
+                                                                                    on_change(Value::String(text));
+                                                                                }
+                                                                            }
                                                                         />
                                                                         {if !description.is_empty() {
                                                                             Some(view! { <p class="text-sm opacity-70 mt-1">{description.clone()}</p> })
