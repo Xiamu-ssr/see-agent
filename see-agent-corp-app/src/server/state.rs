@@ -21,7 +21,13 @@ pub struct AppStateInner {
 
 impl AppState {
     pub fn new(workspace: WorkspaceDir) -> Self {
-        let config = load_config(&workspace).unwrap_or_default();
+        let config = match load_config(&workspace) {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::warn!("config load failed, using defaults: {e}");
+                Config::default()
+            }
+        };
         let supervisor = Supervisor::new(workspace.clone());
         Self {
             inner: Arc::new(AppStateInner {

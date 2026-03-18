@@ -11,6 +11,9 @@ pub fn deep_merge(base: &Value, overlay: &Value) -> Value {
         (Value::Object(b), Value::Object(o)) => {
             let mut result = b.clone();
             for (key, value) in o {
+                if value == &Value::String(String::new()) {
+                    continue; // empty string = "not configured", skip
+                }
                 if let Some(existing) = result.get(key) {
                     result.insert(key.clone(), deep_merge(existing, value));
                 } else {
@@ -19,15 +22,7 @@ pub fn deep_merge(base: &Value, overlay: &Value) -> Value {
             }
             Value::Object(result)
         }
-        // Non-dict: overlay wins, except empty string cannot override structured data
-        (_, overlay) => {
-            if overlay == &Value::String(String::new())
-                && matches!(base, Value::Object(_) | Value::Array(_))
-            {
-                return base.clone();
-            }
-            overlay.clone()
-        }
+        (_, overlay) => overlay.clone(),
     }
 }
 

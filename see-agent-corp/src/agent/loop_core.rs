@@ -7,8 +7,9 @@ use tracing::{info, warn};
 use crate::brain::Brain;
 use crate::consts::{FULL_COMPACT_RATIO, MAX_CONSECUTIVE_ERRORS, MICROCOMPACT_RATIO};
 use crate::eye::{scale_tool_args, Eye, Screenshot};
+use crate::session::SessionStore;
 use crate::tool::ToolRegistry;
-use crate::types::{Config, ToolResult};
+use crate::types::{Config, SessionMessageType, ToolResult};
 
 use super::context::{estimate_tokens, ConversationContext};
 use super::detectors::{
@@ -51,6 +52,8 @@ pub struct AgentLoop {
     screenshots_dir: Option<PathBuf>,
     /// Counter for screenshot file naming.
     screenshot_counter: u32,
+    /// Optional session store for persisting messages to disk.
+    session_store: Option<SessionStore>,
 }
 
 impl AgentLoop {
@@ -78,6 +81,7 @@ impl AgentLoop {
             max_images,
             screenshots_dir: None,
             screenshot_counter: 0,
+            session_store: None,
         }
     }
 
@@ -93,6 +97,11 @@ impl AgentLoop {
     /// When set, screenshots use path-ref mode (lazy base64 resolution at LLM call time).
     pub fn set_screenshots_dir(&mut self, dir: PathBuf) {
         self.screenshots_dir = Some(dir);
+    }
+
+    /// Set a session store for persisting messages to disk.
+    pub fn set_session_store(&mut self, store: SessionStore) {
+        self.session_store = Some(store);
     }
 
     /// Save a screenshot to disk and add it to context as a path reference.
@@ -488,6 +497,11 @@ impl AgentLoop {
 
             ctx.add_assistant(&response.raw);
 
+            // Persist assistant message to session store
+            if let Some(ref mut store) = self.session_store {
+                let _ = store.append_message(SessionMessageType::Assistant, response.raw.clone());
+            }
+
             if response.tool_calls.is_empty() {
                 info!("no tool calls, returning to idle");
                 break;
@@ -511,6 +525,14 @@ impl AgentLoop {
                 };
 
                 ctx.add_tool_result(&tc.id, &result.text, &[]);
+
+                // Persist tool result to session store
+                if let Some(ref mut store) = self.session_store {
+                    let _ = store.append_message(
+                        SessionMessageType::ToolResult,
+                        serde_json::json!({ "tool": tc.name, "content": result.text }),
+                    );
+                }
             }
         }
     }

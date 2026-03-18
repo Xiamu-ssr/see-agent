@@ -79,14 +79,14 @@ pub fn Dashboard() -> impl IntoView {
                                                 let _ = crate::api::post_empty("/freeze").await;
                                             });
                                         }
-                                    >"Freeze All"</button>
+                                    >"Stop All"</button>
                                     <button class="btn btn-secondary"
                                         on:click=move |_| {
                                             wasm_bindgen_futures::spawn_local(async {
                                                 let _ = crate::api::post_empty("/revive").await;
                                             });
                                         }
-                                    >"Revive All"</button>
+                                    >"Restart All"</button>
                                 </div>
                             }.into_any()
                         }

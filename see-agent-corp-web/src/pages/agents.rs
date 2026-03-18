@@ -305,30 +305,6 @@ fn AgentDetailPanel(agent_id: String) -> impl IntoView {
         });
     };
 
-    let start_agent = move |_| {
-        let id = aid.get_value();
-        agent_status.set("running".to_string());
-        wasm_bindgen_futures::spawn_local(async move {
-            let _ = api::post::<serde_json::Value>(
-                &format!("/agents/{id}/start"),
-                &serde_json::json!({}),
-            )
-            .await;
-        });
-    };
-
-    let stop_agent = move |_| {
-        let id = aid.get_value();
-        agent_status.set("idle".to_string());
-        wasm_bindgen_futures::spawn_local(async move {
-            let _ = api::post::<serde_json::Value>(
-                &format!("/agents/{id}/stop"),
-                &serde_json::json!({}),
-            )
-            .await;
-        });
-    };
-
     // --- Tool toggle handler ---
     let toggle_tool = move |name: String, new_disabled: bool| {
         let id = aid.get_value();
@@ -432,8 +408,6 @@ fn AgentDetailPanel(agent_id: String) -> impl IntoView {
                                     let cls = status_badge_class(&s);
                                     view! { <span class=cls>{s}</span> }
                                 }}
-                                <button class="btn btn-primary btn-sm" on:click=start_agent>"Start"</button>
-                                <button class="btn btn-ghost btn-sm" on:click=stop_agent>"Stop"</button>
                             </div>
                             <div class="divider my-1"></div>
 

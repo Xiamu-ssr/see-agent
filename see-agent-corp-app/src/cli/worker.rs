@@ -5,6 +5,7 @@ use tracing::info;
 use see_agent_corp::agent::{AgentLoop, ConversationContext};
 use see_agent_corp::brain::{build_system_prompt, OpenAiBrain, PromptContext, TeamContext};
 use see_agent_corp::io::read_json;
+use see_agent_corp::session::SessionStore;
 use see_agent_corp::types::TeamDefinition;
 use see_agent_corp::config::load_agent_config;
 use see_agent_corp::tool::{register_builtin_tools, ToolContext, ToolRegistry};
@@ -76,8 +77,18 @@ pub async fn run(agent_id: &str, workspace_path: &str) {
     );
 
     // 6b. Screenshots saved to disk (path-ref mode) to avoid base64 bloat in memory
-    let screenshots_dir = agent_dir.session().screenshots();
+    let session_dir = agent_dir.session();
+    let screenshots_dir = session_dir.screenshots();
     agent_loop.set_screenshots_dir(screenshots_dir);
+
+    // 6c. Session store for persisting messages to disk (visible in chat UI)
+    let _ = std::fs::create_dir_all(session_dir.path());
+    let _ = std::fs::create_dir_all(session_dir.screenshots());
+    if !session_dir.messages().exists() {
+        let _ = std::fs::write(session_dir.messages(), "");
+    }
+    let session_store = SessionStore::new(session_dir);
+    agent_loop.set_session_store(session_store);
 
     // 7. Build system prompt (with team context if agent belongs to a team)
     let team_def: Option<TeamDefinition> = heartbeat_team_dir.as_ref().and_then(|td| {
