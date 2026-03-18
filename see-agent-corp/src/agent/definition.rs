@@ -1,7 +1,7 @@
 use crate::error::{Result, CorpError};
 use crate::io::{read_json, read_text, write_json, write_text};
 use crate::types::paths::WorkspaceDir;
-use crate::types::{AgentDefinition, AgentStatus, AgentSummary};
+use crate::types::{AgentDefinition, AgentState, AgentSummary};
 
 // Templates embedded at compile time
 const TEMPLATE_IDENTITY: &str = include_str!("../../../templates/IDENTITY.md");
@@ -98,7 +98,7 @@ pub fn list_agents(workspace: &WorkspaceDir) -> Result<Vec<AgentSummary>> {
             id,
             name,
             emoji,
-            status: AgentStatus::Idle,
+            state: AgentState::Sleeping,
             team_id: None,
             team_name: None,
         });

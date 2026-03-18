@@ -5,7 +5,7 @@ use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
 
 use see_agent_corp::agent::{create_agent, delete_agent, list_agents, load_agent};
-use see_agent_corp::types::{Message, MessagePriority};
+use see_agent_corp::types::{AgentState, Message, MessagePriority};
 
 use crate::server::AppState;
 
@@ -18,7 +18,7 @@ struct AgentSummaryResponse {
     id: String,
     name: String,
     emoji: String,
-    status: String,
+    state: AgentState,
     team_id: Option<String>,
 }
 
@@ -27,7 +27,7 @@ struct AgentDetailResponse {
     id: String,
     name: String,
     emoji: String,
-    status: String,
+    state: AgentState,
     tools: Vec<String>,
     skills: Vec<String>,
     has_soul: bool,
@@ -81,16 +81,12 @@ async fn list_agents_handler(
     let summaries: Vec<AgentSummaryResponse> = agents
         .into_iter()
         .map(|a| {
-            let status = if sup.is_running(&a.id) {
-                "running"
-            } else {
-                "idle"
-            };
+            let agent_state = sup.agent_state(&a.id);
             AgentSummaryResponse {
                 id: a.id,
                 name: a.name,
                 emoji: a.emoji,
-                status: status.into(),
+                state: agent_state,
                 team_id: a.team_id,
             }
         })
@@ -111,17 +107,13 @@ async fn get_agent_handler(
     let (name, emoji) = parse_identity(ws, &agent_id);
 
     let sup = state.inner.supervisor.read().await;
-    let status = if sup.is_running(&agent_id) {
-        "running"
-    } else {
-        "idle"
-    };
+    let agent_state = sup.agent_state(&agent_id);
 
     Ok(Json(AgentDetailResponse {
         id: agent_id,
         name,
         emoji,
-        status: status.into(),
+        state: agent_state,
         tools: vec![],
         skills: vec![],
         has_soul,
@@ -178,39 +170,12 @@ async fn send_message_handler(
         timestamp: chrono::Utc::now().to_rfc3339(),
     };
 
-    let sup = state.inner.supervisor.read().await;
+    let mut sup = state.inner.supervisor.write().await;
     sup.send_to(&agent_id, msg)
+        .await
         .map_err(|_| StatusCode::NOT_FOUND)?;
 
     Ok(Json(StatusResponse { status: "sent".into() }))
-}
-
-async fn start_agent_handler(
-    State(state): State<AppState>,
-    Path(agent_id): Path<String>,
-) -> Result<Json<StatusResponse>, StatusCode> {
-    let mut sup = state.inner.supervisor.write().await;
-    sup.start_agent(&agent_id)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-    Ok(Json(StatusResponse {
-        status: "started".into(),
-    }))
-}
-
-async fn stop_agent_handler(
-    State(state): State<AppState>,
-    Path(agent_id): Path<String>,
-) -> Result<Json<StatusResponse>, StatusCode> {
-    let mut sup = state.inner.supervisor.write().await;
-    sup.stop_agent(&agent_id)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-    Ok(Json(StatusResponse {
-        status: "stopped".into(),
-    }))
 }
 
 // ---------------------------------------------------------------------------
@@ -249,7 +214,5 @@ pub fn router(state: AppState) -> Router {
             get(get_agent_handler).delete(delete_agent_handler),
         )
         .route("/agents/{agent_id}/message", post(send_message_handler))
-        .route("/agents/{agent_id}/start", post(start_agent_handler))
-        .route("/agents/{agent_id}/stop", post(stop_agent_handler))
         .with_state(state)
 }

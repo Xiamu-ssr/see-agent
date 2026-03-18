@@ -16,6 +16,7 @@ pub struct AppStateInner {
     pub workspace: WorkspaceDir,
     pub config: RwLock<Config>,
     pub supervisor: RwLock<Supervisor>,
+    pub frozen_agents: RwLock<Vec<String>>,
 }
 
 impl AppState {
@@ -27,6 +28,7 @@ impl AppState {
                 workspace,
                 config: RwLock::new(config),
                 supervisor: RwLock::new(supervisor),
+                frozen_agents: RwLock::new(Vec::new()),
             }),
         }
     }

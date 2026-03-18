@@ -37,7 +37,7 @@ pub fn build_router(state: AppState) -> Router {
 /// If `pid_file` is provided, the server writes its PID on startup and removes it on shutdown.
 pub async fn serve(state: AppState, port: Option<u16>, pid_file: Option<PathBuf>) {
     let port = port.unwrap_or(DEFAULT_SERVER_PORT);
-    let router = build_router(state);
+    let router = build_router(state.clone());
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
 
     // Bind first — fail fast if port is taken
@@ -56,6 +56,10 @@ pub async fn serve(state: AppState, port: Option<u16>, pid_file: Option<PathBuf>
         .with_graceful_shutdown(shutdown_signal())
         .await
         .expect("server error");
+
+    // Stop all running worker processes before exit
+    info!("stopping all worker processes");
+    state.inner.supervisor.write().await.stop_all().await;
 
     if let Some(ref pf) = pid_file {
         daemon::remove_pid(pf);

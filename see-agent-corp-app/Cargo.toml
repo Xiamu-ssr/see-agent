@@ -22,6 +22,10 @@ tracing-subscriber.workspace = true
 rust-embed.workspace = true
 mime_guess.workspace = true
 
+[dev-dependencies]
+tempfile.workspace = true
+tower = "0.5"
+
 [target.'cfg(unix)'.dependencies]
 nix.workspace = true
 libc = "0.2"

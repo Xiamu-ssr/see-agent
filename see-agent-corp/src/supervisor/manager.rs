@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use tracing::{info, warn};
 
 use crate::error::{Result, CorpError};
-use crate::types::{Message, MessagePriority, WorkspaceDir};
+use crate::types::{AgentState, Message, MessagePriority, WorkspaceDir};
 
 use super::inbox::send_to_inbox_with_id;
 
@@ -137,10 +137,9 @@ impl Supervisor {
         Ok(())
     }
 
-    /// Send a message to an agent's inbox and wake its worker.
-    pub fn send_to(&self, agent_id: &str, message: Message) -> Result<()> {
+    /// Send a message to an agent's inbox, auto-starting the worker if needed.
+    pub async fn send_to(&mut self, agent_id: &str, message: Message) -> Result<()> {
         let agent_dir = self.workspace.agent(agent_id);
-        let inbox_path = agent_dir.inbox();
 
         if !agent_dir.path().exists() {
             return Err(CorpError::NotFound {
@@ -148,6 +147,12 @@ impl Supervisor {
             });
         }
 
+        // Auto-start the worker if not running
+        if !self.is_running(agent_id) {
+            self.start_agent(agent_id).await?;
+        }
+
+        let inbox_path = agent_dir.inbox();
         send_to_inbox_with_id(&inbox_path, message)?;
 
         // Wake the worker
@@ -161,6 +166,15 @@ impl Supervisor {
     /// Check if an agent's worker process is running.
     pub fn is_running(&self, agent_id: &str) -> bool {
         self.processes.contains_key(agent_id)
+    }
+
+    /// Get the lifecycle state of an agent.
+    pub fn agent_state(&self, agent_id: &str) -> AgentState {
+        if self.processes.contains_key(agent_id) {
+            AgentState::Active
+        } else {
+            AgentState::Sleeping
+        }
     }
 
     /// Get PIDs of all running workers.
@@ -222,15 +236,19 @@ mod tests {
         (tmp, ws)
     }
 
-    #[test]
-    fn send_to_creates_inbox_message() {
+    #[tokio::test]
+    async fn send_to_creates_inbox_message() {
         let (_tmp, ws) = make_workspace();
 
         // Create agent directory
         let agent_dir = ws.agent("alice");
         std::fs::create_dir_all(agent_dir.path()).unwrap();
 
-        let sup = Supervisor::new(ws);
+        let mut sup = Supervisor::new(ws);
+        // Set binary to something that won't actually start (auto-start will
+        // be attempted but the spawned process will fail/exit immediately;
+        // the inbox write still succeeds).
+        sup.set_binary_path(std::path::PathBuf::from("/usr/bin/true"));
 
         let msg = Message {
             msg_id: None,
@@ -240,7 +258,7 @@ mod tests {
             metadata: Default::default(),
             timestamp: "2025-01-01T00:00:00Z".into(),
         };
-        sup.send_to("alice", msg).unwrap();
+        sup.send_to("alice", msg).await.unwrap();
 
         let inbox: Vec<Message> = read_jsonl(&agent_dir.inbox()).unwrap();
         assert_eq!(inbox.len(), 1);
@@ -248,10 +266,10 @@ mod tests {
         assert_eq!(inbox[0].msg_id, Some(0));
     }
 
-    #[test]
-    fn send_to_nonexistent_agent_errors() {
+    #[tokio::test]
+    async fn send_to_nonexistent_agent_errors() {
         let (_tmp, ws) = make_workspace();
-        let sup = Supervisor::new(ws);
+        let mut sup = Supervisor::new(ws);
 
         let msg = Message {
             msg_id: None,
@@ -261,8 +279,40 @@ mod tests {
             metadata: Default::default(),
             timestamp: "2025-01-01T00:00:00Z".into(),
         };
-        let result = sup.send_to("nonexistent", msg);
+        let result = sup.send_to("nonexistent", msg).await;
         assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn send_to_auto_starts_agent() {
+        let (_tmp, ws) = make_workspace();
+
+        // Create agent directory but do NOT start
+        let agent_dir = ws.agent("eve");
+        std::fs::create_dir_all(agent_dir.path()).unwrap();
+
+        let mut sup = Supervisor::new(ws);
+        sup.set_binary_path(std::path::PathBuf::from("/usr/bin/true"));
+
+        assert!(!sup.is_running("eve"));
+
+        let msg = Message {
+            msg_id: None,
+            sender: "user".into(),
+            content: "wake up".into(),
+            priority: MessagePriority::Steer,
+            metadata: Default::default(),
+            timestamp: "2025-01-01T00:00:00Z".into(),
+        };
+        sup.send_to("eve", msg).await.unwrap();
+
+        // Agent should now be registered as running (auto-started)
+        assert!(sup.is_running("eve"));
+
+        // Message should be in the inbox
+        let inbox: Vec<Message> = read_jsonl(&agent_dir.inbox()).unwrap();
+        assert_eq!(inbox.len(), 1);
+        assert_eq!(inbox[0].content, "wake up");
     }
 
     #[tokio::test]
@@ -286,5 +336,28 @@ mod tests {
         let (_tmp, ws) = make_workspace();
         let sup = Supervisor::new(ws);
         assert!(sup.running_agents().is_empty());
+    }
+
+    #[test]
+    fn agent_state_sleeping_by_default() {
+        let (_tmp, ws) = make_workspace();
+        let sup = Supervisor::new(ws);
+        assert_eq!(sup.agent_state("any"), AgentState::Sleeping);
+    }
+
+    #[tokio::test]
+    async fn agent_state_active_after_start() {
+        let (_tmp, ws) = make_workspace();
+
+        let agent_dir = ws.agent("test");
+        std::fs::create_dir_all(agent_dir.path()).unwrap();
+
+        let mut sup = Supervisor::new(ws);
+        sup.set_binary_path(std::path::PathBuf::from("/usr/bin/true"));
+
+        assert_eq!(sup.agent_state("test"), AgentState::Sleeping);
+
+        sup.start_agent("test").await.unwrap();
+        assert_eq!(sup.agent_state("test"), AgentState::Active);
     }
 }

@@ -47,16 +47,15 @@ impl AgentDefinition {
 }
 
 // ---------------------------------------------------------------------------
-// AgentStatus
+// AgentState — lifecycle state for process management
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum AgentStatus {
-    Idle,
-    Running,
+pub enum AgentState {
+    Sleeping,
+    Active,
     Stopped,
-    Error,
 }
 
 // ---------------------------------------------------------------------------
@@ -68,7 +67,7 @@ pub struct AgentSummary {
     pub id: String,
     pub name: String,
     pub emoji: String,
-    pub status: AgentStatus,
+    pub state: AgentState,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub team_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -84,7 +83,7 @@ pub struct AgentDetail {
     pub id: String,
     pub name: String,
     pub emoji: String,
-    pub status: AgentStatus,
+    pub state: AgentState,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub team_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
