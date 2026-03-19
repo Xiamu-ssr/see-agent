@@ -5,8 +5,7 @@ use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
 
 use see_agent_corp::agent::{create_agent, delete_agent, list_agents, load_agent};
-use see_agent_corp::session::SessionStore;
-use see_agent_corp::types::{AgentState, Message, MessagePriority, SessionMessageType};
+use see_agent_corp::types::{AgentState, Message, MessagePriority};
 
 use crate::server::AppState;
 
@@ -162,12 +161,10 @@ async fn send_message_handler(
         MessagePriority::Collect
     };
 
-    let content = req.content;
-
     let msg = Message {
         msg_id: None,
         sender: "user".into(),
-        content: content.clone(),
+        content: req.content,
         priority,
         metadata: Default::default(),
         timestamp: chrono::Utc::now().to_rfc3339(),
@@ -177,23 +174,6 @@ async fn send_message_handler(
     sup.send_to(&agent_id, msg)
         .await
         .map_err(|_| StatusCode::NOT_FOUND)?;
-
-    // Write user message to session store so it's immediately visible in chat UI
-    let ws = state.workspace();
-    let agent_dir = ws.agent(&agent_id);
-    let session_dir = agent_dir.session();
-    let _ = std::fs::create_dir_all(session_dir.path());
-    let _ = std::fs::create_dir_all(session_dir.screenshots());
-    if !session_dir.messages().exists() {
-        let _ = std::fs::write(session_dir.messages(), "");
-    }
-    let mut session_store = SessionStore::new(session_dir);
-    // Sync counter so we don't overwrite existing messages
-    let _ = session_store.read_messages();
-    let _ = session_store.append_message(
-        SessionMessageType::UserTask,
-        serde_json::json!({ "content": content }),
-    );
 
     Ok(Json(StatusResponse { status: "sent".into() }))
 }

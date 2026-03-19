@@ -113,9 +113,65 @@ pub async fn run(agent_id: &str, workspace_path: &str) {
     };
     let system_prompt = build_system_prompt(&prompt_ctx);
 
-    // 8. Create conversation context
-    let mut conv_ctx =
-        ConversationContext::new(&system_prompt, config.agent.max_images as usize, None);
+    // 8. Create conversation context (with restore if previous session exists)
+    let mut conv_ctx = {
+        let session_dir_for_restore = agent_dir.session();
+        let mut restore_store = SessionStore::new(session_dir_for_restore);
+
+        if restore_store.dir().messages().exists() {
+            match restore_store.read_for_restore() {
+                Ok((Some(summary), kept_msgs)) if !kept_msgs.is_empty() => {
+                    info!(
+                        agent = agent_id,
+                        kept = kept_msgs.len(),
+                        "restoring session from disk"
+                    );
+                    let mut ctx =
+                        ConversationContext::for_restore(config.agent.max_images as usize);
+                    ctx.push_raw(serde_json::json!({
+                        "role": "system",
+                        "content": &system_prompt
+                    }));
+                    ctx.inject_summary(&summary);
+                    for msg in &kept_msgs {
+                        if let Some(openai_msg) = session_msg_to_openai(msg) {
+                            ctx.push_raw(openai_msg);
+                        }
+                    }
+                    ctx
+                }
+                Ok((None, kept_msgs)) if !kept_msgs.is_empty() => {
+                    info!(
+                        agent = agent_id,
+                        kept = kept_msgs.len(),
+                        "restoring session (no compact summary)"
+                    );
+                    let mut ctx =
+                        ConversationContext::for_restore(config.agent.max_images as usize);
+                    ctx.push_raw(serde_json::json!({
+                        "role": "system",
+                        "content": &system_prompt
+                    }));
+                    for msg in &kept_msgs {
+                        if let Some(openai_msg) = session_msg_to_openai(msg) {
+                            ctx.push_raw(openai_msg);
+                        }
+                    }
+                    ctx
+                }
+                _ => {
+                    info!(agent = agent_id, "no previous session, starting fresh");
+                    ConversationContext::new(
+                        &system_prompt,
+                        config.agent.max_images as usize,
+                        None,
+                    )
+                }
+            }
+        } else {
+            ConversationContext::new(&system_prompt, config.agent.max_images as usize, None)
+        }
+    };
 
     // 9. Set up SIGUSR1 handler to wake the inbox drain loop
     let (wake_tx, mut wake_rx) =
@@ -216,6 +272,41 @@ pub async fn run(agent_id: &str, workspace_path: &str) {
     #[allow(unreachable_code)]
     {
         let _ = wake_tx;
+    }
+}
+
+/// Convert a SessionMessage back to OpenAI chat format for context restore.
+fn session_msg_to_openai(msg: &see_agent_corp::types::SessionMessage) -> Option<serde_json::Value> {
+    use see_agent_corp::types::SessionMessageType;
+    match msg.msg_type {
+        SessionMessageType::UserTask | SessionMessageType::UserReply => {
+            let text = msg
+                .data
+                .get("content")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            Some(serde_json::json!({"role": "user", "content": text}))
+        }
+        SessionMessageType::Assistant => {
+            // Restore assistant message with content; skip tool_calls to avoid
+            // orphaned tool_call IDs confusing the API on restore.
+            let mut m = serde_json::json!({"role": "assistant"});
+            if let Some(content) = msg.data.get("content") {
+                m["content"] = content.clone();
+            }
+            Some(m)
+        }
+        SessionMessageType::SystemHint => {
+            let text = msg
+                .data
+                .get("text")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            Some(serde_json::json!({"role": "user", "content": text}))
+        }
+        // ToolResult without matching tool_calls confuses the API. Skip.
+        // Screenshot path-refs may not exist after restart. Skip.
+        _ => None,
     }
 }
 

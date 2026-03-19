@@ -469,6 +469,14 @@ impl AgentLoop {
                 text.to_owned()
             };
             ctx.add_user_reply(&formatted, sender, priority);
+
+            // Persist user message to session store
+            if let Some(ref mut store) = self.session_store {
+                let _ = store.append_message(
+                    SessionMessageType::UserTask,
+                    serde_json::json!({ "content": formatted }),
+                );
+            }
         }
 
         let disabled: Vec<String> = self.config.tools.disabled.clone();

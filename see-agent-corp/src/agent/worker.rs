@@ -177,6 +177,9 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let agent_dir = AgentDir::new(tmp.path());
 
+        // Initialize cursor at 0 (like create_agent does)
+        crate::supervisor::inbox::write_cursor(&agent_dir.inbox_cursor(), 0).unwrap();
+
         // Write a shutdown message to inbox
         let inbox = agent_dir.inbox();
         send_to_inbox(&inbox, &make_msg("shutdown", MessagePriority::Collect)).unwrap();

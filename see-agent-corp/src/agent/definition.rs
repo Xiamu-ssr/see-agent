@@ -54,6 +54,10 @@ pub fn create_agent(
     // Initialize empty MEMORY.md
     write_text(&agent_dir.memory_md(), "")?;
 
+    // Initialize inbox and cursor so worker starts clean
+    write_text(&agent_dir.inbox(), "")?;
+    write_json(&agent_dir.inbox_cursor(), &serde_json::json!({"line": 0}))?;
+
     Ok(definition)
 }
 
