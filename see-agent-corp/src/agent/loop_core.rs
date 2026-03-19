@@ -514,16 +514,16 @@ impl AgentLoop {
                 ctx.add_tool_result(&tc.id, &result.text, &ctx_images);
 
                 // Screenshot tool: save to disk + update screen dims for coord scaling
-                if tc.name == "screenshot" {
-                    if let Ok(new_ss) = self.eye.capture().await {
-                        self.screen_dims = (
-                            new_ss.width,
-                            new_ss.height,
-                            new_ss.screen_width.unwrap_or(new_ss.width),
-                            new_ss.screen_height.unwrap_or(new_ss.height),
-                        );
-                        self.save_screenshot_ref(ctx, &new_ss);
-                    }
+                if tc.name == "screenshot"
+                    && let Ok(new_ss) = self.eye.capture().await
+                {
+                    self.screen_dims = (
+                        new_ss.width,
+                        new_ss.height,
+                        new_ss.screen_width.unwrap_or(new_ss.width),
+                        new_ss.screen_height.unwrap_or(new_ss.height),
+                    );
+                    self.save_screenshot_ref(ctx, &new_ss);
                 }
 
                 // Persist tool result to session store
@@ -614,10 +614,10 @@ impl AgentLoop {
         });
         // Atomic write: write to tmp file then rename
         let tmp_path = path.with_extension("json.tmp");
-        if let Ok(content) = serde_json::to_string_pretty(&data) {
-            if std::fs::write(&tmp_path, content).is_ok() {
-                let _ = std::fs::rename(&tmp_path, &path);
-            }
+        if let Ok(content) = serde_json::to_string_pretty(&data)
+            && std::fs::write(&tmp_path, content).is_ok()
+        {
+            let _ = std::fs::rename(&tmp_path, &path);
         }
     }
 
