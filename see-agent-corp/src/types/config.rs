@@ -171,7 +171,7 @@ pub struct SkillsConfig {
 }
 
 fn default_skills_dirs() -> Vec<String> {
-    vec![consts::DEFAULT_SKILLS_DIR.to_owned()]
+    vec![] // extra dirs only; built-in defaults handled by resolve_skill_dirs()
 }
 
 impl Default for SkillsConfig {

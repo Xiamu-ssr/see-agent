@@ -127,6 +127,8 @@ pub fn TeamDetail() -> impl IntoView {
     let tasks = RwSignal::new(Vec::<TaskItem>::new());
     let messages = RwSignal::new(Vec::<TeamMessage>::new());
     let shared_files = RwSignal::new(Vec::<FileEntry>::new());
+    let shared_path = RwSignal::new(String::new());
+    let shared_file_content = RwSignal::new(Option::<String>::None);
     let agents = RwSignal::new(Vec::<AgentSummary>::new());
     let new_task_title = RwSignal::new(String::new());
     let new_task_desc = RwSignal::new(String::new());
@@ -527,11 +529,50 @@ pub fn TeamDetail() -> impl IntoView {
 
                                                 // ============ Shared ============
                                                 _ => {
+                                                    let tid_shared = team_id2.clone();
+                                                    let tid_shared2 = tid_shared.clone();
                                                     view! {
                                                         <div class="card bg-base-100 shadow-xl">
                                                             <div class="card-body">
-                                                                <h3 class="card-title text-sm">"Shared Files"</h3>
+                                                                <div class="flex items-center gap-2 mb-2">
+                                                                    <h3 class="card-title text-sm">"Shared Files"</h3>
+                                                                    {move || {
+                                                                        let p = shared_path.get();
+                                                                        if p.is_empty() {
+                                                                            view! { <span class="text-xs opacity-50">"/shared/"</span> }.into_any()
+                                                                        } else {
+                                                                            let tid = tid_shared.clone();
+                                                                            view! {
+                                                                                <button class="btn btn-ghost btn-xs" on:click=move |_| {
+                                                                                    // Go up one level
+                                                                                    let current = shared_path.get_untracked();
+                                                                                    let parent = current.rsplit_once('/').map(|(p, _)| p.to_string()).unwrap_or_default();
+                                                                                    shared_path.set(parent.clone());
+                                                                                    shared_file_content.set(None);
+                                                                                    let tid2 = tid.clone();
+                                                                                    wasm_bindgen_futures::spawn_local(async move {
+                                                                                        let url = if parent.is_empty() {
+                                                                                            format!("/teams/{tid2}/files")
+                                                                                        } else {
+                                                                                            format!("/teams/{tid2}/files/{parent}")
+                                                                                        };
+                                                                                        if let Ok(f) = api::get::<Vec<FileEntry>>(&url).await {
+                                                                                            shared_files.set(f);
+                                                                                        }
+                                                                                    });
+                                                                                }>"\u{2190} Up"</button>
+                                                                                <span class="text-xs opacity-50">{format!("/shared/{p}/")}</span>
+                                                                            }.into_any()
+                                                                        }
+                                                                    }}
+                                                                </div>
                                                                 {move || {
+                                                                    // Show file content if viewing a file
+                                                                    if let Some(content) = shared_file_content.get() {
+                                                                        return view! {
+                                                                            <pre class="whitespace-pre-wrap text-sm bg-base-200 p-3 rounded overflow-auto max-h-96">{content}</pre>
+                                                                        }.into_any();
+                                                                    }
                                                                     let files = shared_files.get();
                                                                     if files.is_empty() {
                                                                         view! { <span class="text-sm opacity-70">"No shared files"</span> }.into_any()
@@ -549,9 +590,38 @@ pub fn TeamDetail() -> impl IntoView {
                                                                                     <tbody>
                                                                                         {files.into_iter().map(|f| {
                                                                                             let icon = if f.entry_type == "directory" { "\u{1F4C1}" } else { "\u{1F4C4}" };
+                                                                                            let is_dir = f.entry_type == "directory";
+                                                                                            let fname = f.name.clone();
+                                                                                            let fname2 = f.name.clone();
+                                                                                            let tid = tid_shared2.clone();
                                                                                             view! {
-                                                                                                <tr>
-                                                                                                    <td><span>{icon}" "{f.name}</span></td>
+                                                                                                <tr class="cursor-pointer hover:bg-base-200" on:click=move |_| {
+                                                                                                    let current = shared_path.get_untracked();
+                                                                                                    let new_path = if current.is_empty() {
+                                                                                                        fname.clone()
+                                                                                                    } else {
+                                                                                                        format!("{current}/{}", fname)
+                                                                                                    };
+                                                                                                    if is_dir {
+                                                                                                        shared_path.set(new_path.clone());
+                                                                                                        shared_file_content.set(None);
+                                                                                                        let tid2 = tid.clone();
+                                                                                                        wasm_bindgen_futures::spawn_local(async move {
+                                                                                                            if let Ok(f) = api::get::<Vec<FileEntry>>(&format!("/teams/{tid2}/files/{new_path}")).await {
+                                                                                                                shared_files.set(f);
+                                                                                                            }
+                                                                                                        });
+                                                                                                    } else {
+                                                                                                        let tid2 = tid.clone();
+                                                                                                        let np = new_path.clone();
+                                                                                                        wasm_bindgen_futures::spawn_local(async move {
+                                                                                                            if let Ok(content) = api::get_text(&format!("/teams/{tid2}/file/{np}")).await {
+                                                                                                                shared_file_content.set(Some(content));
+                                                                                                            }
+                                                                                                        });
+                                                                                                    }
+                                                                                                }>
+                                                                                                    <td><span>{icon}" "{fname2}</span></td>
                                                                                                     <td><span class="text-xs opacity-70">{f.entry_type}</span></td>
                                                                                                     <td><span class="text-xs opacity-70">{format!("{}", f.size)}</span></td>
                                                                                                 </tr>

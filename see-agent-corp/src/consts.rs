@@ -19,7 +19,6 @@ pub const DEFAULT_SUMMARIZE_MAX_TOKENS: u32 = 2048;
 /// Config defaults — strings
 pub const DEFAULT_LLM_BASE_URL: &str = "https://api.openai.com/v1";
 pub const DEFAULT_LLM_MODEL: &str = "gpt-4o";
-pub const DEFAULT_SKILLS_DIR: &str = "~/.see-agent-corp/skills";
 pub const DEFAULT_SANDBOX_PROFILE: &str = "default";
 pub const DEFAULT_WEB_LANGUAGE: &str = "zh";
 

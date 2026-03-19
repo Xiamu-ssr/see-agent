@@ -8,6 +8,7 @@ use see_agent_corp::io::read_jsonl;
 use see_agent_corp::team::{create_team, list_teams, load_team, TaskBoard};
 use see_agent_corp::types::{Message, TaskStatus, TeamMember};
 
+use crate::server::routes::files::{list_dir_entries, FileEntry};
 use crate::server::AppState;
 
 // ---------------------------------------------------------------------------
@@ -340,6 +341,68 @@ async fn list_team_messages_handler(
 }
 
 // ---------------------------------------------------------------------------
+// Team shared files
+// ---------------------------------------------------------------------------
+
+async fn list_team_files_handler(
+    State(state): State<AppState>,
+    Path(team_id): Path<String>,
+) -> Result<Json<Vec<FileEntry>>, StatusCode> {
+    let ws = state.workspace();
+    let team_dir = ws.team(&team_id);
+    if !team_dir.path().exists() {
+        return Err(StatusCode::NOT_FOUND);
+    }
+    let shared = team_dir.shared();
+    if !shared.exists() {
+        return Ok(Json(vec![]));
+    }
+    let entries = list_dir_entries(&shared).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(Json(entries))
+}
+
+async fn list_team_files_subdir_handler(
+    State(state): State<AppState>,
+    Path((team_id, subpath)): Path<(String, String)>,
+) -> Result<Json<Vec<FileEntry>>, StatusCode> {
+    let ws = state.workspace();
+    let team_dir = ws.team(&team_id);
+    if !team_dir.path().exists() {
+        return Err(StatusCode::NOT_FOUND);
+    }
+    let shared = team_dir.shared();
+    let target = shared.join(&subpath);
+    if !target.starts_with(&shared) {
+        return Err(StatusCode::FORBIDDEN);
+    }
+    if !target.is_dir() {
+        return Err(StatusCode::NOT_FOUND);
+    }
+    let entries = list_dir_entries(&target).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(Json(entries))
+}
+
+async fn read_team_file_handler(
+    State(state): State<AppState>,
+    Path((team_id, filepath)): Path<(String, String)>,
+) -> Result<String, StatusCode> {
+    let ws = state.workspace();
+    let team_dir = ws.team(&team_id);
+    if !team_dir.path().exists() {
+        return Err(StatusCode::NOT_FOUND);
+    }
+    let shared = team_dir.shared();
+    let target = shared.join(&filepath);
+    if !target.starts_with(&shared) {
+        return Err(StatusCode::FORBIDDEN);
+    }
+    if !target.is_file() {
+        return Err(StatusCode::NOT_FOUND);
+    }
+    std::fs::read_to_string(&target).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+// ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
 
@@ -358,6 +421,18 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/teams/{team_id}/messages",
             get(list_team_messages_handler),
+        )
+        .route(
+            "/teams/{team_id}/files",
+            get(list_team_files_handler),
+        )
+        .route(
+            "/teams/{team_id}/files/{*subpath}",
+            get(list_team_files_subdir_handler),
+        )
+        .route(
+            "/teams/{team_id}/file/{*filepath}",
+            get(read_team_file_handler),
         )
         .with_state(state)
 }

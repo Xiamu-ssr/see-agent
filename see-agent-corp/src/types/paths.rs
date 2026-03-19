@@ -87,6 +87,10 @@ impl AgentDir {
         self.0.join("inbox_cursor.json")
     }
 
+    pub fn skills(&self) -> PathBuf {
+        self.0.join("skills")
+    }
+
     pub fn memory_dir(&self) -> PathBuf {
         self.0.join("memory")
     }

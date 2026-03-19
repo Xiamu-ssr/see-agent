@@ -11,7 +11,7 @@ use crate::server::AppState;
 // ---------------------------------------------------------------------------
 
 #[derive(Serialize)]
-struct FileEntry {
+pub struct FileEntry {
     name: String,
     #[serde(rename = "type")]
     entry_type: String,
@@ -157,7 +157,7 @@ async fn write_agent_file_handler(
 // Helpers
 // ---------------------------------------------------------------------------
 
-fn list_dir_entries(path: &std::path::Path) -> std::io::Result<Vec<FileEntry>> {
+pub fn list_dir_entries(path: &std::path::Path) -> std::io::Result<Vec<FileEntry>> {
     let mut entries = Vec::new();
 
     for entry in std::fs::read_dir(path)? {

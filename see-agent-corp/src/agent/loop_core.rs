@@ -275,11 +275,6 @@ impl AgentLoop {
             }
 
             for tc in &response.tool_calls {
-                if tc.name == "finished" {
-                    info!("finished tool called, returning to idle");
-                    return;
-                }
-
                 let result = match self.registry.execute(&tc.name, tc.arguments.clone()).await {
                     Ok(r) => r,
                     Err(e) => {
@@ -418,7 +413,7 @@ impl AgentLoop {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::brain::{BrainResponse, ToolCallInfo};
+    use crate::brain::BrainResponse;
     use crate::error::Result;
     use async_trait::async_trait;
     use serde_json::json;
@@ -493,35 +488,6 @@ mod tests {
 
         // system + user_reply + assistant = 3
         assert_eq!(ctx.len(), 3);
-    }
-
-    #[tokio::test]
-    async fn run_one_turn_returns_on_finished_tool() {
-        let brain_resp = BrainResponse {
-            content: Some("I'll finish.".to_owned()),
-            tool_calls: vec![ToolCallInfo {
-                id: "call_1".to_owned(),
-                name: "finished".to_owned(),
-                arguments: json!({"summary": "All done!"}),
-            }],
-            raw: json!({
-                "role": "assistant",
-                "content": "I'll finish.",
-                "tool_calls": [{
-                    "id": "call_1",
-                    "type": "function",
-                    "function": {"name": "finished", "arguments": "{\"summary\":\"All done!\"}"}
-                }]
-            }),
-        };
-        let mut agent = make_loop(vec![brain_resp]);
-        let mut ctx = ConversationContext::new("sys", 3, 3, None);
-
-        let msgs = vec![json!({"content": "do it", "sender": "user", "priority": "collect"})];
-        agent.run_one_turn(&mut ctx, &msgs, "sys").await;
-
-        // Should have returned after finished tool
-        assert!(ctx.len() >= 3); // system + user + assistant
     }
 
     #[test]

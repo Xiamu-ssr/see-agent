@@ -1,4 +1,3 @@
-mod control;
 mod memory;
 mod read;
 mod screen;
@@ -39,8 +38,6 @@ pub fn core_tool_infos() -> Vec<(&'static str, &'static str, &'static str)> {
         ("shell", "Execute a shell command", "core"),
         ("wait", "Wait for a specified duration", "core"),
         ("read", "Read a file (text or image)", "core"),
-        ("finished", "Signal task completion", "control"),
-        ("call_user", "Request human intervention", "control"),
         ("memory_search", "Search agent memory", "memory"),
         ("memory_get", "Read memory file by path and line range", "memory"),
     ]
@@ -64,7 +61,6 @@ pub fn register_builtin_tools(registry: &mut ToolRegistry, ctx: Arc<ToolContext>
     shell::register(registry, &ctx);
     screen::register(registry, &ctx);
     memory::register(registry, &ctx);
-    control::register(registry, &ctx);
     read::register(registry, &ctx);
     if ctx.team_dir.is_some() {
         team::register(registry, &ctx);
@@ -187,21 +183,21 @@ mod tests {
     }
 
     #[test]
-    fn registers_13_core_tools_without_team() {
+    fn registers_11_core_tools_without_team() {
         let tmp = TempDir::new().unwrap();
         let ctx = test_ctx(&tmp);
         let mut reg = ToolRegistry::new();
         register_builtin_tools(&mut reg, ctx);
-        assert_eq!(reg.len(), 13);
+        assert_eq!(reg.len(), 11);
     }
 
     #[test]
-    fn registers_20_tools_with_team() {
+    fn registers_18_tools_with_team() {
         let tmp = TempDir::new().unwrap();
         let ctx = test_ctx_with_team(&tmp);
         let mut reg = ToolRegistry::new();
         register_builtin_tools(&mut reg, ctx);
-        assert_eq!(reg.len(), 20);
+        assert_eq!(reg.len(), 18);
     }
 
     #[test]
@@ -211,7 +207,7 @@ mod tests {
         let mut reg = ToolRegistry::new();
         register_builtin_tools(&mut reg, ctx);
         let schemas = reg.get_schemas();
-        assert_eq!(schemas.len(), 20);
+        assert_eq!(schemas.len(), 18);
         for s in &schemas {
             assert_eq!(s.schema_type, "function");
             assert!(!s.function.name.is_empty());
@@ -226,13 +222,13 @@ mod tests {
         let mut reg = ToolRegistry::new();
         register_builtin_tools(&mut reg, ctx);
         let filtered = reg.get_schemas_filtered(&["shell".to_owned(), "click".to_owned()]);
-        assert_eq!(filtered.len(), 18);
+        assert_eq!(filtered.len(), 16);
     }
 
     #[test]
-    fn builtin_tool_infos_has_20() {
+    fn builtin_tool_infos_has_18() {
         let infos = builtin_tool_infos();
-        assert_eq!(infos.len(), 20);
+        assert_eq!(infos.len(), 18);
         for (name, desc, group) in &infos {
             assert!(!name.is_empty());
             assert!(!desc.is_empty());
@@ -455,6 +451,66 @@ mod tests {
         assert!(inbox_content.contains("hello from test"));
     }
 
+    #[tokio::test]
+    async fn send_message_writes_team_messages_jsonl() {
+        let tmp = TempDir::new().unwrap();
+        let ctx = test_ctx_with_team(&tmp);
+        // Create target agent "worker-1" (a team member)
+        let target_dir = ctx.workspace.agent("worker-1");
+        std::fs::create_dir_all(target_dir.path()).unwrap();
+
+        let mut reg = ToolRegistry::new();
+        register_builtin_tools(&mut reg, ctx.clone());
+
+        let result = reg
+            .execute(
+                "send_message",
+                serde_json::json!({
+                    "to": "worker-1",
+                    "content": "team msg test",
+                    "priority": "collect"
+                }),
+            )
+            .await
+            .unwrap();
+        assert!(result.text.contains("sent"));
+
+        // Verify team messages.jsonl was written
+        let team_dir = ctx.team_dir.as_ref().unwrap();
+        let team_msgs = std::fs::read_to_string(team_dir.messages()).unwrap();
+        assert!(team_msgs.contains("team msg test"));
+    }
+
+    #[tokio::test]
+    async fn send_message_skips_team_messages_for_non_member() {
+        let tmp = TempDir::new().unwrap();
+        let ctx = test_ctx_with_team(&tmp);
+        // Create target agent "outsider" (NOT a team member)
+        let target_dir = ctx.workspace.agent("outsider");
+        std::fs::create_dir_all(target_dir.path()).unwrap();
+
+        let mut reg = ToolRegistry::new();
+        register_builtin_tools(&mut reg, ctx.clone());
+
+        let result = reg
+            .execute(
+                "send_message",
+                serde_json::json!({
+                    "to": "outsider",
+                    "content": "external msg",
+                    "priority": "collect"
+                }),
+            )
+            .await
+            .unwrap();
+        assert!(result.text.contains("sent"));
+
+        // Verify team messages.jsonl was NOT written
+        let team_dir = ctx.team_dir.as_ref().unwrap();
+        let team_msgs_exists = team_dir.messages().exists();
+        assert!(!team_msgs_exists || !std::fs::read_to_string(team_dir.messages()).unwrap().contains("external msg"));
+    }
+
     #[test]
     fn create_team_creates_shared_directory() {
         use crate::config::ensure_workspace;
@@ -530,22 +586,6 @@ mod tests {
             .await
             .unwrap();
         assert!(result.text.contains("file not found"));
-    }
-
-    #[tokio::test]
-    async fn finished_tool_returns_result() {
-        let tmp = TempDir::new().unwrap();
-        let ctx = test_ctx(&tmp);
-        let mut reg = ToolRegistry::new();
-        register_builtin_tools(&mut reg, ctx);
-        let result = reg
-            .execute(
-                "finished",
-                serde_json::json!({"result": "task completed successfully"}),
-            )
-            .await
-            .unwrap();
-        assert!(result.text.contains("task completed successfully"));
     }
 
     // -----------------------------------------------------------------------

@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use crate::error::Result;
 use crate::io::{write_json, write_text};
 use crate::types::paths::WorkspaceDir;
-use crate::types::{AgentDefinition, Config, SkillsConfig};
+use crate::types::{AgentDefinition, Config};
 
 const SYSTEM_SKILL: &str = include_str!("../../../templates/system-skill/SKILL.md");
 const SYSTEM_SOUL: &str = include_str!("../../../templates/system-soul.md");
@@ -37,28 +37,12 @@ pub fn ensure_workspace(workspace: &WorkspaceDir) -> Result<()> {
         std::fs::create_dir_all(dir)?;
     }
 
-    // Write default config.json if absent, or patch empty skills.dirs
+    // Write default config.json if absent
     let config_path = workspace.config();
     if !config_path.exists() {
         let default_config = Config::default();
         let json = serde_json::to_string_pretty(&default_config)?;
         std::fs::write(&config_path, json)?;
-    } else {
-        // Patch: if skills.dirs is empty, fill with default
-        let content = std::fs::read_to_string(&config_path)?;
-        if let Ok(mut val) = serde_json::from_str::<serde_json::Value>(&content) {
-            let needs_patch = val
-                .get("skills")
-                .and_then(|s| s.get("dirs"))
-                .and_then(|d| d.as_array())
-                .is_some_and(|a| a.is_empty());
-            if needs_patch {
-                let default_dirs = SkillsConfig::default().dirs;
-                val["skills"]["dirs"] = serde_json::to_value(default_dirs)?;
-                let json = serde_json::to_string_pretty(&val)?;
-                std::fs::write(&config_path, json)?;
-            }
-        }
     }
 
     // Ensure system agent is fully initialized (per-item checks for upgrades)
@@ -68,28 +52,11 @@ pub fn ensure_workspace(workspace: &WorkspaceDir) -> Result<()> {
     std::fs::create_dir_all(system_dir.session().path())?;
     std::fs::create_dir_all(system_dir.session().screenshots())?;
 
-    // agent.json
+    // agent.json (no skills.dirs needed — built-in defaults cover agents/{id}/skills/)
     if !system_dir.agent_json().exists() {
         let mut def = AgentDefinition::new("system");
         def.is_system = true;
-        def.skills = Some(SkillsConfig {
-            dirs: vec![system_dir.path().join("skills").to_string_lossy().into_owned()],
-            disabled: vec![],
-        });
         write_json(&system_dir.agent_json(), &def)?;
-    } else {
-        // Patch: ensure existing agent.json has skills config
-        let content = std::fs::read_to_string(system_dir.agent_json())?;
-        if let Ok(mut val) = serde_json::from_str::<serde_json::Value>(&content)
-            && val.get("skills").is_none()
-        {
-            val["skills"] = serde_json::json!({
-                "dirs": [system_dir.path().join("skills").to_string_lossy().into_owned()],
-                "disabled": []
-            });
-            let json = serde_json::to_string_pretty(&val)?;
-            std::fs::write(system_dir.agent_json(), json)?;
-        }
     }
 
     // Skills directory + SKILL.md
@@ -171,28 +138,6 @@ mod tests {
     }
 
     #[test]
-    fn ensure_workspace_patches_empty_skills_dirs() {
-        let tmp = TempDir::new().unwrap();
-        let ws = WorkspaceDir::new(tmp.path());
-
-        // Write config with empty skills.dirs
-        std::fs::create_dir_all(ws.path()).unwrap();
-        std::fs::write(
-            ws.config(),
-            r#"{"skills": {"dirs": [], "disabled": []}}"#,
-        )
-        .unwrap();
-
-        ensure_workspace(&ws).unwrap();
-
-        let content = std::fs::read_to_string(ws.config()).unwrap();
-        let val: serde_json::Value = serde_json::from_str(&content).unwrap();
-        let dirs = val["skills"]["dirs"].as_array().unwrap();
-        assert!(!dirs.is_empty(), "skills.dirs should be patched with default");
-        assert!(dirs[0].as_str().unwrap().contains("skills"));
-    }
-
-    #[test]
     fn ensure_workspace_idempotent() {
         let tmp = TempDir::new().unwrap();
         let ws = WorkspaceDir::new(tmp.path());
@@ -221,9 +166,5 @@ mod tests {
         assert!(sys.identity_md().exists(), "IDENTITY.md should be created");
         let skill_path = sys.path().join("skills").join("system-management").join("SKILL.md");
         assert!(skill_path.exists(), "SKILL.md should be created");
-
-        // agent.json should have skills config patched
-        let content = std::fs::read_to_string(sys.agent_json()).unwrap();
-        assert!(content.contains("skills"), "agent.json should have skills config");
     }
 }

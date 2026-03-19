@@ -131,6 +131,38 @@ fn extract_string_array(value: &serde_json::Value, key: &str) -> Vec<String> {
 // Load
 // ---------------------------------------------------------------------------
 
+/// Resolve the effective skill directories for an agent.
+///
+/// Built-in defaults (always included):
+///   1. `{workspace}/skills/` — global skills
+///   2. `{workspace}/agents/{agent_id}/skills/` — agent-specific skills
+///
+/// Then appends extra dirs from config.skills.dirs and agent.skills.dirs.
+pub fn resolve_skill_dirs(
+    workspace: &crate::types::WorkspaceDir,
+    agent_id: &str,
+    config_extra: &[String],
+    agent_extra: Option<&[String]>,
+) -> Vec<String> {
+    let mut dirs = vec![
+        workspace.skills().to_string_lossy().into_owned(),
+        workspace.agent(agent_id).skills().to_string_lossy().into_owned(),
+    ];
+    for d in config_extra {
+        if !dirs.contains(d) {
+            dirs.push(d.clone());
+        }
+    }
+    if let Some(extra) = agent_extra {
+        for d in extra {
+            if !dirs.contains(d) {
+                dirs.push(d.clone());
+            }
+        }
+    }
+    dirs
+}
+
 /// Load all skills from the given directories.
 ///
 /// Searches each directory recursively for `SKILL.md` files.

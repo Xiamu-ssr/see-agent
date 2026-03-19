@@ -1,7 +1,7 @@
 mod agents;
 mod config;
 mod dashboard;
-mod files;
+pub(crate) mod files;
 mod health;
 mod logs;
 mod mcp;

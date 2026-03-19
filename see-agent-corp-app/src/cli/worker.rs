@@ -126,15 +126,17 @@ pub async fn run(agent_id: &str, workspace_path: &str) {
             shared_dir: shared_dir_str.as_deref(),
         }
     });
-    // 7b. Load skills
-    let mut skill_dirs = config.skills.dirs.clone();
-    // Agent-level skill dirs override (from agent.json)
-    if let Ok(agent_def) = read_json::<see_agent_corp::types::AgentDefinition>(&agent_dir.agent_json())
-        && let Some(skills_cfg) = agent_def.skills
-        && !skills_cfg.dirs.is_empty()
-    {
-        skill_dirs = skills_cfg.dirs;
-    }
+    // 7b. Load skills (built-in defaults + config extras + agent extras)
+    let agent_extra_dirs = read_json::<see_agent_corp::types::AgentDefinition>(&agent_dir.agent_json())
+        .ok()
+        .and_then(|def| def.skills)
+        .map(|s| s.dirs);
+    let skill_dirs = see_agent_corp::skill::resolve_skill_dirs(
+        &workspace,
+        agent_id,
+        &config.skills.dirs,
+        agent_extra_dirs.as_deref(),
+    );
     let skills = gate_skills(filter_skills(
         load_skills(&skill_dirs),
         &config.skills.disabled,
@@ -259,16 +261,16 @@ pub async fn run(agent_id: &str, workspace_path: &str) {
                     let new_brain = Box::new(OpenAiBrain::new(&new_config.llm));
 
                     // Rebuild system prompt with new config
-                    let new_skill_dirs = {
-                        let mut dirs = new_config.skills.dirs.clone();
-                        if let Ok(agent_def) = read_json::<see_agent_corp::types::AgentDefinition>(&agent_dir.agent_json())
-                            && let Some(skills_cfg) = agent_def.skills
-                            && !skills_cfg.dirs.is_empty()
-                        {
-                            dirs = skills_cfg.dirs;
-                        }
-                        dirs
-                    };
+                    let new_agent_extra = read_json::<see_agent_corp::types::AgentDefinition>(&agent_dir.agent_json())
+                        .ok()
+                        .and_then(|def| def.skills)
+                        .map(|s| s.dirs);
+                    let new_skill_dirs = see_agent_corp::skill::resolve_skill_dirs(
+                        &workspace,
+                        agent_id,
+                        &new_config.skills.dirs,
+                        new_agent_extra.as_deref(),
+                    );
                     let new_skills = gate_skills(filter_skills(
                         load_skills(&new_skill_dirs),
                         &new_config.skills.disabled,

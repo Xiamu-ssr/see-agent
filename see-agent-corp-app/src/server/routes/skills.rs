@@ -5,7 +5,7 @@ use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use see_agent_corp::skill::{gate_skills, load_skills};
+use see_agent_corp::skill::{gate_skills, load_skills, resolve_skill_dirs};
 
 use crate::server::AppState;
 
@@ -32,7 +32,14 @@ async fn list_skills_handler(
 ) -> Result<Json<Vec<SkillInfoResponse>>, StatusCode> {
     let config = state.inner.config.read().await;
     let skills_disabled = &config.skills.disabled;
-    let skills = load_skills(&config.skills.dirs);
+    // Global skills: workspace default + config extras
+    let mut dirs = vec![state.workspace().skills().to_string_lossy().into_owned()];
+    for d in &config.skills.dirs {
+        if !dirs.contains(d) {
+            dirs.push(d.clone());
+        }
+    }
+    let skills = load_skills(&dirs);
     let skills = gate_skills(skills);
 
     let response: Vec<SkillInfoResponse> = skills
@@ -112,7 +119,7 @@ async fn toggle_agent_skill_handler(
     }))
 }
 
-/// Per-agent skills: agent.json skill dirs override global (not merge), matching worker behavior.
+/// Per-agent skills: built-in defaults + config extras + agent extras (same as worker).
 async fn list_agent_skills_handler(
     State(state): State<AppState>,
     Path(agent_id): Path<String>,
@@ -126,23 +133,22 @@ async fn list_agent_skills_handler(
     let config = state.inner.config.read().await;
     let global_disabled = &config.skills.disabled;
 
-    // Determine skill dirs: agent-specific overrides global (same as worker)
+    // Resolve skill dirs using same logic as worker
     let agent_json_path = agent_dir.agent_json();
-    let dirs = if let Ok(content) = std::fs::read_to_string(&agent_json_path)
-        && let Ok(val) = serde_json::from_str::<Value>(&content)
-        && let Some(skill_dirs) = val
-            .get("skills")
-            .and_then(|s| s.get("dirs"))
-            .and_then(|d| d.as_array())
-        && !skill_dirs.is_empty()
-    {
-        skill_dirs
-            .iter()
-            .filter_map(|d| d.as_str().map(|s| s.to_owned()))
-            .collect()
-    } else {
-        config.skills.dirs.clone()
-    };
+    let agent_extra: Option<Vec<String>> = std::fs::read_to_string(&agent_json_path)
+        .ok()
+        .and_then(|content| serde_json::from_str::<Value>(&content).ok())
+        .and_then(|val| {
+            val.get("skills")
+                .and_then(|s| s.get("dirs"))
+                .and_then(|d| d.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|v| v.as_str().map(|s| s.to_owned()))
+                        .collect()
+                })
+        });
+    let dirs = resolve_skill_dirs(ws, &agent_id, &config.skills.dirs, agent_extra.as_deref());
 
     // Agent-level disabled
     let mut agent_disabled: Vec<String> = Vec::new();

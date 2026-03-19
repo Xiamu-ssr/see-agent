@@ -119,17 +119,28 @@ fn build_skills_section(skills: &[SkillInfo]) -> String {
         return String::new();
     }
 
-    let mut lines = vec!["<SKILLS>".to_owned()];
+    let mut lines = vec![
+        "## Skills".to_owned(),
+        String::new(),
+        "以下是你可以使用的 Skills。需要时用 read 工具读取 SKILL.md 获取详细指南。".to_owned(),
+        String::new(),
+        "<available_skills>".to_owned(),
+    ];
     for skill in &active {
-        lines.push(format!("\n## Skill: {}", skill.name));
+        lines.push("  <skill>".to_owned());
+        lines.push(format!("    <name>{}</name>", skill.name));
         if !skill.description.is_empty() {
-            lines.push(skill.description.clone());
+            lines.push(format!("    <description>{}</description>", skill.description));
         }
-        if !skill.body.is_empty() {
-            lines.push(skill.body.clone());
-        }
+        lines.push(format!("    <location>{}</location>", skill.path));
+        lines.push("  </skill>".to_owned());
     }
-    lines.push("</SKILLS>".to_owned());
+    lines.push("</available_skills>".to_owned());
+    lines.push(String::new());
+    lines.push("使用规则：".to_owned());
+    lines.push("- 如果恰好有一个 skill 适用：用 read 工具读取其 SKILL.md，然后按照指南执行".to_owned());
+    lines.push("- 如果多个可能适用：选最具体的一个读取".to_owned());
+    lines.push("- 如果没有适用的：不要读取任何 SKILL.md".to_owned());
     lines.join("\n")
 }
 
@@ -244,9 +255,9 @@ mod tests {
         };
 
         let prompt = build_system_prompt(&ctx);
-        assert!(prompt.contains("<SKILLS>"));
-        assert!(prompt.contains("Skill: web_search"));
-        assert!(prompt.contains("Search the web"));
+        assert!(prompt.contains("<available_skills>"));
+        assert!(prompt.contains("<name>web_search</name>"));
+        assert!(prompt.contains("<description>Search the web</description>"));
         // Blocked skill should not appear
         assert!(!prompt.contains("blocked_skill"));
     }
@@ -485,12 +496,12 @@ mod tests {
     }
 
     #[test]
-    fn skills_section_includes_body_content() {
+    fn skills_section_lazy_load_format() {
         let skills = vec![SkillInfo {
             name: "web_search".to_owned(),
             description: "Search the web".to_owned(),
-            body: "Use this skill to search for information online.\n\n## Usage\nCall with a query string.".to_owned(),
-            path: String::new(),
+            body: "Use this skill to search for information online.".to_owned(),
+            path: "/path/to/SKILL.md".to_owned(),
             requires_bins: vec![],
             requires_env: vec![],
             requires_any_bins: vec![],
@@ -499,9 +510,10 @@ mod tests {
         }];
 
         let result = build_skills_section(&skills);
-        assert!(result.contains("Skill: web_search"));
-        assert!(result.contains("Search the web"));
-        assert!(result.contains("Use this skill to search for information online."));
-        assert!(result.contains("## Usage"));
+        assert!(result.contains("<name>web_search</name>"));
+        assert!(result.contains("<description>Search the web</description>"));
+        assert!(result.contains("<location>/path/to/SKILL.md</location>"));
+        // Body should NOT be injected (lazy load)
+        assert!(!result.contains("Use this skill to search for information online."));
     }
 }

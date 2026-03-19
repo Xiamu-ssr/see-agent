@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use serde_json::{json, Value};
 
 use crate::error::{Result, CorpError};
-use crate::io::read_json;
+use crate::io::{append_jsonl, read_json};
 use crate::supervisor::inbox::send_to_inbox_with_id;
 use crate::team::task_board::TaskBoard;
 use crate::tool::{Tool, ToolRegistry};
@@ -105,7 +105,17 @@ impl Tool for SendMessageTool {
             timestamp: chrono::Utc::now().to_rfc3339(),
         };
 
-        send_to_inbox_with_id(&inbox_path, message)?;
+        send_to_inbox_with_id(&inbox_path, message.clone())?;
+
+        // Also write to team messages.jsonl if both agents are in the same team
+        if let Some(ref team_dir) = self.ctx.team_dir
+            && let Ok(def) = read_json::<TeamDefinition>(&team_dir.team_json())
+        {
+            let target_in_team = def.members.iter().any(|m| m.id == to);
+            if target_in_team {
+                let _ = append_jsonl(&team_dir.messages(), &message);
+            }
+        }
 
         // Wake the target agent's worker process
         if let Some(ref wake_fn) = self.ctx.wake_fn {
