@@ -26,6 +26,33 @@ ok()    { echo -e "${GREEN}[ok]${NC}    $*"; }
 warn()  { echo -e "${YELLOW}[warn]${NC}  $*"; }
 error() { echo -e "${RED}[error]${NC} $*"; exit 1; }
 
+# ── Install Safehouse (macOS sandbox) ─────────────────────────
+install_safehouse() {
+    local os
+    os="$(uname -s)"
+
+    if [ "$os" != "Darwin" ]; then
+        info "skipping Safehouse (macOS only, Linux sandbox TBD)"
+        return
+    fi
+
+    if command -v safehouse &>/dev/null; then
+        ok "Safehouse already installed: $(safehouse --version 2>/dev/null || echo 'unknown version')"
+        return
+    fi
+
+    info "installing Agent Safehouse (macOS sandbox)..."
+
+    if command -v brew &>/dev/null; then
+        brew install eugene1g/safehouse/agent-safehouse
+        ok "Safehouse installed via Homebrew"
+    else
+        warn "Homebrew not found. Install Safehouse manually:"
+        echo "  brew install eugene1g/safehouse/agent-safehouse"
+        echo "  or: https://github.com/eugene1g/agent-safehouse"
+    fi
+}
+
 usage() {
     cat <<EOF
 Claw Race Installer 🦞
@@ -133,7 +160,6 @@ install() {
     # Find binary
     local binary_path="${tmp_dir}/${BINARY_NAME}-${target}"
     if [ ! -f "$binary_path" ]; then
-        # fallback: might be just the binary name
         binary_path="${tmp_dir}/${BINARY_NAME}"
     fi
     if [ ! -f "$binary_path" ]; then
@@ -146,6 +172,9 @@ install() {
     chmod +x "${INSTALL_DIR}/${BINARY_NAME}"
 
     ok "installed ${BINARY_NAME} ${version} to ${INSTALL_DIR}/${BINARY_NAME}"
+
+    # ── Install Safehouse (macOS only) ────────────────────────
+    install_safehouse
 
     # ── PATH check ────────────────────────────────────────────
     if ! echo "$PATH" | tr ':' '\n' | grep -q "^${INSTALL_DIR}$"; then
