@@ -39,6 +39,7 @@ pub struct TeamSummary {
     pub name: String,
     pub status: TeamStatus,
     pub members: Vec<TeamMember>,
+    pub leader: String,
 }
 
 // ---------------------------------------------------------------------------

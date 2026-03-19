@@ -20,6 +20,7 @@ struct TeamSummaryResponse {
     id: String,
     name: String,
     members: Vec<TeamMemberResponse>,
+    leader: String,
     status: String,
 }
 
@@ -124,6 +125,7 @@ async fn list_teams_handler(
                     role: m.role,
                 })
                 .collect(),
+            leader: t.leader,
             status: format!("{:?}", t.status),
         })
         .collect();
@@ -177,6 +179,7 @@ async fn get_team_handler(
                 role: m.role,
             })
             .collect(),
+        leader: def.leader,
         status: "created".into(),
     }))
 }

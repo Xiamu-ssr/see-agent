@@ -85,6 +85,7 @@ pub fn list_teams(workspace: &WorkspaceDir) -> Result<Vec<TeamSummary>> {
             name: def.name,
             status: def.status,
             members: def.members,
+            leader: def.leader,
         });
     }
 
