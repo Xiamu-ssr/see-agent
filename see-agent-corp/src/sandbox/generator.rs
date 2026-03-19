@@ -55,9 +55,11 @@ pub fn build_sandbox_profile(
         // Team access
         if let Some(tid) = team_id {
             let team_dir = workspace.team(tid);
+            // All team members need rw access to shared/, tasklist, and messages
             rw_dirs.push(team_dir.shared().to_string_lossy().into_owned());
+            rw_dirs.push(team_dir.tasklist().to_string_lossy().into_owned());
+            rw_dirs.push(team_dir.messages().to_string_lossy().into_owned());
             ro_dirs.push(team_dir.team_json().to_string_lossy().into_owned());
-            ro_dirs.push(team_dir.tasklist().to_string_lossy().into_owned());
         }
     }
 
