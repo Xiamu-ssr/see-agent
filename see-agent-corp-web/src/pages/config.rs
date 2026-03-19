@@ -71,7 +71,7 @@ pub fn Config() -> impl IntoView {
     let initialized = RwSignal::new(false);
 
     view! {
-        <div>
+        <div class="h-full overflow-y-auto">
             <h2 class="text-xl font-bold mb-4">"Configuration"</h2>
             <Suspense fallback=|| view! { <span class="loading loading-spinner loading-lg"></span> }>
                 {move || {

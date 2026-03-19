@@ -7,30 +7,47 @@ use crate::io::{append_jsonl, read_jsonl};
 use crate::types::Message;
 
 // ---------------------------------------------------------------------------
-// Cursor persistence
+// Cursor persistence (dual cursor: collect + steer)
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Serialize, Deserialize)]
-struct Cursor {
-    line: usize,
+struct DualCursor {
+    collect: usize,
+    steer: usize,
 }
 
-/// Read the cursor value (0-based line offset into inbox.jsonl).
+/// Read the dual cursor values (0-based line offsets into inbox.jsonl).
 /// Returns `None` if the cursor file doesn't exist.
-pub fn read_cursor(path: &Path) -> Result<Option<usize>> {
+/// Migrates old `{"line": N}` format to `{"collect": N, "steer": N}`.
+pub fn read_cursors(path: &Path) -> Result<Option<(usize, usize)>> {
     if !path.exists() {
         return Ok(None);
     }
     let text = std::fs::read_to_string(path)?;
-    let cursor: Cursor = serde_json::from_str(text.trim())?;
-    Ok(Some(cursor.line))
+    let val: serde_json::Value = serde_json::from_str(text.trim())?;
+
+    // New format: {"collect": N, "steer": M}
+    if let (Some(c), Some(s)) = (
+        val.get("collect").and_then(|v| v.as_u64()),
+        val.get("steer").and_then(|v| v.as_u64()),
+    ) {
+        return Ok(Some((c as usize, s as usize)));
+    }
+
+    // Old format: {"line": N} → migrate
+    if let Some(line) = val.get("line").and_then(|v| v.as_u64()) {
+        let n = line as usize;
+        write_cursors(path, n, n)?;
+        return Ok(Some((n, n)));
+    }
+
+    Ok(Some((0, 0)))
 }
 
-/// Write the cursor value.
-pub fn write_cursor(path: &Path, line: usize) -> Result<()> {
-    let cursor = Cursor { line };
+/// Write the dual cursor values.
+pub fn write_cursors(path: &Path, collect: usize, steer: usize) -> Result<()> {
+    let cursor = DualCursor { collect, steer };
     let json = serde_json::to_string(&cursor)?;
-    // Atomic-ish: write to temp then rename
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
@@ -44,54 +61,111 @@ pub fn write_cursor(path: &Path, line: usize) -> Result<()> {
 // Drain
 // ---------------------------------------------------------------------------
 
-/// Read all new messages from inbox.jsonl since the cursor, advance the cursor.
+/// Read all new messages from inbox.jsonl since the collect cursor, advance both cursors to end.
 ///
 /// If the cursor file doesn't exist (old agent or never initialized),
 /// skip all existing history and only process future messages.
-///
-/// Returns an empty Vec if there are no new messages.
 pub fn drain_inbox(inbox_path: &Path, cursor_path: &Path) -> Result<Vec<Message>> {
     let all: Vec<Message> = read_jsonl(inbox_path)?;
 
-    let cursor = match read_cursor(cursor_path)? {
-        Some(c) => c,
+    let collect = match read_cursors(cursor_path)? {
+        Some((c, _)) => c,
         None => {
             // No cursor file — skip all history, create cursor at end
-            write_cursor(cursor_path, all.len())?;
+            write_cursors(cursor_path, all.len(), all.len())?;
             return Ok(Vec::new());
         }
     };
 
-    if cursor >= all.len() {
+    if collect >= all.len() {
         return Ok(Vec::new());
     }
 
-    let new_messages: Vec<Message> = all[cursor..].to_vec();
-    write_cursor(cursor_path, all.len())?;
+    let new_messages: Vec<Message> = all[collect..].to_vec();
+    write_cursors(cursor_path, all.len(), all.len())?;
     Ok(new_messages)
 }
 
-/// Drain inbox but only return steer-priority messages for immediate injection.
+/// Drain inbox and split by priority, respecting dual cursor.
 ///
-/// Returns `(steer, collect)` — steer messages are injected immediately,
-/// collect messages are batched for the next LLM turn.
+/// Reads from collect cursor. Steer messages already consumed by
+/// `drain_steer_only` (index < steer cursor) are NOT returned again.
+/// Both cursors advance to the end.
 pub fn drain_inbox_split(
     inbox_path: &Path,
     cursor_path: &Path,
 ) -> Result<(Vec<Message>, Vec<Message>)> {
-    let messages = drain_inbox(inbox_path, cursor_path)?;
+    let all: Vec<Message> = read_jsonl(inbox_path)?;
+
+    let (collect_cursor, steer_cursor) = match read_cursors(cursor_path)? {
+        Some(c) => c,
+        None => {
+            write_cursors(cursor_path, all.len(), all.len())?;
+            return Ok((Vec::new(), Vec::new()));
+        }
+    };
+
+    if collect_cursor >= all.len() {
+        // Ensure steer cursor is also at end
+        if steer_cursor < all.len() {
+            write_cursors(cursor_path, collect_cursor, all.len())?;
+        }
+        return Ok((Vec::new(), Vec::new()));
+    }
+
     let mut steer = Vec::new();
     let mut collect = Vec::new();
 
-    for msg in messages {
+    for (i, msg) in all.iter().enumerate().skip(collect_cursor) {
         if msg.is_steer() {
-            steer.push(msg);
+            // Only return steer messages not yet consumed by drain_steer_only
+            if i >= steer_cursor {
+                steer.push(msg.clone());
+            }
         } else {
-            collect.push(msg);
+            collect.push(msg.clone());
         }
     }
 
+    let end = all.len();
+    write_cursors(cursor_path, end, end)?;
     Ok((steer, collect))
+}
+
+/// Drain only steer messages since the steer cursor, advance only the steer cursor.
+///
+/// This is called inside the reasoning loop (before each LLM call) to inject
+/// steer messages in real-time without waiting for the outer drain_inbox_split.
+pub fn drain_steer_only(
+    inbox_path: &Path,
+    cursor_path: &Path,
+) -> Result<Vec<Message>> {
+    let all: Vec<Message> = read_jsonl(inbox_path)?;
+
+    let (collect_cursor, steer_cursor) = match read_cursors(cursor_path)? {
+        Some(c) => c,
+        None => {
+            return Ok(Vec::new());
+        }
+    };
+
+    if steer_cursor >= all.len() {
+        return Ok(Vec::new());
+    }
+
+    let mut steer_msgs = Vec::new();
+    let mut new_steer_cursor = steer_cursor;
+
+    for (i, msg) in all.iter().enumerate().skip(steer_cursor) {
+        if msg.is_steer() {
+            steer_msgs.push(msg.clone());
+        }
+        new_steer_cursor = i + 1;
+    }
+
+    // Only advance steer cursor, keep collect cursor unchanged
+    write_cursors(cursor_path, collect_cursor, new_steer_cursor)?;
+    Ok(steer_msgs)
 }
 
 /// Append a message to an agent's inbox file.
@@ -135,13 +209,27 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let path = tmp.path().join("cursor.json");
 
-        assert_eq!(read_cursor(&path).unwrap(), None);
-        write_cursor(&path, 0).unwrap();
-        assert_eq!(read_cursor(&path).unwrap(), Some(0));
-        write_cursor(&path, 5).unwrap();
-        assert_eq!(read_cursor(&path).unwrap(), Some(5));
-        write_cursor(&path, 10).unwrap();
-        assert_eq!(read_cursor(&path).unwrap(), Some(10));
+        assert_eq!(read_cursors(&path).unwrap(), None);
+        write_cursors(&path, 0, 0).unwrap();
+        assert_eq!(read_cursors(&path).unwrap(), Some((0, 0)));
+        write_cursors(&path, 5, 7).unwrap();
+        assert_eq!(read_cursors(&path).unwrap(), Some((5, 7)));
+    }
+
+    #[test]
+    fn cursor_migrates_old_format() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("cursor.json");
+
+        // Write old format
+        std::fs::write(&path, r#"{"line": 10}"#).unwrap();
+        let cursors = read_cursors(&path).unwrap();
+        assert_eq!(cursors, Some((10, 10)));
+
+        // File should now be new format
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains("collect"));
+        assert!(text.contains("steer"));
     }
 
     #[test]
@@ -160,17 +248,14 @@ mod tests {
         let inbox = tmp.path().join("inbox.jsonl");
         let cursor = tmp.path().join("cursor.json");
 
-        // Write 3 messages before cursor exists
         for i in 0..3 {
             send_to_inbox(&inbox, &make_msg(&format!("msg {i}"), MessagePriority::Collect))
                 .unwrap();
         }
 
-        // No cursor file → skip all history
         let msgs = drain_inbox(&inbox, &cursor).unwrap();
         assert!(msgs.is_empty());
-        // Cursor now created at end of history
-        assert_eq!(read_cursor(&cursor).unwrap(), Some(3));
+        assert_eq!(read_cursors(&cursor).unwrap(), Some((3, 3)));
     }
 
     #[test]
@@ -179,29 +264,23 @@ mod tests {
         let inbox = tmp.path().join("inbox.jsonl");
         let cursor = tmp.path().join("cursor.json");
 
-        // Initialize cursor at 0 (like create_agent does)
-        write_cursor(&cursor, 0).unwrap();
+        write_cursors(&cursor, 0, 0).unwrap();
 
-        // Write 3 messages
         for i in 0..3 {
             send_to_inbox(&inbox, &make_msg(&format!("msg {i}"), MessagePriority::Collect))
                 .unwrap();
         }
 
-        // First drain gets all 3
         let msgs = drain_inbox(&inbox, &cursor).unwrap();
         assert_eq!(msgs.len(), 3);
-        assert_eq!(read_cursor(&cursor).unwrap(), Some(3));
+        assert_eq!(read_cursors(&cursor).unwrap(), Some((3, 3)));
 
-        // Second drain gets nothing
         let msgs = drain_inbox(&inbox, &cursor).unwrap();
         assert!(msgs.is_empty());
 
-        // Add 2 more
         send_to_inbox(&inbox, &make_msg("msg 3", MessagePriority::Steer)).unwrap();
         send_to_inbox(&inbox, &make_msg("msg 4", MessagePriority::Collect)).unwrap();
 
-        // Third drain gets the 2 new ones
         let msgs = drain_inbox(&inbox, &cursor).unwrap();
         assert_eq!(msgs.len(), 2);
         assert_eq!(msgs[0].content, "msg 3");
@@ -214,8 +293,7 @@ mod tests {
         let inbox = tmp.path().join("inbox.jsonl");
         let cursor = tmp.path().join("cursor.json");
 
-        // Initialize cursor at 0 (like create_agent does)
-        write_cursor(&cursor, 0).unwrap();
+        write_cursors(&cursor, 0, 0).unwrap();
 
         send_to_inbox(&inbox, &make_msg("a", MessagePriority::Collect)).unwrap();
         send_to_inbox(&inbox, &make_msg("b", MessagePriority::Steer)).unwrap();
@@ -229,6 +307,81 @@ mod tests {
         assert_eq!(steer[1].content, "d");
         assert_eq!(collect[0].content, "a");
         assert_eq!(collect[1].content, "c");
+    }
+
+    #[test]
+    fn drain_steer_only_returns_only_steer() {
+        let tmp = TempDir::new().unwrap();
+        let inbox = tmp.path().join("inbox.jsonl");
+        let cursor = tmp.path().join("cursor.json");
+
+        write_cursors(&cursor, 0, 0).unwrap();
+
+        send_to_inbox(&inbox, &make_msg("a", MessagePriority::Collect)).unwrap();
+        send_to_inbox(&inbox, &make_msg("b", MessagePriority::Steer)).unwrap();
+        send_to_inbox(&inbox, &make_msg("c", MessagePriority::Collect)).unwrap();
+        send_to_inbox(&inbox, &make_msg("d", MessagePriority::Steer)).unwrap();
+
+        let steer = drain_steer_only(&inbox, &cursor).unwrap();
+        assert_eq!(steer.len(), 2);
+        assert_eq!(steer[0].content, "b");
+        assert_eq!(steer[1].content, "d");
+
+        // Steer cursor advanced to end, collect cursor unchanged
+        let (c, s) = read_cursors(&cursor).unwrap().unwrap();
+        assert_eq!(c, 0); // collect unchanged
+        assert_eq!(s, 4); // steer at end
+    }
+
+    #[test]
+    fn drain_split_skips_already_consumed_steer() {
+        let tmp = TempDir::new().unwrap();
+        let inbox = tmp.path().join("inbox.jsonl");
+        let cursor = tmp.path().join("cursor.json");
+
+        write_cursors(&cursor, 0, 0).unwrap();
+
+        send_to_inbox(&inbox, &make_msg("a", MessagePriority::Collect)).unwrap();
+        send_to_inbox(&inbox, &make_msg("b", MessagePriority::Steer)).unwrap();
+        send_to_inbox(&inbox, &make_msg("c", MessagePriority::Collect)).unwrap();
+        send_to_inbox(&inbox, &make_msg("d", MessagePriority::Steer)).unwrap();
+
+        // First: drain_steer_only consumes all steer messages
+        let steer = drain_steer_only(&inbox, &cursor).unwrap();
+        assert_eq!(steer.len(), 2);
+
+        // Now drain_inbox_split should NOT return those steer messages again
+        let (steer, collect) = drain_inbox_split(&inbox, &cursor).unwrap();
+        assert_eq!(steer.len(), 0, "steer already consumed by drain_steer_only");
+        assert_eq!(collect.len(), 2);
+        assert_eq!(collect[0].content, "a");
+        assert_eq!(collect[1].content, "c");
+    }
+
+    #[test]
+    fn drain_steer_only_after_partial() {
+        let tmp = TempDir::new().unwrap();
+        let inbox = tmp.path().join("inbox.jsonl");
+        let cursor = tmp.path().join("cursor.json");
+
+        write_cursors(&cursor, 0, 0).unwrap();
+
+        // Add 2 messages
+        send_to_inbox(&inbox, &make_msg("a", MessagePriority::Steer)).unwrap();
+        send_to_inbox(&inbox, &make_msg("b", MessagePriority::Collect)).unwrap();
+
+        // drain_steer_only
+        let steer = drain_steer_only(&inbox, &cursor).unwrap();
+        assert_eq!(steer.len(), 1);
+        assert_eq!(steer[0].content, "a");
+
+        // Add more messages
+        send_to_inbox(&inbox, &make_msg("c", MessagePriority::Steer)).unwrap();
+
+        // Second drain_steer_only only gets new steer
+        let steer = drain_steer_only(&inbox, &cursor).unwrap();
+        assert_eq!(steer.len(), 1);
+        assert_eq!(steer[0].content, "c");
     }
 
     #[test]

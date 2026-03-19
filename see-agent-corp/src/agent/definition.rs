@@ -56,7 +56,7 @@ pub fn create_agent(
 
     // Initialize inbox and cursor so worker starts clean
     write_text(&agent_dir.inbox(), "")?;
-    write_json(&agent_dir.inbox_cursor(), &serde_json::json!({"line": 0}))?;
+    write_json(&agent_dir.inbox_cursor(), &serde_json::json!({"collect": 0, "steer": 0}))?;
 
     // Initialize empty messages.jsonl so chat UI shows empty list (not 404)
     write_text(&agent_dir.session().messages(), "")?;

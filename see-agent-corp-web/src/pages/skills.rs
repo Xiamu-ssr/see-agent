@@ -17,7 +17,7 @@ pub fn Skills() -> impl IntoView {
     });
 
     view! {
-        <div>
+        <div class="h-full overflow-y-auto">
             <h2 class="text-xl font-bold mb-4">"Skills"</h2>
             <Suspense fallback=|| view! { <span class="loading loading-spinner loading-lg"></span> }>
                 {move || skills.get().map(|list| {

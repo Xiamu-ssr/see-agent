@@ -99,6 +99,9 @@ pub async fn run(agent_id: &str, workspace_path: &str) {
     let screenshots_dir = session_dir.screenshots();
     agent_loop.set_screenshots_dir(screenshots_dir);
 
+    // 6c. Set inbox paths for real-time steer injection during reasoning loop
+    agent_loop.set_inbox_paths(agent_dir.inbox(), agent_dir.inbox_cursor());
+
     // 6c. Session store for persisting messages to disk (visible in chat UI)
     let _ = std::fs::create_dir_all(session_dir.path());
     let _ = std::fs::create_dir_all(session_dir.screenshots());
@@ -229,11 +232,25 @@ pub async fn run(agent_id: &str, workspace_path: &str) {
     let cursor_path = agent_dir.inbox_cursor();
     info!(agent = agent_id, inbox = %inbox_path.display(), "entering inbox loop");
 
+    let mut is_first_drain = true;
+
     loop {
         // Drain inbox
         if let Ok((steer_msgs, collect_msgs)) =
             see_agent_corp::supervisor::drain_inbox_split(&inbox_path, &cursor_path)
         {
+            // Bug 54: On first drain, filter out historical shutdown messages
+            // (left over from a previous worker's lifecycle)
+            let (steer_msgs, collect_msgs) = if is_first_drain {
+                is_first_drain = false;
+                (
+                    steer_msgs.into_iter().filter(|m| !m.is_shutdown()).collect::<Vec<_>>(),
+                    collect_msgs.into_iter().filter(|m| !m.is_shutdown()).collect::<Vec<_>>(),
+                )
+            } else {
+                (steer_msgs, collect_msgs)
+            };
+
             // Check for shutdown
             for msg in steer_msgs.iter().chain(collect_msgs.iter()) {
                 if msg.is_shutdown() {

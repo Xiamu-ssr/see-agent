@@ -5,8 +5,12 @@ use crate::api;
 
 #[derive(Debug, Clone, Deserialize)]
 struct LogEntry {
+    #[serde(default)]
     time: String,
+    #[serde(default)]
     level: String,
+    #[serde(default)]
+    source: String,
     message: String,
 }
 
@@ -17,7 +21,7 @@ pub fn Logs() -> impl IntoView {
     });
 
     view! {
-        <div>
+        <div class="h-full overflow-y-auto">
             <h2 class="text-xl font-bold mb-4">"Logs"</h2>
             <Suspense fallback=|| view! { <span class="loading loading-spinner loading-lg"></span> }>
                 {move || logs.get().map(|list| {
@@ -32,10 +36,11 @@ pub fn Logs() -> impl IntoView {
                         let items: Vec<_> = list.iter().cloned().collect();
                         view! {
                             <div class="overflow-x-auto">
-                                <table class="table">
+                                <table class="table table-sm">
                                     <thead>
                                         <tr>
                                             <th>"Time"</th>
+                                            <th>"Source"</th>
                                             <th>"Level"</th>
                                             <th>"Message"</th>
                                         </tr>
@@ -43,16 +48,18 @@ pub fn Logs() -> impl IntoView {
                                     <tbody>
                                         {items.into_iter().map(|e| {
                                             let badge_class = match e.level.to_lowercase().as_str() {
-                                                "error" => "badge badge-error",
-                                                "warn" => "badge badge-warning",
-                                                "info" => "badge badge-primary",
-                                                _ => "badge badge-info",
+                                                "error" => "badge badge-error badge-sm",
+                                                "warn" => "badge badge-warning badge-sm",
+                                                "info" => "badge badge-primary badge-sm",
+                                                "debug" => "badge badge-ghost badge-sm",
+                                                _ => "badge badge-sm",
                                             };
                                             view! {
                                                 <tr>
-                                                    <td><span class="text-sm opacity-70">{e.time}</span></td>
+                                                    <td><span class="text-xs opacity-70 whitespace-nowrap">{e.time}</span></td>
+                                                    <td><span class="text-xs font-mono">{e.source}</span></td>
                                                     <td><span class=badge_class>{e.level}</span></td>
-                                                    <td><code>{e.message}</code></td>
+                                                    <td><code class="text-xs">{e.message}</code></td>
                                                 </tr>
                                             }
                                         }).collect_view()}

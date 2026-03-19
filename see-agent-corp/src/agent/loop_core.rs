@@ -36,6 +36,10 @@ pub struct AgentLoop {
     session_store: Option<SessionStore>,
     /// Screen dimensions for coordinate scaling, updated on each screenshot.
     screen_dims: (u32, u32, u32, u32), // (model_w, model_h, screen_w, screen_h)
+    /// Inbox path for real-time steer injection (optional; set by worker).
+    inbox_path: Option<PathBuf>,
+    /// Cursor path for real-time steer injection (optional; set by worker).
+    cursor_path: Option<PathBuf>,
 }
 
 impl AgentLoop {
@@ -61,6 +65,8 @@ impl AgentLoop {
             screenshot_counter: 0,
             session_store: None,
             screen_dims: (0, 0, 0, 0),
+            inbox_path: None,
+            cursor_path: None,
         }
     }
 
@@ -72,6 +78,12 @@ impl AgentLoop {
     /// Set a session store for persisting messages to disk.
     pub fn set_session_store(&mut self, store: SessionStore) {
         self.session_store = Some(store);
+    }
+
+    /// Set inbox paths for real-time steer injection during reasoning loop.
+    pub fn set_inbox_paths(&mut self, inbox: PathBuf, cursor: PathBuf) {
+        self.inbox_path = Some(inbox);
+        self.cursor_path = Some(cursor);
     }
 
     /// Save a screenshot to disk and add it to context as a path reference.
@@ -194,6 +206,32 @@ impl AgentLoop {
                     };
                     let formatted = format!("{label} {text}");
                     ctx.add_user_reply(&formatted, sender, "steer");
+                }
+            }
+
+            // Real-time steer injection: drain new steer messages before each LLM call
+            if let (Some(inbox), Some(cursor)) = (&self.inbox_path, &self.cursor_path)
+                && let Ok(steer_msgs) = crate::supervisor::drain_steer_only(inbox, cursor)
+            {
+                for msg in &steer_msgs {
+                    let sender = &msg.sender;
+                    let label = match sender.as_str() {
+                        "user" => "[用户]",
+                        "system" | "supervisor" => "[系统]",
+                        s => &format!("[{s}]"),
+                    };
+                    let formatted = format!("{label} {}", msg.content);
+                    ctx.add_user_reply(&formatted, sender, "steer");
+
+                    if let Some(ref mut store) = self.session_store {
+                        let _ = store.append_message(
+                            SessionMessageType::UserReply,
+                            serde_json::json!({ "content": msg.content, "sender": sender, "priority": "steer" }),
+                        );
+                    }
+                }
+                if !steer_msgs.is_empty() {
+                    info!(count = steer_msgs.len(), "injected real-time steer messages");
                 }
             }
 

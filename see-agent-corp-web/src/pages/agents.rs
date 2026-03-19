@@ -480,6 +480,25 @@ fn AgentDetailPanel(agent_id: String) -> impl IntoView {
         });
     };
 
+    // --- Skill toggle handler ---
+    let toggle_skill = move |name: String, new_disabled: bool| {
+        let id = aid.get_value();
+        let body = serde_json::json!({ "disabled": new_disabled });
+        skills_list.update(|list| {
+            if let Some(skill) = list.iter_mut().find(|s| s.name == name) {
+                skill.disabled = new_disabled;
+                skill.available = !new_disabled;
+            }
+        });
+        wasm_bindgen_futures::spawn_local(async move {
+            let _ = api::post::<serde_json::Value>(
+                &format!("/agents/{id}/skills/{name}/toggle"),
+                &body,
+            )
+            .await;
+        });
+    };
+
     // --- File handlers ---
     let fetch_dir = move |path: String| {
         let id = aid.get_value();
@@ -950,17 +969,24 @@ fn AgentDetailPanel(agent_id: String) -> impl IntoView {
                                                                                 view! { <div role="alert" class="alert"><span>"No skills loaded"</span></div> }.into_any()
                                                                             } else {
                                                                                 skills.into_iter().map(|skill| {
-                                                                                    let badge_class = if skill.available { "badge badge-success" } else { "badge badge-error" };
-                                                                                    let badge_text = if skill.available { "Available" } else { "Blocked" };
+                                                                                    let name = skill.name.clone();
+                                                                                    let desc = skill.description.clone();
+                                                                                    let is_enabled = skill.available;
+                                                                                    let name_for_toggle = name.clone();
                                                                                     view! {
-                                                                                        <div class="flex justify-between items-center py-2">
+                                                                                        <div class="flex justify-between items-center py-1">
                                                                                             <div>
-                                                                                                <span class="font-bold">{skill.name}</span><br />
-                                                                                                <span class="text-sm opacity-70">{skill.description}</span>
+                                                                                                <span class="font-bold text-sm">{name}</span>
+                                                                                                <span class="text-xs opacity-70 ml-2">{desc}</span>
                                                                                             </div>
-                                                                                            <span class=badge_class>{badge_text}</span>
+                                                                                            <input type="checkbox" class="toggle toggle-primary toggle-sm"
+                                                                                                checked=is_enabled
+                                                                                                on:change=move |ev: ev::Event| {
+                                                                                                    let checked = event_target_checked(&ev);
+                                                                                                    toggle_skill(name_for_toggle.clone(), !checked);
+                                                                                                }
+                                                                                            />
                                                                                         </div>
-                                                                                        <div class="divider my-0"></div>
                                                                                     }
                                                                                 }).collect_view().into_any()
                                                                             }
