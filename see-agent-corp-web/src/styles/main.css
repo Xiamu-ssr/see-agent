@@ -110,6 +110,11 @@
     border-radius: 3px;
 }
 
+/* Log level row coloring */
+tr.log-error td { color: oklch(var(--er)); }
+tr.log-warn td { color: oklch(var(--wa)); }
+tr.log-debug td { opacity: 0.5; }
+
 /* Stat card number */
 .stat-value-custom {
     font-size: 2rem;

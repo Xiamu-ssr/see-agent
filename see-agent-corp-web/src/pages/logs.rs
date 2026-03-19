@@ -25,7 +25,8 @@ pub fn Logs() -> impl IntoView {
             <h2 class="text-xl font-bold mb-4">"Logs"</h2>
             <Suspense fallback=|| view! { <span class="loading loading-spinner loading-lg"></span> }>
                 {move || logs.get().map(|list| {
-                    if list.is_empty() {
+                    let items: Vec<LogEntry> = (*list).clone();
+                    if items.is_empty() {
                         view! {
                             <div class="text-center py-12 opacity-60">
                                 <p class="text-4xl mb-2">"📋"</p>
@@ -33,7 +34,6 @@ pub fn Logs() -> impl IntoView {
                             </div>
                         }.into_any()
                     } else {
-                        let items: Vec<_> = list.iter().cloned().collect();
                         view! {
                             <div class="overflow-x-auto">
                                 <table class="table table-sm">
@@ -47,15 +47,16 @@ pub fn Logs() -> impl IntoView {
                                     </thead>
                                     <tbody>
                                         {items.into_iter().map(|e| {
-                                            let badge_class = match e.level.to_lowercase().as_str() {
-                                                "error" => "badge badge-error badge-sm",
-                                                "warn" => "badge badge-warning badge-sm",
-                                                "info" => "badge badge-primary badge-sm",
-                                                "debug" => "badge badge-ghost badge-sm",
-                                                _ => "badge badge-sm",
+                                            let level_lower = e.level.to_lowercase();
+                                            let (badge_class, row_class) = match level_lower.as_str() {
+                                                "error" => ("badge badge-error badge-sm", "log-error"),
+                                                "warn" => ("badge badge-warning badge-sm", "log-warn"),
+                                                "info" => ("badge badge-primary badge-sm", "log-info"),
+                                                "debug" => ("badge badge-ghost badge-sm", "log-debug"),
+                                                _ => ("badge badge-sm", ""),
                                             };
                                             view! {
-                                                <tr>
+                                                <tr class=row_class>
                                                     <td><span class="text-xs opacity-70 whitespace-nowrap">{e.time}</span></td>
                                                     <td><span class="text-xs font-mono">{e.source}</span></td>
                                                     <td><span class=badge_class>{e.level}</span></td>

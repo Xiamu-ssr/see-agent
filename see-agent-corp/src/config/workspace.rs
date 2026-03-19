@@ -8,6 +8,7 @@ use crate::types::{AgentDefinition, Config};
 const SYSTEM_SKILL: &str = include_str!("../../../templates/system-skill/SKILL.md");
 const SYSTEM_SOUL: &str = include_str!("../../../templates/system-soul.md");
 const AGENTS_TEMPLATE: &str = include_str!("../../../templates/AGENTS.md");
+const CLAWHUB_SKILL: &str = include_str!("../../../templates/clawhub-skill/SKILL.md");
 
 /// Resolve the workspace root directory.
 ///
@@ -43,6 +44,13 @@ pub fn ensure_workspace(workspace: &WorkspaceDir) -> Result<()> {
         let default_config = Config::default();
         let json = serde_json::to_string_pretty(&default_config)?;
         std::fs::write(&config_path, json)?;
+    }
+
+    // Built-in global skill: clawhub
+    let clawhub_dir = workspace.skills().join("clawhub");
+    if !clawhub_dir.join("SKILL.md").exists() {
+        std::fs::create_dir_all(&clawhub_dir)?;
+        std::fs::write(clawhub_dir.join("SKILL.md"), CLAWHUB_SKILL)?;
     }
 
     // Ensure system agent is fully initialized (per-item checks for upgrades)
@@ -116,6 +124,7 @@ mod tests {
         assert!(ws.agents().exists());
         assert!(ws.teams().exists());
         assert!(ws.skills().exists());
+        assert!(ws.skills().join("clawhub").join("SKILL.md").exists());
         assert!(ws.system_agent().path().exists());
         assert!(ws.system_agent().memory_dir().exists());
         assert!(ws.system_agent().session().screenshots().exists());

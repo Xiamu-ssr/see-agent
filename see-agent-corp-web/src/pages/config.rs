@@ -155,6 +155,150 @@ pub fn Config() -> impl IntoView {
                                                         };
 
                                                         match field_type.as_str() {
+                                                            "object" => {
+                                                                let sub_props = resolved_field.get("properties").and_then(|p| p.as_object()).cloned().unwrap_or_default();
+                                                                let sub_defs = defs.clone();
+                                                                let sub_defaults = default_val.clone();
+                                                                let sn_obj = section_name.clone();
+                                                                let fn_obj = field_name.clone();
+                                                                view! {
+                                                                    <div class="md:col-span-2">
+                                                                        <label class="label"><span class="label-text font-bold">{label}</span></label>
+                                                                        {if !description.is_empty() {
+                                                                            Some(view! { <p class="text-sm opacity-70 mb-1">{description.clone()}</p> })
+                                                                        } else { None }}
+                                                                        <div class="pl-4 border-l-2 border-base-300 grid grid-cols-1 md:grid-cols-2 gap-3">
+                                                                            {sub_props.into_iter().map(move |(sub_name, sub_schema)| {
+                                                                                let resolved_sub = resolve_ref(&sub_schema, &sub_defs).clone();
+                                                                                let sub_type = schema_type(&resolved_sub).to_string();
+                                                                                let sub_label = format_section_name(&sub_name);
+                                                                                let sub_desc = resolved_sub.get("description").and_then(|d| d.as_str()).unwrap_or("").to_string();
+                                                                                let sub_default = sub_defaults.get(&sub_name).cloned().unwrap_or_default();
+                                                                                let sn_sub = sn_obj.clone();
+                                                                                let fn_sub = fn_obj.clone();
+                                                                                let sn_sub2 = sn_obj.clone();
+                                                                                let fn_sub2 = fn_obj.clone();
+                                                                                let sub_name2 = sub_name.clone();
+
+                                                                                let sub_current = {
+                                                                                    let sn = sn_sub.clone();
+                                                                                    let fn_ = fn_sub.clone();
+                                                                                    let sn2 = sub_name.clone();
+                                                                                    move || {
+                                                                                        let data = form_data.get();
+                                                                                        data.get(&sn).and_then(|s| s.get(&fn_)).and_then(|o| o.get(&sn2)).cloned().unwrap_or_default()
+                                                                                    }
+                                                                                };
+
+                                                                                let sub_on_change = move |new_val: Value| {
+                                                                                    let sn = sn_sub2.clone();
+                                                                                    let fn_ = fn_sub2.clone();
+                                                                                    let sfn = sub_name2.clone();
+                                                                                    form_data.update(|data| {
+                                                                                        if let Some(obj) = data.as_object_mut() {
+                                                                                            let section = obj.entry(sn).or_insert(Value::Object(Default::default()));
+                                                                                            if let Some(section_map) = section.as_object_mut() {
+                                                                                                let field = section_map.entry(fn_).or_insert(Value::Object(Default::default()));
+                                                                                                if let Some(field_map) = field.as_object_mut() {
+                                                                                                    field_map.insert(sfn, new_val);
+                                                                                                }
+                                                                                            }
+                                                                                        }
+                                                                                    });
+                                                                                };
+
+                                                                                let sub_placeholder = match &sub_default {
+                                                                                    Value::String(s) => s.clone(),
+                                                                                    Value::Number(n) => n.to_string(),
+                                                                                    Value::Bool(b) => b.to_string(),
+                                                                                    _ => String::new(),
+                                                                                };
+
+                                                                                match sub_type.as_str() {
+                                                                                    "boolean" => {
+                                                                                        let sub_on_change = sub_on_change.clone();
+                                                                                        let init = sub_current().as_bool().unwrap_or(false);
+                                                                                        view! {
+                                                                                            <div class="md:col-span-2">
+                                                                                                <label class="flex items-center gap-2 cursor-pointer">
+                                                                                                    <input type="checkbox" class="toggle"
+                                                                                                        checked=init
+                                                                                                        on:change={
+                                                                                                            let on_change = sub_on_change.clone();
+                                                                                                            move |ev: ev::Event| {
+                                                                                                                on_change(Value::Bool(event_target_checked(&ev)));
+                                                                                                            }
+                                                                                                        }
+                                                                                                    />
+                                                                                                    <span>{sub_label}</span>
+                                                                                                </label>
+                                                                                                {if !sub_desc.is_empty() {
+                                                                                                    Some(view! { <p class="text-sm opacity-70 mt-1">{sub_desc.clone()}</p> })
+                                                                                                } else { None }}
+                                                                                            </div>
+                                                                                        }.into_any()
+                                                                                    }
+                                                                                    "integer" | "number" => {
+                                                                                        let sub_on_change = sub_on_change.clone();
+                                                                                        let input_val = RwSignal::new(match sub_current() {
+                                                                                            Value::Number(n) => n.to_string(),
+                                                                                            _ => String::new(),
+                                                                                        });
+                                                                                        view! {
+                                                                                            <div>
+                                                                                                <label class="label"><span class="label-text font-bold">{sub_label}</span></label>
+                                                                                                <input class="input input-bordered w-full"
+                                                                                                    placeholder=sub_placeholder
+                                                                                                    prop:value=move || input_val.get()
+                                                                                                    on:input={
+                                                                                                        let on_change = sub_on_change.clone();
+                                                                                                        move |ev: ev::Event| {
+                                                                                                            let text = event_target_value(&ev);
+                                                                                                            input_val.set(text.clone());
+                                                                                                            if let Ok(n) = text.parse::<f64>() {
+                                                                                                                on_change(serde_json::json!(n));
+                                                                                                            }
+                                                                                                        }
+                                                                                                    }
+                                                                                                />
+                                                                                                {if !sub_desc.is_empty() {
+                                                                                                    Some(view! { <p class="text-sm opacity-70 mt-1">{sub_desc.clone()}</p> })
+                                                                                                } else { None }}
+                                                                                            </div>
+                                                                                        }.into_any()
+                                                                                    }
+                                                                                    _ => {
+                                                                                        let sub_on_change = sub_on_change.clone();
+                                                                                        let input_val = RwSignal::new(
+                                                                                            sub_current().as_str().unwrap_or("").to_string()
+                                                                                        );
+                                                                                        view! {
+                                                                                            <div>
+                                                                                                <label class="label"><span class="label-text font-bold">{sub_label}</span></label>
+                                                                                                <input class="input input-bordered w-full"
+                                                                                                    placeholder=sub_placeholder
+                                                                                                    prop:value=move || input_val.get()
+                                                                                                    on:input={
+                                                                                                        let on_change = sub_on_change.clone();
+                                                                                                        move |ev: ev::Event| {
+                                                                                                            let text = event_target_value(&ev);
+                                                                                                            input_val.set(text.clone());
+                                                                                                            on_change(Value::String(text));
+                                                                                                        }
+                                                                                                    }
+                                                                                                />
+                                                                                                {if !sub_desc.is_empty() {
+                                                                                                    Some(view! { <p class="text-sm opacity-70 mt-1">{sub_desc.clone()}</p> })
+                                                                                                } else { None }}
+                                                                                            </div>
+                                                                                        }.into_any()
+                                                                                    }
+                                                                                }
+                                                                            }).collect_view()}
+                                                                        </div>
+                                                                    </div>
+                                                                }.into_any()
+                                                            }
                                                             "array" => {
                                                                 let on_change = on_change.clone();
                                                                 let items: Vec<String> = match current_val() {

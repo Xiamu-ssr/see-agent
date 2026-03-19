@@ -96,7 +96,7 @@ impl Supervisor {
         }
 
         // Spawn worker process with stdout/stderr redirected to worker.log
-        let log_path = agent_dir.path().join("worker.log");
+        let log_path = agent_dir.worker_log();
         let log_file = std::fs::File::create(&log_path).map_err(|e| CorpError::Agent {
             message: format!("failed to create worker.log for '{agent_id}': {e}"),
         })?;
