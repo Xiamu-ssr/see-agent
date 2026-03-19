@@ -31,7 +31,10 @@ mod tests {
         name: String,
         emoji: String,
         state: String,
+        #[serde(default)]
         team_id: Option<String>,
+        #[serde(default)]
+        team_name: Option<String>,
         #[serde(default)]
         is_system: bool,
     }

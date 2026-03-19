@@ -17,8 +17,10 @@ struct AgentSummary {
     name: String,
     emoji: String,
     state: String,
-    #[allow(dead_code)]
+    #[serde(default)]
     team_id: Option<String>,
+    #[serde(default)]
+    team_name: Option<String>,
     #[serde(default)]
     is_system: bool,
 }
@@ -113,6 +115,13 @@ fn format_file_size(size: u64) -> String {
     }
 }
 
+async fn copy_to_clipboard(text: String) {
+    if let Some(window) = web_sys::window() {
+        let clipboard = window.navigator().clipboard();
+        let _ = wasm_bindgen_futures::JsFuture::from(clipboard.write_text(&text)).await;
+    }
+}
+
 fn status_badge_class(status: &str) -> &'static str {
     match status {
         "running" => "badge badge-success",
@@ -141,53 +150,107 @@ pub fn AgentsPage() -> impl IntoView {
 
     view! {
         <div class="flex h-full min-h-0">
-            // --- Left sidebar: agent list ---
+            // --- Left sidebar: agent list grouped by team ---
             <div class="w-56 shrink-0 border-r border-base-300 overflow-y-auto bg-base-200">
                 <div class="p-2">
                     <h3 class="text-sm font-bold opacity-70 px-2 mb-2">"Agents"</h3>
                 </div>
                 <Suspense fallback=|| view! { <span class="loading loading-spinner loading-sm m-4"></span> }>
                     {move || agents.get().map(|list| {
-                        let items: Vec<_> = list.iter().filter(|a| !a.is_system).cloned().collect();
-                        if items.is_empty() {
-                            view! {
-                                <div class="text-center py-4 opacity-60 text-sm">"No agents"</div>
-                            }.into_any()
-                        } else {
-                            items.into_iter().map(|a| {
-                                let href = format!("/agents/{}", a.id);
-                                let aid = a.id.clone();
-                                let badge_class = status_badge_class(&a.state);
+                        // System agent at top
+                        let system_agent: Option<AgentSummary> = list.iter().find(|a| a.is_system).cloned();
+
+                        // Group non-system agents by team
+                        let non_system: Vec<_> = list.iter().filter(|a| !a.is_system).cloned().collect();
+                        let mut team_groups: std::collections::BTreeMap<String, (String, Vec<AgentSummary>)> = std::collections::BTreeMap::new();
+                        let mut ungrouped: Vec<AgentSummary> = Vec::new();
+
+                        for a in non_system {
+                            if let (Some(tid), Some(tname)) = (a.team_id.clone(), a.team_name.clone()) {
+                                team_groups.entry(tid).or_insert_with(|| (tname, Vec::new())).1.push(a);
+                            } else {
+                                ungrouped.push(a);
+                            }
+                        }
+
+                        view! {
+                            // System agent
+                            {system_agent.map(|sa| {
+                                let href = format!("/agents/{}", sa.id);
+                                let aid = sa.id.clone();
                                 view! {
                                     <A href=href attr:class=move || {
                                         let base = "block px-3 py-2 hover:bg-base-300 no-underline text-inherit transition-colors";
                                         if agent_id.get() == aid { format!("{base} bg-base-300 border-l-2 border-primary") } else { base.to_string() }
                                     }>
                                         <div class="flex items-center gap-2">
-                                            <span>{a.emoji}</span>
-                                            <div class="flex-1 min-w-0">
-                                                <div class="text-sm font-bold truncate">{a.name}</div>
-                                                <span class=format!("{badge_class} badge-xs")>{a.state}</span>
-                                            </div>
+                                            <span>{sa.emoji}</span>
+                                            <div class="text-sm font-bold">{sa.name}</div>
                                         </div>
                                     </A>
+                                    <div class="divider my-0 h-0"></div>
                                 }
-                            }).collect_view().into_any()
+                            })}
+                            // Team groups
+                            {team_groups.into_iter().map(|(_tid, (tname, members))| {
+                                view! {
+                                    <div class="px-3 py-1">
+                                        <div class="text-xs font-bold opacity-50 uppercase tracking-wide">{tname}</div>
+                                    </div>
+                                    {members.into_iter().map(|a| {
+                                        let href = format!("/agents/{}", a.id);
+                                        let aid = a.id.clone();
+                                        let badge_class = status_badge_class(&a.state);
+                                        view! {
+                                            <A href=href attr:class=move || {
+                                                let base = "block px-3 py-2 pl-5 hover:bg-base-300 no-underline text-inherit transition-colors";
+                                                if agent_id.get() == aid { format!("{base} bg-base-300 border-l-2 border-primary") } else { base.to_string() }
+                                            }>
+                                                <div class="flex items-center gap-2">
+                                                    <span>{a.emoji}</span>
+                                                    <div class="flex-1 min-w-0">
+                                                        <div class="text-sm font-bold truncate">{a.name}</div>
+                                                        <span class=format!("{badge_class} badge-xs")>{a.state.clone()}</span>
+                                                    </div>
+                                                </div>
+                                            </A>
+                                        }
+                                    }).collect_view()}
+                                    <div class="divider my-0 h-0"></div>
+                                }
+                            }).collect_view()}
+                            // Ungrouped agents
+                            {if !ungrouped.is_empty() {
+                                Some(view! {
+                                    <div class="px-3 py-1">
+                                        <div class="text-xs font-bold opacity-50 uppercase tracking-wide">"No Team"</div>
+                                    </div>
+                                    {ungrouped.into_iter().map(|a| {
+                                        let href = format!("/agents/{}", a.id);
+                                        let aid = a.id.clone();
+                                        let badge_class = status_badge_class(&a.state);
+                                        view! {
+                                            <A href=href attr:class=move || {
+                                                let base = "block px-3 py-2 pl-5 hover:bg-base-300 no-underline text-inherit transition-colors";
+                                                if agent_id.get() == aid { format!("{base} bg-base-300 border-l-2 border-primary") } else { base.to_string() }
+                                            }>
+                                                <div class="flex items-center gap-2">
+                                                    <span>{a.emoji}</span>
+                                                    <div class="flex-1 min-w-0">
+                                                        <div class="text-sm font-bold truncate">{a.name}</div>
+                                                        <span class=format!("{badge_class} badge-xs")>{a.state.clone()}</span>
+                                                    </div>
+                                                </div>
+                                            </A>
+                                        }
+                                    }).collect_view()}
+                                })
+                            } else {
+                                None
+                            }}
                         }
                     })}
                 </Suspense>
-                // System agent entry at bottom
-                <div class="border-t border-base-300 mt-auto">
-                    <A href="/agents/system" attr:class=move || {
-                        let base = "block px-3 py-2 hover:bg-base-300 no-underline text-inherit transition-colors";
-                        if agent_id.get() == "system" { format!("{base} bg-base-300 border-l-2 border-primary") } else { base.to_string() }
-                    }>
-                        <div class="flex items-center gap-2">
-                            <span>"⚙️"</span>
-                            <div class="text-sm font-bold">"System"</div>
-                        </div>
-                    </A>
-                </div>
             </div>
 
             // --- Right panel: agent detail ---
@@ -422,9 +485,11 @@ fn AgentDetailPanel(agent_id: String) -> impl IntoView {
     // View
     // ---------------------------------------------------------------------------
 
+    let agent_id_outer = agent_id.clone();
     view! {
         <Suspense fallback=|| view! { <span class="loading loading-spinner loading-lg"></span> }>
-            {move || agent.get().map(|a| {
+            {let agent_id_inner = agent_id_outer.clone(); move || agent.get().map(|a| {
+                let agent_id = agent_id_inner.clone();
                 match &*a {
                     Some(a) => {
                         let id = a.id.clone();
@@ -587,10 +652,12 @@ fn AgentDetailPanel(agent_id: String) -> impl IntoView {
                                                     {
                                                         let id_for_details = _id_v.clone();
                                                         let loc_for_details = _loc_v.clone();
+                                                        let agent_id_for_files = agent_id.clone();
                                                         move || {
                                                         let dt = details_tab.get();
                                                         let id_d = id_for_details.clone();
                                                         let loc_d = loc_for_details.clone();
+                                                        let agent_id_files = agent_id_for_files.clone();
                                                         match dt.as_str() {
                                                             // ----- Info -----
                                                             "info" => view! {
@@ -670,9 +737,21 @@ fn AgentDetailPanel(agent_id: String) -> impl IntoView {
                                                                                                 views.push(view! { <button class="btn btn-ghost btn-sm w-full justify-start" on:click=move |_| fd(dir_path.clone())>{format!("\u{1F4C1} {name}")}</button> }.into_any());
                                                                                             } else {
                                                                                                 let fname = name.clone();
+                                                                                                let copy_path = if path.is_empty() {
+                                                                                                    format!("~/.see-agent-corp/agents/{}/{name}", agent_id_files)
+                                                                                                } else {
+                                                                                                    format!("~/.see-agent-corp/agents/{}/{path}/{name}", agent_id_files)
+                                                                                                };
                                                                                                 views.push(view! {
                                                                                                     <div class="flex justify-between items-center px-2">
                                                                                                         <button class="btn btn-ghost btn-sm justify-start flex-1 min-w-0" on:click=move |_| open_file(fname.clone())>{format!("\u{1F4C4} {name}")}</button>
+                                                                                                        <button class="btn btn-ghost btn-xs px-1 opacity-50 hover:opacity-100" title="Copy path" on:click={
+                                                                                                            let cp = copy_path.clone();
+                                                                                                            move |_| {
+                                                                                                                let cp2 = cp.clone();
+                                                                                                                wasm_bindgen_futures::spawn_local(copy_to_clipboard(cp2));
+                                                                                                            }
+                                                                                                        }>"\u{1F4CB}"</button>
                                                                                                         <span class="text-xs opacity-50 shrink-0">{size_str}</span>
                                                                                                     </div>
                                                                                                 }.into_any());
