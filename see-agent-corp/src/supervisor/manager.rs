@@ -236,10 +236,17 @@ impl Supervisor {
         // Wake the worker — but skip if just started, because:
         // 1. The worker hasn't registered its SIGUSR1 handler yet (race condition)
         // 2. A freshly spawned worker will drain inbox on its own first iteration
-        if !just_started
-            && let Some(handle) = self.processes.get(agent_id)
-        {
-            signal_process(handle.pid);
+        if !just_started {
+            // Read actual worker PID from file (safehouse may fork, changing the PID)
+            let pid_path = agent_dir.worker_pid();
+            if let Ok(pid_str) = std::fs::read_to_string(&pid_path) {
+                if let Ok(pid) = pid_str.trim().parse::<u32>() {
+                    signal_process(pid);
+                }
+            } else if let Some(handle) = self.processes.get(agent_id) {
+                // Fallback to spawn PID if worker.pid not available yet
+                signal_process(handle.pid);
+            }
         }
 
         Ok(())
