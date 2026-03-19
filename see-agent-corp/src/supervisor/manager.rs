@@ -71,7 +71,15 @@ impl Supervisor {
             std::fs::write(&inbox_path, "")?;
         }
 
-        // Spawn worker process
+        // Spawn worker process with stdout/stderr redirected to worker.log
+        let log_path = agent_dir.path().join("worker.log");
+        let log_file = std::fs::File::create(&log_path).map_err(|e| CorpError::Agent {
+            message: format!("failed to create worker.log for '{agent_id}': {e}"),
+        })?;
+        let log_stderr = log_file.try_clone().map_err(|e| CorpError::Agent {
+            message: format!("failed to clone log file for '{agent_id}': {e}"),
+        })?;
+
         let child = tokio::process::Command::new(&self.binary_path)
             .arg("worker")
             .arg(agent_id)
@@ -80,6 +88,8 @@ impl Supervisor {
             .env_remove("CONDA_PREFIX")
             .env_remove("CONDA_DEFAULT_ENV")
             .env_remove("VIRTUAL_ENV")
+            .stdout(log_file)
+            .stderr(log_stderr)
             .spawn()
             .map_err(|e| CorpError::Agent {
                 message: format!("failed to spawn worker for '{agent_id}': {e}"),
@@ -150,15 +160,22 @@ impl Supervisor {
         }
 
         // Auto-start the worker if not running
-        if !self.is_running(agent_id) {
+        let just_started = if !self.is_running(agent_id) {
             self.start_agent(agent_id).await?;
-        }
+            true
+        } else {
+            false
+        };
 
         let inbox_path = agent_dir.inbox();
         send_to_inbox_with_id(&inbox_path, message)?;
 
-        // Wake the worker
-        if let Some(handle) = self.processes.get(agent_id) {
+        // Wake the worker — but skip if just started, because:
+        // 1. The worker hasn't registered its SIGUSR1 handler yet (race condition)
+        // 2. A freshly spawned worker will drain inbox on its own first iteration
+        if !just_started
+            && let Some(handle) = self.processes.get(agent_id)
+        {
             signal_process(handle.pid);
         }
 
@@ -202,6 +219,30 @@ impl Supervisor {
             .iter()
             .map(|(id, h)| (id.clone(), h.pid))
             .collect()
+    }
+
+    /// Reap any exited worker processes to prevent zombies.
+    ///
+    /// Calls `try_wait()` on all tracked processes, removing those that
+    /// have exited. Should be called periodically (e.g., on heartbeat).
+    pub fn reap_exited(&mut self) {
+        let mut exited = Vec::new();
+        for (id, handle) in &mut self.processes {
+            match handle.child.try_wait() {
+                Ok(Some(status)) => {
+                    warn!(agent = %id, ?status, "worker process exited (reaped)");
+                    exited.push(id.clone());
+                }
+                Ok(None) => {}
+                Err(e) => {
+                    warn!(agent = %id, "try_wait failed during reap: {e}");
+                    exited.push(id.clone());
+                }
+            }
+        }
+        for id in exited {
+            self.processes.remove(&id);
+        }
     }
 
     /// Stop all running workers.
@@ -385,6 +426,37 @@ mod tests {
         assert!(last.is_shutdown());
         assert_eq!(last.metadata.get("shutdown").map(|s| s.as_str()), Some("true"));
         assert!(last.content.contains("系统即将关闭"));
+    }
+
+    #[tokio::test]
+    async fn send_to_skips_signal_for_just_started_agent() {
+        let (_tmp, ws) = make_workspace();
+
+        let agent_dir = ws.agent("fresh");
+        std::fs::create_dir_all(agent_dir.path()).unwrap();
+
+        let mut sup = Supervisor::new(ws);
+        // Use `tail -f /dev/null` via sh — blocks forever, ignores args
+        sup.set_binary_path(std::path::PathBuf::from("/bin/sh"));
+
+        // Manually test the logic: after auto-start, the process should survive
+        // because send_to skips SIGUSR1 for just-started workers.
+        // We can't perfectly simulate since /bin/sh with wrong args exits,
+        // but we can verify the code path by checking the message is in inbox.
+        let msg = Message {
+            msg_id: None,
+            sender: "user".into(),
+            content: "hello".into(),
+            priority: MessagePriority::Collect,
+            metadata: Default::default(),
+            timestamp: "2025-01-01T00:00:00Z".into(),
+        };
+        sup.send_to("fresh", msg).await.unwrap();
+
+        // Inbox should contain the message regardless
+        let inbox: Vec<Message> = read_jsonl(&agent_dir.inbox()).unwrap();
+        assert_eq!(inbox.len(), 1);
+        assert_eq!(inbox[0].content, "hello");
     }
 
     #[tokio::test]

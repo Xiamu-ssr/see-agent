@@ -78,6 +78,7 @@ async fn list_agents_handler(
     let agents = list_agents(ws).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let mut sup = state.inner.supervisor.write().await;
+    sup.reap_exited();
     let summaries: Vec<AgentSummaryResponse> = agents
         .into_iter()
         .map(|a| {

@@ -58,6 +58,9 @@ pub fn create_agent(
     write_text(&agent_dir.inbox(), "")?;
     write_json(&agent_dir.inbox_cursor(), &serde_json::json!({"line": 0}))?;
 
+    // Initialize empty messages.jsonl so chat UI shows empty list (not 404)
+    write_text(&agent_dir.session().messages(), "")?;
+
     Ok(definition)
 }
 
@@ -192,6 +195,9 @@ mod tests {
 
         let agents_md = std::fs::read_to_string(agent_dir.agents_md()).unwrap();
         assert!(agents_md.contains("操作规则"));
+
+        // messages.jsonl should exist (empty)
+        assert!(agent_dir.session().messages().exists());
     }
 
     #[test]
