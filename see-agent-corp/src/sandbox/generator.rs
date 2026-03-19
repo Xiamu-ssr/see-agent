@@ -127,6 +127,10 @@ pub fn build_safehouse_args(profile: &SandboxProfile) -> Vec<String> {
     args.push("--enable".into());
     args.push("process-control,shell-init".into());
 
+    // Pass through SAC_BIN environment variable so agent can find CLI binary
+    args.push("--env-pass".into());
+    args.push("SAC_BIN".into());
+
     // Network is allowed by default in safehouse — no flag needed.
 
     args.push("--".into());
