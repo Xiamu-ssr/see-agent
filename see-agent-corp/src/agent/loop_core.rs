@@ -5,7 +5,7 @@ use std::time::Instant;
 use tracing::{info, warn};
 
 use crate::brain::Brain;
-use crate::consts::{FULL_COMPACT_RATIO, MAX_CONSECUTIVE_ERRORS, MICROCOMPACT_RATIO};
+use crate::consts::{DEFAULT_LLM_MAX_TOKENS, FULL_COMPACT_RATIO, MAX_CONSECUTIVE_ERRORS, MICROCOMPACT_RATIO};
 use crate::eye::{scale_tool_args, Eye, Screenshot};
 use crate::session::SessionStore;
 use crate::tool::ToolRegistry;
@@ -16,16 +16,6 @@ use super::detectors::{
     DetectorAction, ErrorTracker, NoProgressDetector, NoScreenshotDetector, RepeatDetector,
 };
 use super::loop_types::{RunResult, StepCallback, StepEvent, UserInputCallback};
-
-/// Screen tool names that interact with the display.
-const SCREEN_TOOLS: &[&str] = &[
-    "screenshot",
-    "click",
-    "type_text",
-    "scroll",
-    "drag",
-    "hotkey",
-];
 
 /// The main agent execution engine.
 ///
@@ -54,6 +44,8 @@ pub struct AgentLoop {
     screenshot_counter: u32,
     /// Optional session store for persisting messages to disk.
     session_store: Option<SessionStore>,
+    /// Screen dimensions for coordinate scaling, updated on each screenshot.
+    screen_dims: (u32, u32, u32, u32), // (model_w, model_h, screen_w, screen_h)
 }
 
 impl AgentLoop {
@@ -82,6 +74,7 @@ impl AgentLoop {
             screenshots_dir: None,
             screenshot_counter: 0,
             session_store: None,
+            screen_dims: (0, 0, 0, 0),
         }
     }
 
@@ -132,14 +125,6 @@ impl AgentLoop {
         ctx.add_screenshot(&screenshot.base64, screenshot.detail(), &screenshot.mime_type);
     }
 
-    /// Check if the registry has any screen-interactive tools.
-    fn has_screen_tools(&self) -> bool {
-        let names = self.registry.names();
-        SCREEN_TOOLS
-            .iter()
-            .any(|t| names.contains(&t.to_string()))
-    }
-
     /// Convert tool schemas to serde_json::Value array for the Brain trait.
     fn schemas_to_values(
         &self,
@@ -157,6 +142,8 @@ impl AgentLoop {
     // -----------------------------------------------------------------------
 
     /// Run a single screen task to completion.
+    ///
+    /// The agent decides when to look at the screen by calling the screenshot tool.
     pub async fn run(
         &mut self,
         task: &str,
@@ -164,35 +151,12 @@ impl AgentLoop {
         session_dir: &str,
     ) -> RunResult {
         let t0 = Instant::now();
-        let has_screen = self.has_screen_tools();
 
-        // Initial screenshot
-        let screenshot = if has_screen {
-            match self.eye.capture().await {
-                Ok(ss) => Some(ss),
-                Err(e) => {
-                    warn!("initial capture failed: {e}");
-                    None
-                }
-            }
-        } else {
-            None
-        };
-
-        // Build context
+        // Build context — no initial screenshot; agent calls screenshot tool when needed
         let mut ctx = ConversationContext::new(system_prompt, self.max_images as usize, None);
+        ctx.add_user_task_text_only(task, "user", "collect");
 
-        // Add initial user task
-        if let Some(ref ss) = screenshot {
-            ctx.add_user_task(task, &ss.base64, ss.detail(), &ss.mime_type);
-        } else {
-            ctx.add_user_task_text_only(task, "user", "collect");
-        }
-
-        // Run the core loop
-        let result = self
-            .run_loop(&mut ctx, screenshot.as_ref(), t0)
-            .await;
+        let result = self.run_loop(&mut ctx, t0).await;
 
         RunResult {
             session_id: String::new(),
@@ -205,7 +169,6 @@ impl AgentLoop {
     async fn run_loop(
         &mut self,
         ctx: &mut ConversationContext,
-        initial_scaled: Option<&Screenshot>,
         t0: Instant,
     ) -> RunResult {
         let mut error_tracker = ErrorTracker::new(MAX_CONSECUTIVE_ERRORS);
@@ -213,18 +176,6 @@ impl AgentLoop {
         let mut repeat_detector = RepeatDetector::new();
         let mut no_screenshot = NoScreenshotDetector::new();
         let mut final_step = 0u32;
-
-        // Screen dimensions for coordinate scaling
-        let (model_w, model_h, screen_w, screen_h) = initial_scaled
-            .map(|s| {
-                (
-                    s.width,
-                    s.height,
-                    s.screen_width.unwrap_or(s.width),
-                    s.screen_height.unwrap_or(s.height),
-                )
-            })
-            .unwrap_or((0, 0, 0, 0));
 
         let disabled: Vec<String> = self.config.tools.disabled.clone();
         let tools_schema = self.schemas_to_values(&disabled);
@@ -246,6 +197,11 @@ impl AgentLoop {
 
             // LLM call
             let messages = ctx.get_messages_for_llm();
+            let sys_prompt = messages.first()
+                .and_then(|m| m.get("content"))
+                .and_then(|c| c.as_str())
+                .unwrap_or("");
+            self.write_last_llm_call(sys_prompt, &tools_schema, &messages);
             let response = match self.brain.chat(&messages, &tools_schema).await {
                 Ok(r) => {
                     error_tracker.success();
@@ -320,8 +276,9 @@ impl AgentLoop {
                     continue;
                 }
 
-                // Coordinate scaling
+                // Coordinate scaling (dims updated by screenshot captures)
                 let mut exec_args = tc.arguments.clone();
+                let (model_w, model_h, screen_w, screen_h) = self.screen_dims;
                 if model_w > 0 && screen_w > 0 {
                     scale_tool_args(
                         &tc.name,
@@ -371,6 +328,13 @@ impl AgentLoop {
                 if tc.name == "screenshot"
                     && let Ok(new_ss) = self.eye.capture().await
                 {
+                    // Update screen dimensions for coordinate scaling
+                    self.screen_dims = (
+                        new_ss.width,
+                        new_ss.height,
+                        new_ss.screen_width.unwrap_or(new_ss.width),
+                        new_ss.screen_height.unwrap_or(new_ss.height),
+                    );
                     self.save_screenshot_ref(ctx, &new_ss);
                     step_had_screenshot = true;
                     no_screenshot.got_screenshot();
@@ -495,6 +459,11 @@ impl AgentLoop {
             }
 
             let llm_messages = ctx.get_messages_for_llm();
+            let sys_prompt = llm_messages.first()
+                .and_then(|m| m.get("content"))
+                .and_then(|c| c.as_str())
+                .unwrap_or("");
+            self.write_last_llm_call(sys_prompt, &tools_schema, &llm_messages);
             let response = match self.brain.chat(&llm_messages, &tools_schema).await {
                 Ok(r) => r,
                 Err(e) => {
@@ -596,6 +565,35 @@ impl AgentLoop {
             }
             Err(e) => {
                 warn!("compaction summarize failed: {e}, skipping");
+            }
+        }
+    }
+
+    /// Write last LLM call metadata to session/last_llm_call.json (atomic overwrite).
+    fn write_last_llm_call(
+        &self,
+        system_prompt: &str,
+        tools: &[serde_json::Value],
+        messages: &[serde_json::Value],
+    ) {
+        let Some(ref store) = self.session_store else {
+            return;
+        };
+        let path = store.dir().last_llm_call();
+        let data = serde_json::json!({
+            "timestamp": chrono::Utc::now().to_rfc3339(),
+            "model": self.config.llm.model,
+            "system_prompt": system_prompt,
+            "tools": tools,
+            "max_tokens": DEFAULT_LLM_MAX_TOKENS,
+            "message_count": messages.len(),
+            "estimated_tokens": estimate_tokens(messages),
+        });
+        // Atomic write: write to tmp file then rename
+        let tmp_path = path.with_extension("json.tmp");
+        if let Ok(content) = serde_json::to_string_pretty(&data) {
+            if std::fs::write(&tmp_path, content).is_ok() {
+                let _ = std::fs::rename(&tmp_path, &path);
             }
         }
     }

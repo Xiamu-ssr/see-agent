@@ -179,6 +179,32 @@ async fn send_message_handler(
     Ok(Json(StatusResponse { status: "sent".into() }))
 }
 
+async fn get_agent_logs_handler(
+    State(state): State<AppState>,
+    Path(agent_id): Path<String>,
+) -> Result<Json<Vec<String>>, StatusCode> {
+    let ws = state.workspace();
+    let agent_dir = ws.agent(&agent_id);
+    let log_path = agent_dir.path().join("worker.log");
+
+    if !log_path.exists() {
+        return Ok(Json(vec![]));
+    }
+
+    let content = std::fs::read_to_string(&log_path).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let lines: Vec<String> = content
+        .lines()
+        .rev()
+        .take(see_agent_corp::consts::LOG_TAIL_LINES)
+        .map(|l| l.to_owned())
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect();
+
+    Ok(Json(lines))
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -215,6 +241,7 @@ pub fn router(state: AppState) -> Router {
             get(get_agent_handler).delete(delete_agent_handler),
         )
         .route("/agents/{agent_id}/message", post(send_message_handler))
+        .route("/agents/{agent_id}/logs", get(get_agent_logs_handler))
         .with_state(state)
 }
 

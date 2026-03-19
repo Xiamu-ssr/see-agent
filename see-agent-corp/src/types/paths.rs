@@ -29,10 +29,6 @@ impl WorkspaceDir {
         self.0.join("skills")
     }
 
-    pub fn logs(&self) -> PathBuf {
-        self.0.join("logs")
-    }
-
     pub fn agent(&self, id: &str) -> AgentDir {
         AgentDir(self.agents().join(id))
     }
@@ -129,8 +125,8 @@ impl SessionDir {
         self.0.join("session.log")
     }
 
-    pub fn system_prompt_log(&self) -> PathBuf {
-        self.0.join("system_prompt_log.md")
+    pub fn last_llm_call(&self) -> PathBuf {
+        self.0.join("last_llm_call.json")
     }
 
     pub fn screenshots(&self) -> PathBuf {
