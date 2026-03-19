@@ -27,35 +27,35 @@ pub struct ToolContext {
     pub wake_fn: Option<WakeFn>,
 }
 
-/// Core (non-team) tool info pairs.
-pub fn core_tool_infos() -> Vec<(&'static str, &'static str)> {
+/// Core (non-team) tool info triples: (name, description, group).
+pub fn core_tool_infos() -> Vec<(&'static str, &'static str, &'static str)> {
     vec![
-        ("click", "Click at screen coordinates"),
-        ("type_text", "Type text using keyboard"),
-        ("hotkey", "Press a keyboard shortcut"),
-        ("scroll", "Scroll the screen"),
-        ("drag", "Drag from one point to another"),
-        ("screenshot", "Capture a screenshot"),
-        ("shell", "Execute a shell command"),
-        ("wait", "Wait for a specified duration"),
-        ("finished", "Signal task completion"),
-        ("call_user", "Request human intervention"),
-        ("memory_search", "Search agent memory"),
-        ("memory_get", "Read memory file by path and line range"),
-        ("read", "Read a file (text or image)"),
+        ("click", "Click at screen coordinates", "screen"),
+        ("type_text", "Type text using keyboard", "screen"),
+        ("hotkey", "Press a keyboard shortcut", "screen"),
+        ("scroll", "Scroll the screen", "screen"),
+        ("drag", "Drag from one point to another", "screen"),
+        ("screenshot", "Capture a screenshot", "screen"),
+        ("shell", "Execute a shell command", "core"),
+        ("wait", "Wait for a specified duration", "core"),
+        ("read", "Read a file (text or image)", "core"),
+        ("finished", "Signal task completion", "control"),
+        ("call_user", "Request human intervention", "control"),
+        ("memory_search", "Search agent memory", "memory"),
+        ("memory_get", "Read memory file by path and line range", "memory"),
     ]
 }
 
-/// Team-only tool info pairs.
-pub fn team_tool_infos() -> Vec<(&'static str, &'static str)> {
+/// Team-only tool info triples: (name, description, group).
+pub fn team_tool_infos() -> Vec<(&'static str, &'static str, &'static str)> {
     vec![
-        ("send_message", "Send message to another agent"),
-        ("list_tasks", "List team tasks"),
-        ("create_task", "Create a team task"),
-        ("claim_task", "Claim a team task"),
-        ("complete_task", "Complete a team task"),
-        ("update_task", "Update a team task"),
-        ("assign_task", "Assign a team task"),
+        ("send_message", "Send message to another agent", "team"),
+        ("list_tasks", "List team tasks", "team"),
+        ("create_task", "Create a team task", "team"),
+        ("claim_task", "Claim a team task", "team"),
+        ("complete_task", "Complete a team task", "team"),
+        ("update_task", "Update a team task", "team"),
+        ("assign_task", "Assign a team task", "team"),
     ]
 }
 
@@ -71,9 +71,9 @@ pub fn register_builtin_tools(registry: &mut ToolRegistry, ctx: Arc<ToolContext>
     }
 }
 
-/// Return (name, description) pairs for all builtin tools (core + team).
+/// Return (name, description, group) triples for all builtin tools (core + team).
 /// For API listing without needing a ToolContext.
-pub fn builtin_tool_infos() -> Vec<(&'static str, &'static str)> {
+pub fn builtin_tool_infos() -> Vec<(&'static str, &'static str, &'static str)> {
     let mut all = core_tool_infos();
     all.extend(team_tool_infos());
     all
@@ -233,9 +233,10 @@ mod tests {
     fn builtin_tool_infos_has_20() {
         let infos = builtin_tool_infos();
         assert_eq!(infos.len(), 20);
-        for (name, desc) in &infos {
+        for (name, desc, group) in &infos {
             assert!(!name.is_empty());
             assert!(!desc.is_empty());
+            assert!(!group.is_empty());
         }
     }
 

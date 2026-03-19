@@ -65,16 +65,10 @@ impl Tool for ShellTool {
         let output = match output {
             Ok(Ok(o)) => o,
             Ok(Err(e)) => {
-                return Ok(ToolResult {
-                    text: format!("shell error: {e}"),
-                    images: vec![],
-                });
+                return Ok(ToolResult::text(format!("shell error: {e}")));
             }
             Err(_) => {
-                return Ok(ToolResult {
-                    text: format!("command timed out after {SHELL_TIMEOUT_SECS}s"),
-                    images: vec![],
-                });
+                return Ok(ToolResult::text(format!("command timed out after {SHELL_TIMEOUT_SECS}s")));
             }
         };
 
@@ -99,10 +93,7 @@ impl Tool for ShellTool {
             text = format!("{head}\n[... {omitted_lines} lines omitted ...]\n{tail}");
         }
 
-        Ok(ToolResult {
-            text,
-            images: vec![],
-        })
+        Ok(ToolResult::text(text))
     }
 }
 
@@ -139,10 +130,7 @@ impl Tool for WaitTool {
     async fn execute(&self, args: Value) -> Result<ToolResult> {
         let seconds = args["seconds"].as_f64().unwrap_or(DEFAULT_WAIT_SECS);
         tokio::time::sleep(Duration::from_secs_f64(seconds)).await;
-        Ok(ToolResult {
-            text: format!("waited {seconds}s"),
-            images: vec![],
-        })
+        Ok(ToolResult::text(format!("waited {seconds}s")))
     }
 }
 
@@ -151,6 +139,6 @@ impl Tool for WaitTool {
 // ---------------------------------------------------------------------------
 
 pub fn register(registry: &mut ToolRegistry, ctx: &Arc<ToolContext>) {
-    registry.register(Box::new(ShellTool { ctx: ctx.clone() }));
-    registry.register(Box::new(WaitTool { _ctx: ctx.clone() }));
+    registry.register_in_group("core", Box::new(ShellTool { ctx: ctx.clone() }));
+    registry.register_in_group("core", Box::new(WaitTool { _ctx: ctx.clone() }));
 }

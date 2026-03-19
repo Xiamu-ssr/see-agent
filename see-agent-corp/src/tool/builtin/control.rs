@@ -40,10 +40,7 @@ impl Tool for FinishedTool {
 
     async fn execute(&self, args: Value) -> Result<ToolResult> {
         let result = args["result"].as_str().unwrap_or("task completed");
-        Ok(ToolResult {
-            text: format!("finished: {result}"),
-            images: vec![],
-        })
+        Ok(ToolResult::text(format!("finished: {result}")))
     }
 }
 
@@ -78,10 +75,7 @@ impl Tool for CallUserTool {
 
     async fn execute(&self, args: Value) -> Result<ToolResult> {
         let reason = args["reason"].as_str().unwrap_or("help needed");
-        Ok(ToolResult {
-            text: format!("calling user: {reason}"),
-            images: vec![],
-        })
+        Ok(ToolResult::text(format!("calling user: {reason}")))
     }
 }
 
@@ -90,6 +84,6 @@ impl Tool for CallUserTool {
 // ---------------------------------------------------------------------------
 
 pub fn register(registry: &mut ToolRegistry, ctx: &Arc<ToolContext>) {
-    registry.register(Box::new(FinishedTool { _ctx: ctx.clone() }));
-    registry.register(Box::new(CallUserTool { _ctx: ctx.clone() }));
+    registry.register_in_group("control", Box::new(FinishedTool { _ctx: ctx.clone() }));
+    registry.register_in_group("control", Box::new(CallUserTool { _ctx: ctx.clone() }));
 }

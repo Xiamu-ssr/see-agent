@@ -54,6 +54,8 @@ struct ToolInfo {
     name: String,
     description: String,
     disabled: bool,
+    #[serde(default)]
+    group: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -562,13 +564,35 @@ fn AgentDetailPanel(agent_id: String) -> impl IntoView {
                                                                 msgs.into_iter().filter_map(|m| {
                                                                     let text = extract_message_text(&m);
                                                                     if text.is_empty() { return None; }
+                                                                    // Strip [xxx] prefix from content if present
+                                                                    let display_text = if text.starts_with('[') {
+                                                                        if let Some(end) = text.find("] ") {
+                                                                            text[end + 2..].to_string()
+                                                                        } else { text.clone() }
+                                                                    } else { text.clone() };
                                                                     match m.msg_type.as_str() {
-                                                                        "user_task" | "user_reply" => Some(view! {
-                                                                            <div class="chat chat-end mb-2">
-                                                                                <div class="chat-header">"You"</div>
-                                                                                <div class="chat-bubble chat-bubble-primary">{text}</div>
-                                                                            </div>
-                                                                        }.into_any()),
+                                                                        "user_task" | "user_reply" => {
+                                                                            let sender = m.data.get("sender")
+                                                                                .and_then(|v| v.as_str())
+                                                                                .unwrap_or("user");
+                                                                            let header = match sender {
+                                                                                "user" => "You".to_string(),
+                                                                                "system" | "supervisor" => "System".to_string(),
+                                                                                other => other.to_string(),
+                                                                            };
+                                                                            let is_steer = m.data.get("priority")
+                                                                                .and_then(|v| v.as_str())
+                                                                                == Some("steer");
+                                                                            let steer_badge = if is_steer {
+                                                                                " \u{26A1} steer"
+                                                                            } else { "" };
+                                                                            Some(view! {
+                                                                                <div class="chat chat-end mb-2">
+                                                                                    <div class="chat-header">{header}{steer_badge}</div>
+                                                                                    <div class="chat-bubble chat-bubble-primary">{display_text.clone()}</div>
+                                                                                </div>
+                                                                            }.into_any())
+                                                                        }
                                                                         "assistant" => {
                                                                             let html = render_markdown(&text);
                                                                             Some(view! {
@@ -602,29 +626,27 @@ fn AgentDetailPanel(agent_id: String) -> impl IntoView {
                                                             }
                                                         }}
                                                     </div>
-                                                    // Fixed input area at bottom (Bug 17: Ctrl+Enter to send)
+                                                    // Fixed input area at bottom
                                                     <div class="border-t border-base-300 p-2">
-                                                        <div class="flex items-end gap-2">
-                                                            <div class="flex-1 min-w-0">
-                                                                <textarea class="textarea textarea-bordered w-full resize-none"
-                                                                    rows="2"
-                                                                    placeholder="Type a message... (Ctrl+Enter to send)"
-                                                                    prop:value=move || msg_input.get()
-                                                                    on:input=move |ev: ev::Event| msg_input.set(event_target_value(&ev))
-                                                                    on:keydown=move |ev: web_sys::KeyboardEvent| {
-                                                                        if ev.key() == "Enter" && ev.ctrl_key() {
-                                                                            ev.prevent_default();
-                                                                            send();
-                                                                        }
+                                                        <div class="flex items-end gap-1">
+                                                            <textarea class="textarea textarea-bordered textarea-sm flex-1 resize-none min-h-[36px] max-h-[120px]"
+                                                                rows="1"
+                                                                placeholder="消息... (Ctrl+Enter 发送)"
+                                                                prop:value=move || msg_input.get()
+                                                                on:input=move |ev: ev::Event| msg_input.set(event_target_value(&ev))
+                                                                on:keydown=move |ev: web_sys::KeyboardEvent| {
+                                                                    if ev.key() == "Enter" && ev.ctrl_key() {
+                                                                        ev.prevent_default();
+                                                                        send();
                                                                     }
-                                                                ></textarea>
-                                                            </div>
-                                                            <select class="select select-bordered select-sm"
+                                                                }
+                                                            ></textarea>
+                                                            <select class="select select-bordered select-xs w-16"
                                                                 prop:value=move || msg_priority.get()
                                                                 on:change=move |ev: ev::Event| msg_priority.set(event_target_value(&ev))
                                                             >
-                                                                <option value="collect">"Collect"</option>
-                                                                <option value="steer">"Steer"</option>
+                                                                <option value="collect">"C"</option>
+                                                                <option value="steer">"S"</option>
                                                             </select>
                                                             <button class="btn btn-primary btn-sm"
                                                                 on:click=move |_| (send_msg)()
@@ -805,7 +827,7 @@ fn AgentDetailPanel(agent_id: String) -> impl IntoView {
                                                                 }.into_any()
                                                             }
 
-                                                            // ----- Tools -----
+                                                            // ----- Tools (grouped) -----
                                                             "tools" => {
                                                                 view! {
                                                                     <div class="card bg-base-100 shadow-xl"><div class="card-body">
@@ -814,26 +836,43 @@ fn AgentDetailPanel(agent_id: String) -> impl IntoView {
                                                                             if tools.is_empty() {
                                                                                 view! { <div role="alert" class="alert"><span>"No tools loaded"</span></div> }.into_any()
                                                                             } else {
-                                                                                tools.into_iter().map(|tool| {
-                                                                                    let name = tool.name.clone();
-                                                                                    let desc = tool.description.clone();
-                                                                                    let is_enabled = !tool.disabled;
-                                                                                    let name_for_toggle = name.clone();
+                                                                                // Group tools by group name
+                                                                                let mut groups: std::collections::BTreeMap<String, Vec<ToolInfo>> = std::collections::BTreeMap::new();
+                                                                                for tool in tools {
+                                                                                    let g = if tool.group.is_empty() { "other".to_string() } else { tool.group.clone() };
+                                                                                    groups.entry(g).or_default().push(tool);
+                                                                                }
+                                                                                groups.into_iter().map(|(group_name, group_tools)| {
+                                                                                    let count = group_tools.len();
+                                                                                    let title = format!("{group_name} ({count})");
                                                                                     view! {
-                                                                                        <div class="flex justify-between items-center py-2">
-                                                                                            <div>
-                                                                                                <span class="font-bold">{name}</span><br />
-                                                                                                <span class="text-sm opacity-70">{desc}</span>
+                                                                                        <div class="collapse collapse-arrow bg-base-200 mb-2">
+                                                                                            <input type="checkbox" checked=true />
+                                                                                            <div class="collapse-title font-medium text-sm capitalize">{title}</div>
+                                                                                            <div class="collapse-content">
+                                                                                                {group_tools.into_iter().map(|tool| {
+                                                                                                    let name = tool.name.clone();
+                                                                                                    let desc = tool.description.clone();
+                                                                                                    let is_enabled = !tool.disabled;
+                                                                                                    let name_for_toggle = name.clone();
+                                                                                                    view! {
+                                                                                                        <div class="flex justify-between items-center py-1">
+                                                                                                            <div>
+                                                                                                                <span class="font-bold text-sm">{name}</span>
+                                                                                                                <span class="text-xs opacity-70 ml-2">{desc}</span>
+                                                                                                            </div>
+                                                                                                            <input type="checkbox" class="toggle toggle-primary toggle-sm"
+                                                                                                                checked=is_enabled
+                                                                                                                on:change=move |ev: ev::Event| {
+                                                                                                                    let checked = event_target_checked(&ev);
+                                                                                                                    toggle_tool(name_for_toggle.clone(), !checked);
+                                                                                                                }
+                                                                                                            />
+                                                                                                        </div>
+                                                                                                    }
+                                                                                                }).collect_view()}
                                                                                             </div>
-                                                                                            <input type="checkbox" class="toggle toggle-primary"
-                                                                                                checked=is_enabled
-                                                                                                on:change=move |ev: ev::Event| {
-                                                                                                    let checked = event_target_checked(&ev);
-                                                                                                    toggle_tool(name_for_toggle.clone(), !checked);
-                                                                                                }
-                                                                                            />
                                                                                         </div>
-                                                                                        <div class="divider my-0"></div>
                                                                                     }
                                                                                 }).collect_view().into_any()
                                                                             }

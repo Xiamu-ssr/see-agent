@@ -112,10 +112,7 @@ impl Tool for SendMessageTool {
             wake_fn(to);
         }
 
-        Ok(ToolResult {
-            text: format!("sent message to {to}"),
-            images: vec![],
-        })
+        Ok(ToolResult::text(format!("sent message to {to}")))
     }
 }
 
@@ -156,10 +153,7 @@ impl Tool for ListTasksTool {
         let tasks = board.list_tasks(status_filter)?;
 
         if tasks.is_empty() {
-            return Ok(ToolResult {
-                text: "no tasks found".to_owned(),
-                images: vec![],
-            });
+            return Ok(ToolResult::text("no tasks found"));
         }
 
         let text = tasks
@@ -177,10 +171,7 @@ impl Tool for ListTasksTool {
             .collect::<Vec<_>>()
             .join("\n");
 
-        Ok(ToolResult {
-            text,
-            images: vec![],
-        })
+        Ok(ToolResult::text(text))
     }
 }
 
@@ -230,10 +221,7 @@ impl Tool for CreateTaskTool {
 
         let task = board.create_task(title, description, &self.ctx.agent_id, depends_on)?;
 
-        Ok(ToolResult {
-            text: format!("created task '{}' (id: {})", task.title, task.id),
-            images: vec![],
-        })
+        Ok(ToolResult::text(format!("created task '{}' (id: {})", task.title, task.id)))
     }
 }
 
@@ -274,10 +262,7 @@ impl Tool for ClaimTaskTool {
 
         let task = board.claim_task(task_id, &self.ctx.agent_id)?;
 
-        Ok(ToolResult {
-            text: format!("claimed task '{}' (id: {})", task.title, task.id),
-            images: vec![],
-        })
+        Ok(ToolResult::text(format!("claimed task '{}' (id: {})", task.title, task.id)))
     }
 }
 
@@ -320,10 +305,7 @@ impl Tool for CompleteTaskTool {
 
         let task = board.complete_task(task_id, &self.ctx.agent_id, result_text)?;
 
-        Ok(ToolResult {
-            text: format!("completed task '{}' (id: {})", task.title, task.id),
-            images: vec![],
-        })
+        Ok(ToolResult::text(format!("completed task '{}' (id: {})", task.title, task.id)))
     }
 }
 
@@ -374,10 +356,7 @@ impl Tool for UpdateTaskTool {
 
         let task = board.update_task(task_id, status, assigned_to, result_text)?;
 
-        Ok(ToolResult {
-            text: format!("updated task '{}' (id: {})", task.title, task.id),
-            images: vec![],
-        })
+        Ok(ToolResult::text(format!("updated task '{}' (id: {})", task.title, task.id)))
     }
 }
 
@@ -424,10 +403,7 @@ impl Tool for AssignTaskTool {
 
         let task = board.assign_task(task_id, agent_id)?;
 
-        Ok(ToolResult {
-            text: format!("assigned task '{}' to {}", task.title, agent_id),
-            images: vec![],
-        })
+        Ok(ToolResult::text(format!("assigned task '{}' to {}", task.title, agent_id)))
     }
 }
 
@@ -451,11 +427,11 @@ fn parse_task_status(s: &str) -> Option<TaskStatus> {
 // ---------------------------------------------------------------------------
 
 pub fn register(registry: &mut ToolRegistry, ctx: &Arc<ToolContext>) {
-    registry.register(Box::new(SendMessageTool { ctx: ctx.clone() }));
-    registry.register(Box::new(ListTasksTool { ctx: ctx.clone() }));
-    registry.register(Box::new(CreateTaskTool { ctx: ctx.clone() }));
-    registry.register(Box::new(ClaimTaskTool { ctx: ctx.clone() }));
-    registry.register(Box::new(CompleteTaskTool { ctx: ctx.clone() }));
-    registry.register(Box::new(UpdateTaskTool { ctx: ctx.clone() }));
-    registry.register(Box::new(AssignTaskTool { ctx: ctx.clone() }));
+    registry.register_in_group("team", Box::new(SendMessageTool { ctx: ctx.clone() }));
+    registry.register_in_group("team", Box::new(ListTasksTool { ctx: ctx.clone() }));
+    registry.register_in_group("team", Box::new(CreateTaskTool { ctx: ctx.clone() }));
+    registry.register_in_group("team", Box::new(ClaimTaskTool { ctx: ctx.clone() }));
+    registry.register_in_group("team", Box::new(CompleteTaskTool { ctx: ctx.clone() }));
+    registry.register_in_group("team", Box::new(UpdateTaskTool { ctx: ctx.clone() }));
+    registry.register_in_group("team", Box::new(AssignTaskTool { ctx: ctx.clone() }));
 }

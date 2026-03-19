@@ -66,10 +66,7 @@ impl Tool for McpToolWrapper {
         // Extract text from result.content
         let text = extract_text_from_content(&result);
 
-        Ok(ToolResult {
-            text,
-            images: vec![],
-        })
+        Ok(ToolResult::text(text))
     }
 }
 

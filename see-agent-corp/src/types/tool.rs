@@ -6,6 +6,16 @@ pub struct ToolResult {
     pub text: String,
     #[serde(default)]
     pub images: Vec<ToolResultImage>,
+    /// Optional metadata (e.g. screen dimensions from screenshot tool).
+    #[serde(default, skip_serializing_if = "serde_json::Value::is_null")]
+    pub metadata: serde_json::Value,
+}
+
+impl ToolResult {
+    /// Create a text-only result with no images or metadata.
+    pub fn text(text: impl Into<String>) -> Self {
+        Self { text: text.into(), images: vec![], metadata: serde_json::Value::Null }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

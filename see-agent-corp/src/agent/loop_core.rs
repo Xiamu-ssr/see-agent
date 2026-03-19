@@ -4,7 +4,9 @@ use std::sync::Arc;
 use tracing::{info, warn};
 
 use crate::consts::{DEFAULT_LLM_MAX_TOKENS, FULL_COMPACT_RATIO, MICROCOMPACT_RATIO};
-use crate::eye::{Eye, Screenshot};
+use crate::eye::Eye;
+#[cfg(test)]
+use crate::eye::Screenshot;
 use crate::session::SessionStore;
 use crate::tool::ToolRegistry;
 use crate::types::{Config, SessionMessageType, ToolResult};
@@ -16,6 +18,7 @@ use super::context::{estimate_tokens, ConversationContext};
 /// Runs in inbox/ReAct mode: hot-reload prompt → LLM → tool → back to idle.
 pub struct AgentLoop {
     brain: Box<dyn crate::brain::Brain>,
+    #[allow(dead_code)]
     eye: Arc<dyn Eye>,
     registry: ToolRegistry,
     config: Config,
@@ -73,6 +76,7 @@ impl AgentLoop {
 
     /// Save a screenshot to disk and add it to context as a path reference.
     /// Falls back to inline base64 if no screenshots_dir is set or save fails.
+    #[cfg(test)]
     fn save_screenshot_ref(
         &mut self,
         ctx: &mut ConversationContext,
@@ -97,6 +101,21 @@ impl AgentLoop {
         }
         // Fallback: inline base64
         ctx.add_screenshot(&screenshot.base64, screenshot.detail(), &screenshot.mime_type);
+    }
+
+    /// Save a tool result image to disk (without adding to conversation context).
+    fn save_image_to_disk(&mut self, image: &crate::types::ToolResultImage) {
+        if let Some(ref dir) = self.screenshots_dir {
+            self.screenshot_counter += 1;
+            let file_path = dir.join(format!("step_{:03}.webp", self.screenshot_counter));
+            let _ = std::fs::create_dir_all(dir);
+            if let Ok(bytes) = base64::Engine::decode(
+                &base64::engine::general_purpose::STANDARD,
+                &image.base64,
+            ) {
+                let _ = std::fs::write(&file_path, &bytes);
+            }
+        }
     }
 
     /// Convert tool schemas to serde_json::Value array for the Brain trait.
@@ -145,11 +164,11 @@ impl AgentLoop {
             let formatted = format!("{label} {text}");
             ctx.add_user_reply(&formatted, sender, priority);
 
-            // Persist user message to session store
+            // Persist user message to session store (without prefix — prefix is only for LLM context)
             if let Some(ref mut store) = self.session_store {
                 let _ = store.append_message(
                     SessionMessageType::UserReply,
-                    serde_json::json!({ "content": formatted, "sender": sender }),
+                    serde_json::json!({ "content": text, "sender": sender, "priority": priority }),
                 );
             }
         }
@@ -214,10 +233,7 @@ impl AgentLoop {
                     Ok(r) => r,
                     Err(e) => {
                         warn!("tool {} error: {e}", tc.name);
-                        ToolResult {
-                            text: format!("Error: {e}"),
-                            images: vec![],
-                        }
+                        ToolResult::text(format!("Error: {e}"))
                     }
                 };
 
@@ -233,17 +249,20 @@ impl AgentLoop {
                     .collect();
                 ctx.add_tool_result(&tc.id, &result.text, &ctx_images);
 
-                // Screenshot tool: save to disk + update screen dims for coord scaling
-                if tc.name == "screenshot"
-                    && let Ok(new_ss) = self.eye.capture().await
-                {
-                    self.screen_dims = (
-                        new_ss.width,
-                        new_ss.height,
-                        new_ss.screen_width.unwrap_or(new_ss.width),
-                        new_ss.screen_height.unwrap_or(new_ss.height),
-                    );
-                    self.save_screenshot_ref(ctx, &new_ss);
+                // Screenshot tool: save image to disk + update screen dims
+                if tc.name == "screenshot" && !result.images.is_empty() {
+                    // Update screen dims from metadata
+                    let m = &result.metadata;
+                    if let (Some(w), Some(h), Some(sw), Some(sh)) = (
+                        m["width"].as_u64(),
+                        m["height"].as_u64(),
+                        m["screen_width"].as_u64(),
+                        m["screen_height"].as_u64(),
+                    ) {
+                        self.screen_dims = (w as u32, h as u32, sw as u32, sh as u32);
+                    }
+                    // Save to disk (without adding another message to context)
+                    self.save_image_to_disk(&result.images[0]);
                 }
 
                 // Persist tool result to session store

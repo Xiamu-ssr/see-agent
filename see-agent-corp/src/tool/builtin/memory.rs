@@ -55,10 +55,7 @@ impl Tool for MemorySearchTool {
         let results = mem.search(query, limit)?;
 
         if results.is_empty() {
-            return Ok(ToolResult {
-                text: "no results found".to_owned(),
-                images: vec![],
-            });
+            return Ok(ToolResult::text("no results found"));
         }
 
         let mut text = format!("found {} results:\n\n", results.len());
@@ -72,10 +69,7 @@ impl Tool for MemorySearchTool {
             ));
         }
 
-        Ok(ToolResult {
-            text,
-            images: vec![],
-        })
+        Ok(ToolResult::text(text))
     }
 }
 
@@ -126,10 +120,7 @@ impl Tool for MemoryGetTool {
 
         // Security: prevent path traversal
         if path.contains("..") {
-            return Ok(ToolResult {
-                text: "error: path must not contain '..'".to_owned(),
-                images: vec![],
-            });
+            return Ok(ToolResult::text("error: path must not contain '..'"));
         }
 
         let from = args["from"].as_u64().unwrap_or(1).max(1) as usize;
@@ -142,10 +133,7 @@ impl Tool for MemoryGetTool {
         let content = match std::fs::read_to_string(&file_path) {
             Ok(c) => c,
             Err(_) => {
-                return Ok(ToolResult {
-                    text: format!("file not found: {path}"),
-                    images: vec![],
-                });
+                return Ok(ToolResult::text(format!("file not found: {path}")));
             }
         };
 
@@ -160,10 +148,7 @@ impl Tool for MemoryGetTool {
             text.push_str(&format!("{:4}| {}\n", start_idx + i + 1, line));
         }
 
-        Ok(ToolResult {
-            text,
-            images: vec![],
-        })
+        Ok(ToolResult::text(text))
     }
 }
 
@@ -172,6 +157,6 @@ impl Tool for MemoryGetTool {
 // ---------------------------------------------------------------------------
 
 pub fn register(registry: &mut ToolRegistry, ctx: &Arc<ToolContext>) {
-    registry.register(Box::new(MemorySearchTool { ctx: ctx.clone() }));
-    registry.register(Box::new(MemoryGetTool { ctx: ctx.clone() }));
+    registry.register_in_group("memory", Box::new(MemorySearchTool { ctx: ctx.clone() }));
+    registry.register_in_group("memory", Box::new(MemoryGetTool { ctx: ctx.clone() }));
 }

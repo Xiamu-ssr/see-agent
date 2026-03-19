@@ -30,12 +30,14 @@ pub trait Tool: Send + Sync {
 /// Registry of available tools.
 pub struct ToolRegistry {
     tools: HashMap<String, Box<dyn Tool>>,
+    groups: HashMap<String, Vec<String>>,
 }
 
 impl ToolRegistry {
     pub fn new() -> Self {
         Self {
             tools: HashMap::new(),
+            groups: HashMap::new(),
         }
     }
 
@@ -46,6 +48,18 @@ impl ToolRegistry {
             panic!("duplicate tool registration: {name}");
         }
         self.tools.insert(name, tool);
+    }
+
+    /// Register a tool under a named group.
+    pub fn register_in_group(&mut self, group: &str, tool: Box<dyn Tool>) {
+        let name = tool.name().to_owned();
+        self.register(tool);
+        self.groups.entry(group.to_owned()).or_default().push(name);
+    }
+
+    /// Get the group map (group_name → tool_names).
+    pub fn groups(&self) -> &HashMap<String, Vec<String>> {
+        &self.groups
     }
 
     /// Get a tool by name.
@@ -120,10 +134,7 @@ mod tests {
             json!({"type": "object", "properties": {}})
         }
         async fn execute(&self, _args: serde_json::Value) -> Result<ToolResult> {
-            Ok(ToolResult {
-                text: "ok".to_owned(),
-                images: vec![],
-            })
+            Ok(ToolResult::text("ok".to_owned()))
         }
     }
 

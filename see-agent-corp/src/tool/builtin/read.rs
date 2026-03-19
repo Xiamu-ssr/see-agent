@@ -80,10 +80,7 @@ impl Tool for ReadTool {
         let full_path = self.ctx.agent_dir.path().join(rel_path);
 
         if !full_path.exists() {
-            return Ok(ToolResult {
-                text: format!("file not found: {rel_path}"),
-                images: vec![],
-            });
+            return Ok(ToolResult::text(format!("file not found: {rel_path}")));
         }
 
         if is_image_ext(&full_path) {
@@ -110,10 +107,7 @@ fn read_text(path: &Path) -> Result<ToolResult> {
         content
     };
 
-    Ok(ToolResult {
-        text,
-        images: vec![],
-    })
+    Ok(ToolResult::text(text))
 }
 
 fn read_image(path: &Path) -> Result<ToolResult> {
@@ -138,6 +132,7 @@ fn read_image(path: &Path) -> Result<ToolResult> {
             mime_type: mime,
             detail: "high".to_owned(),
         }],
+        metadata: serde_json::Value::Null,
     })
 }
 
@@ -146,5 +141,5 @@ fn read_image(path: &Path) -> Result<ToolResult> {
 // ---------------------------------------------------------------------------
 
 pub fn register(registry: &mut ToolRegistry, ctx: &Arc<ToolContext>) {
-    registry.register(Box::new(ReadTool { ctx: ctx.clone() }));
+    registry.register_in_group("core", Box::new(ReadTool { ctx: ctx.clone() }));
 }

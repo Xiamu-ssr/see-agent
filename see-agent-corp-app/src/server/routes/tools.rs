@@ -14,6 +14,7 @@ struct ToolInfoResponse {
     name: String,
     description: String,
     disabled: bool,
+    group: String,
 }
 
 #[derive(Deserialize)]
@@ -34,10 +35,11 @@ async fn list_tools_handler(
 
     let tools: Vec<ToolInfoResponse> = builtin_tool_infos()
         .into_iter()
-        .map(|(name, desc)| ToolInfoResponse {
+        .map(|(name, desc, group)| ToolInfoResponse {
             disabled: disabled.contains(&name.to_owned()),
             name: name.to_owned(),
             description: desc.to_owned(),
+            group: group.to_owned(),
         })
         .collect();
 

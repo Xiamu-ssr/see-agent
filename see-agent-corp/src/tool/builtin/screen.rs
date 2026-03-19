@@ -87,10 +87,7 @@ impl Tool for ClickTool {
         };
 
         run_osascript(&script).await?;
-        Ok(ToolResult {
-            text: format!("clicked at ({x}, {y}) [{button}]"),
-            images: vec![],
-        })
+        Ok(ToolResult::text(format!("clicked at ({x}, {y}) [{button}]")))
     }
 }
 
@@ -128,10 +125,7 @@ impl Tool for TypeTextTool {
             r#"tell application "System Events" to keystroke "{escaped}""#
         );
         run_osascript(&script).await?;
-        Ok(ToolResult {
-            text: format!("typed: {text}"),
-            images: vec![],
-        })
+        Ok(ToolResult::text(format!("typed: {text}")))
     }
 }
 
@@ -176,10 +170,7 @@ impl Tool for HotkeyTool {
             .unwrap_or_default();
 
         if keys.is_empty() {
-            return Ok(ToolResult {
-                text: "no keys specified".to_owned(),
-                images: vec![],
-            });
+            return Ok(ToolResult::text("no keys specified"));
         }
 
         // Separate modifiers from the main key
@@ -219,10 +210,7 @@ impl Tool for HotkeyTool {
         };
 
         run_osascript(&script).await?;
-        Ok(ToolResult {
-            text: format!("pressed: {}", keys.join("+")),
-            images: vec![],
-        })
+        Ok(ToolResult::text(format!("pressed: {}", keys.join("+"))))
     }
 }
 
@@ -292,10 +280,7 @@ impl Tool for ScrollTool {
         );
         // scroll via osascript is unreliable; use cliclick or mouse events as fallback
         let _ = run_osascript(&script).await;
-        Ok(ToolResult {
-            text: format!("scrolled {direction} by {amount}"),
-            images: vec![],
-        })
+        Ok(ToolResult::text(format!("scrolled {direction} by {amount}")))
     }
 }
 
@@ -347,19 +332,13 @@ impl Tool for DragTool {
             Ok(o) if o.status.success() => {}
             _ => {
                 // Fallback message if cliclick not available
-                return Ok(ToolResult {
-                    text: format!(
-                        "drag from ({from_x},{from_y}) to ({to_x},{to_y}) — install cliclick for drag support"
-                    ),
-                    images: vec![],
-                });
+                return Ok(ToolResult::text(format!(
+                    "drag from ({from_x},{from_y}) to ({to_x},{to_y}) — install cliclick for drag support"
+                )));
             }
         }
 
-        Ok(ToolResult {
-            text: format!("dragged from ({from_x},{from_y}) to ({to_x},{to_y})"),
-            images: vec![],
-        })
+        Ok(ToolResult::text(format!("dragged from ({from_x},{from_y}) to ({to_x},{to_y})")))
     }
 }
 
@@ -393,6 +372,13 @@ impl Tool for ScreenshotTool {
             "screenshot captured ({}x{})",
             screenshot.width, screenshot.height
         );
+        let metadata = json!({
+            "width": screenshot.width,
+            "height": screenshot.height,
+            "screen_width": screenshot.screen_width.unwrap_or(screenshot.width),
+            "screen_height": screenshot.screen_height.unwrap_or(screenshot.height),
+            "mime_type": screenshot.mime_type,
+        });
         Ok(ToolResult {
             text,
             images: vec![ToolResultImage {
@@ -400,6 +386,7 @@ impl Tool for ScreenshotTool {
                 mime_type: screenshot.mime_type,
                 detail,
             }],
+            metadata,
         })
     }
 }
@@ -409,10 +396,10 @@ impl Tool for ScreenshotTool {
 // ---------------------------------------------------------------------------
 
 pub fn register(registry: &mut ToolRegistry, ctx: &Arc<ToolContext>) {
-    registry.register(Box::new(ClickTool { _ctx: ctx.clone() }));
-    registry.register(Box::new(TypeTextTool { _ctx: ctx.clone() }));
-    registry.register(Box::new(HotkeyTool { _ctx: ctx.clone() }));
-    registry.register(Box::new(ScrollTool { _ctx: ctx.clone() }));
-    registry.register(Box::new(DragTool { _ctx: ctx.clone() }));
-    registry.register(Box::new(ScreenshotTool { ctx: ctx.clone() }));
+    registry.register_in_group("screen", Box::new(ClickTool { _ctx: ctx.clone() }));
+    registry.register_in_group("screen", Box::new(TypeTextTool { _ctx: ctx.clone() }));
+    registry.register_in_group("screen", Box::new(HotkeyTool { _ctx: ctx.clone() }));
+    registry.register_in_group("screen", Box::new(ScrollTool { _ctx: ctx.clone() }));
+    registry.register_in_group("screen", Box::new(DragTool { _ctx: ctx.clone() }));
+    registry.register_in_group("screen", Box::new(ScreenshotTool { ctx: ctx.clone() }));
 }

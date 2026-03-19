@@ -6,6 +6,8 @@ use crate::types::paths::WorkspaceDir;
 use crate::types::{AgentDefinition, Config, SkillsConfig};
 
 const SYSTEM_SKILL: &str = include_str!("../../../templates/system-skill/SKILL.md");
+const SYSTEM_SOUL: &str = include_str!("../../../templates/system-soul.md");
+const AGENTS_TEMPLATE: &str = include_str!("../../../templates/AGENTS.md");
 
 /// Resolve the workspace root directory.
 ///
@@ -59,39 +61,73 @@ pub fn ensure_workspace(workspace: &WorkspaceDir) -> Result<()> {
         }
     }
 
-    // Ensure system agent is fully initialized
+    // Ensure system agent is fully initialized (per-item checks for upgrades)
     let system_dir = workspace.system_agent();
     std::fs::create_dir_all(system_dir.path())?;
     std::fs::create_dir_all(system_dir.memory_dir())?;
     std::fs::create_dir_all(system_dir.session().path())?;
     std::fs::create_dir_all(system_dir.session().screenshots())?;
 
-    // Write agent.json with is_system: true if missing
+    // agent.json
     if !system_dir.agent_json().exists() {
-        // Create skills directory and write system-management skill
-        let skills_dir = system_dir.path().join("skills").join("system-management");
-        std::fs::create_dir_all(&skills_dir)?;
-        std::fs::write(skills_dir.join("SKILL.md"), SYSTEM_SKILL)?;
-
         let mut def = AgentDefinition::new("system");
         def.is_system = true;
-        // Configure skills.dirs to point to the system agent's local skills dir
         def.skills = Some(SkillsConfig {
             dirs: vec![system_dir.path().join("skills").to_string_lossy().into_owned()],
             disabled: vec![],
         });
         write_json(&system_dir.agent_json(), &def)?;
+    } else {
+        // Patch: ensure existing agent.json has skills config
+        let content = std::fs::read_to_string(system_dir.agent_json())?;
+        if let Ok(mut val) = serde_json::from_str::<serde_json::Value>(&content)
+            && val.get("skills").is_none()
+        {
+            val["skills"] = serde_json::json!({
+                "dirs": [system_dir.path().join("skills").to_string_lossy().into_owned()],
+                "disabled": []
+            });
+            let json = serde_json::to_string_pretty(&val)?;
+            std::fs::write(system_dir.agent_json(), json)?;
+        }
+    }
 
-        // Write identity
+    // Skills directory + SKILL.md
+    let skills_dir = system_dir.path().join("skills").join("system-management");
+    if !skills_dir.join("SKILL.md").exists() {
+        std::fs::create_dir_all(&skills_dir)?;
+        std::fs::write(skills_dir.join("SKILL.md"), SYSTEM_SKILL)?;
+    }
+
+    // SOUL.md
+    if !system_dir.soul_md().exists() {
+        write_text(&system_dir.soul_md(), SYSTEM_SOUL)?;
+    }
+
+    // AGENTS.md
+    if !system_dir.agents_md().exists() {
+        write_text(&system_dir.agents_md(), AGENTS_TEMPLATE)?;
+    }
+
+    // IDENTITY.md
+    if !system_dir.identity_md().exists() {
         write_text(
             &system_dir.identity_md(),
             "# Identity\n\n**Name:** System\n**Emoji:** ⚙️\n\n系统管理 Agent，负责 workspace 管理和系统配置。\n",
         )?;
+    }
 
-        // Init inbox + cursor + messages
+    // Inbox / cursor / messages / memory
+    if !system_dir.inbox().exists() {
         write_text(&system_dir.inbox(), "")?;
+    }
+    if !system_dir.inbox_cursor().exists() {
         write_json(&system_dir.inbox_cursor(), &serde_json::json!({"line": 0}))?;
+    }
+    if !system_dir.session().messages().exists() {
         write_text(&system_dir.session().messages(), "")?;
+    }
+    if !system_dir.memory_md().exists() {
         write_text(&system_dir.memory_md(), "")?;
     }
 
@@ -163,5 +199,31 @@ mod tests {
         ensure_workspace(&ws).unwrap();
         ensure_workspace(&ws).unwrap(); // second call should not fail
         assert!(ws.config().exists());
+    }
+
+    #[test]
+    fn ensure_workspace_upgrades_existing_system_agent() {
+        let tmp = TempDir::new().unwrap();
+        let ws = WorkspaceDir::new(tmp.path());
+
+        // Simulate old workspace: system agent.json exists but no SOUL.md/AGENTS.md/skills
+        let sys = ws.system_agent();
+        std::fs::create_dir_all(sys.path()).unwrap();
+        let mut def = AgentDefinition::new("system");
+        def.is_system = true;
+        write_json(&sys.agent_json(), &def).unwrap();
+
+        ensure_workspace(&ws).unwrap();
+
+        // Should have been upgraded with all files
+        assert!(sys.soul_md().exists(), "SOUL.md should be created");
+        assert!(sys.agents_md().exists(), "AGENTS.md should be created");
+        assert!(sys.identity_md().exists(), "IDENTITY.md should be created");
+        let skill_path = sys.path().join("skills").join("system-management").join("SKILL.md");
+        assert!(skill_path.exists(), "SKILL.md should be created");
+
+        // agent.json should have skills config patched
+        let content = std::fs::read_to_string(sys.agent_json()).unwrap();
+        assert!(content.contains("skills"), "agent.json should have skills config");
     }
 }
