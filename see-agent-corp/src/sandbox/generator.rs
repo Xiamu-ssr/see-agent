@@ -105,23 +105,24 @@ pub fn build_safehouse_args(profile: &SandboxProfile) -> Vec<String> {
     let mut args = Vec::new();
 
     for dir in &profile.rw_dirs {
-        args.push("--write".into());
+        args.push("--add-dirs".into());
         args.push(expand_home(dir, &home));
     }
     for dir in &profile.ro_dirs {
-        args.push("--read".into());
+        args.push("--add-dirs-ro".into());
         args.push(expand_home(dir, &home));
     }
     for dir in &profile.extra_read {
-        args.push("--read".into());
+        args.push("--add-dirs-ro".into());
         args.push(expand_home(dir, &home));
     }
     for dir in &profile.extra_write {
-        args.push("--write".into());
+        args.push("--add-dirs".into());
         args.push(expand_home(dir, &home));
     }
     if profile.network_outbound {
-        args.push("--net".into());
+        args.push("--enable".into());
+        args.push("net".into());
     }
     args.push("--".into());
     args
@@ -346,11 +347,12 @@ mod tests {
             extra_write: vec![],
         };
         let args = build_safehouse_args(&profile);
-        assert!(args.contains(&"--write".to_string()));
+        assert!(args.contains(&"--add-dirs".to_string()));
         assert!(args.contains(&"/tmp/work".to_string()));
-        assert!(args.contains(&"--read".to_string()));
+        assert!(args.contains(&"--add-dirs-ro".to_string()));
         assert!(args.contains(&"/etc/config".to_string()));
-        assert!(args.contains(&"--net".to_string()));
+        assert!(args.contains(&"--enable".to_string()));
+        assert!(args.contains(&"net".to_string()));
         assert_eq!(args.last().unwrap(), "--");
     }
 }
