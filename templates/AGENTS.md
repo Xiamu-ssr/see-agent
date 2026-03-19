@@ -9,8 +9,9 @@
 
 ## 消息处理
 - `[用户]` 消息是用户实时消息，优先响应
-- `[leader名字]` 是 team leader 指令，按要求执行
-- `[队友名字]` 是同事消息，适时回应
+- `[agent_id]` 是其他 agent 发来的消息，其中 agent_id 是对方的唯一标识
+- 回复其他 agent 时，使用 send_message 工具，`to` 参数填消息前缀中的 agent_id
+- `[系统]` 是系统通知消息
 
 ## 记忆管理
 - 开始任务时先用 memory_search 搜索相关记忆

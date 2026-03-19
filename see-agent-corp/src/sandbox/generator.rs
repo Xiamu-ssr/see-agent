@@ -56,10 +56,22 @@ pub fn build_sandbox_profile(
         if let Some(tid) = team_id {
             let team_dir = workspace.team(tid);
             // All team members need rw access to shared/, tasklist, and messages
-            rw_dirs.push(team_dir.shared().to_string_lossy().into_owned());
-            rw_dirs.push(team_dir.tasklist().to_string_lossy().into_owned());
-            rw_dirs.push(team_dir.messages().to_string_lossy().into_owned());
-            ro_dirs.push(team_dir.team_json().to_string_lossy().into_owned());
+            let shared = team_dir.shared().to_string_lossy().into_owned();
+            if std::path::Path::new(&shared).exists() {
+                rw_dirs.push(shared);
+            }
+            let tasklist = team_dir.tasklist().to_string_lossy().into_owned();
+            if std::path::Path::new(&tasklist).exists() {
+                rw_dirs.push(tasklist);
+            }
+            let messages = team_dir.messages().to_string_lossy().into_owned();
+            if std::path::Path::new(&messages).exists() {
+                rw_dirs.push(messages);
+            }
+            let team_json = team_dir.team_json().to_string_lossy().into_owned();
+            if std::path::Path::new(&team_json).exists() {
+                ro_dirs.push(team_json);
+            }
         }
     }
 

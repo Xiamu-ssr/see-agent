@@ -40,6 +40,9 @@ pub fn create_team(
     // Initialize empty tasklist
     write_json(&team_dir.tasklist(), &Vec::<serde_json::Value>::new())?;
 
+    // Initialize empty messages
+    std::fs::write(team_dir.messages(), "")?;
+
     Ok(definition)
 }
 
