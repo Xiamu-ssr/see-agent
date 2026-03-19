@@ -22,6 +22,7 @@ pub struct ToolContext {
     pub eye: Arc<dyn Eye>,
     pub workspace: WorkspaceDir,
     pub shared_dir: Option<PathBuf>,
+    pub is_system: bool,
     /// Optional callback to wake another agent's worker after sending a message.
     pub wake_fn: Option<WakeFn>,
 }
@@ -62,7 +63,7 @@ pub fn register_builtin_tools(registry: &mut ToolRegistry, ctx: Arc<ToolContext>
     screen::register(registry, &ctx);
     memory::register(registry, &ctx);
     read::register(registry, &ctx);
-    if ctx.team_dir.is_some() {
+    if ctx.is_system || ctx.team_dir.is_some() {
         team::register(registry, &ctx);
     }
 }
@@ -114,7 +115,7 @@ mod tests {
             eye: Arc::new(MockEye),
             workspace: ws,
             shared_dir: None,
-            wake_fn: None,
+            is_system: false, wake_fn: None,
         })
     }
 
@@ -146,7 +147,7 @@ mod tests {
             eye: Arc::new(MockEye),
             workspace: ws,
             shared_dir: Some(shared),
-            wake_fn: None,
+            is_system: false, wake_fn: None,
         })
     }
 
@@ -178,7 +179,7 @@ mod tests {
             eye: Arc::new(MockEye),
             workspace: ws,
             shared_dir: Some(shared),
-            wake_fn: None,
+            is_system: false, wake_fn: None,
         })
     }
 

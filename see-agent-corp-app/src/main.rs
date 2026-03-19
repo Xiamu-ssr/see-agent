@@ -11,10 +11,13 @@ fn main() {
     let cli = Cli::parse();
     let workspace = WorkspaceDir::new(see_agent_corp::config::resolve_workspace_root());
 
-    // Ensure workspace exists for all commands
-    if let Err(e) = ensure_workspace(&workspace) {
-        eprintln!("Failed to initialize workspace: {e}");
-        std::process::exit(1);
+    // Ensure workspace exists (skip for worker subcommand — workspace already initialized by serve)
+    let needs_init = !matches!(cli.command, Commands::Worker { .. });
+    if needs_init {
+        if let Err(e) = ensure_workspace(&workspace) {
+            eprintln!("Failed to initialize workspace: {e}");
+            std::process::exit(1);
+        }
     }
 
     match cli.command {

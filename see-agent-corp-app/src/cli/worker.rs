@@ -79,6 +79,11 @@ pub async fn run(agent_id: &str, workspace_path: &str) {
         eye: eye.clone(),
         workspace: workspace.clone(),
         shared_dir: shared_dir.clone(),
+        is_system: {
+            read_json::<see_agent_corp::types::AgentDefinition>(&agent_dir.agent_json())
+                .map(|d| d.is_system)
+                .unwrap_or(false)
+        },
         wake_fn,
     });
 
