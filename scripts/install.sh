@@ -21,10 +21,10 @@ YELLOW='\033[0;33m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
-info()  { echo -e "${CYAN}[info]${NC}  $*"; }
-ok()    { echo -e "${GREEN}[ok]${NC}    $*"; }
-warn()  { echo -e "${YELLOW}[warn]${NC}  $*"; }
-error() { echo -e "${RED}[error]${NC} $*"; exit 1; }
+info()  { echo -e "${CYAN}[info]${NC}  $*" >&2; }
+ok()    { echo -e "${GREEN}[ok]${NC}    $*" >&2; }
+warn()  { echo -e "${YELLOW}[warn]${NC}  $*" >&2; }
+error() { echo -e "${RED}[error]${NC} $*" >&2; exit 1; }
 
 # ── Install Safehouse (macOS sandbox) ─────────────────────────
 install_safehouse() {
@@ -119,9 +119,15 @@ resolve_version() {
     info "fetching latest release tag..."
     local tag
     tag=$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" \
-        | grep '"tag_name"' \
-        | head -1 \
-        | sed -E 's/.*"tag_name":\s*"([^"]+)".*/\1/')
+        | python3 -c "import sys,json; print(json.load(sys.stdin)['tag_name'])" 2>/dev/null)
+    
+    # fallback if python3 not available
+    if [ -z "$tag" ]; then
+        tag=$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" \
+            | grep -o '"tag_name"[[:space:]]*:[[:space:]]*"[^"]*"' \
+            | head -1 \
+            | grep -o 'v[^"]*')
+    fi
 
     if [ -z "$tag" ]; then
         error "failed to fetch latest release. Check https://github.com/${REPO}/releases"
@@ -149,7 +155,7 @@ install() {
 
     # Download
     info "downloading..."
-    if ! curl -fSL --progress-bar -o "${tmp_dir}/${archive_name}" "$url"; then
+    if ! curl -fSL --progress-bar --connect-timeout 10 --max-time 120 -o "${tmp_dir}/${archive_name}" "$url"; then
         error "download failed. Check that ${version} exists at https://github.com/${REPO}/releases"
     fi
 
