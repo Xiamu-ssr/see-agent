@@ -245,6 +245,15 @@ impl Supervisor {
         }
     }
 
+    /// Restart a running worker. Sends shutdown, waits for exit, then the
+    /// next `send_to()` call will auto-start a fresh worker.
+    pub async fn restart_agent(&mut self, agent_id: &str) -> Result<()> {
+        if self.is_running(agent_id) {
+            self.stop_agent(agent_id).await?;
+        }
+        Ok(())
+    }
+
     /// Stop all running workers.
     pub async fn stop_all(&mut self) {
         let ids: Vec<String> = self.processes.keys().cloned().collect();

@@ -1,7 +1,5 @@
 pub mod agent;
-pub mod config_cmd;
 pub mod daemon;
-pub mod send;
 pub mod team;
 pub mod worker;
 
@@ -16,52 +14,28 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Commands {
-    /// Initialize workspace (~/.agentcorp/)
-    Init,
-    /// Show workspace status
-    Status,
-    /// Start the HTTP server (foreground)
-    Serve {
+    /// Start server (initializes workspace + system agent if needed)
+    Start {
         /// Port to listen on (default: 28789)
         #[arg(short, long)]
         port: Option<u16>,
-        /// PID file path (internal, used by daemon mode)
-        #[arg(long, hide = true)]
-        pid_file: Option<String>,
     },
+    /// Stop running server
+    Stop,
+    /// Restart server (stop + start)
+    Restart {
+        /// Port to listen on (default: 28789)
+        #[arg(short, long)]
+        port: Option<u16>,
+    },
+    /// Show workspace status
+    Status,
     /// Manage agents
     #[command(subcommand)]
     Agent(agent::AgentCmd),
     /// Manage teams
     #[command(subcommand)]
     Team(team::TeamCmd),
-    /// Manage configuration
-    #[command(subcommand)]
-    Config(config_cmd::ConfigCmd),
-    /// Start server as background daemon
-    Start {
-        /// Port to listen on (default: 28789)
-        #[arg(short, long)]
-        port: Option<u16>,
-    },
-    /// Stop running daemon
-    Stop,
-    /// Restart daemon (stop + start)
-    Restart {
-        /// Port to listen on (default: 28789)
-        #[arg(short, long)]
-        port: Option<u16>,
-    },
-    /// Send a message to an agent
-    Send {
-        /// Agent id
-        agent_id: String,
-        /// Message content
-        message: String,
-        /// Send as steer (high priority) message
-        #[arg(short, long)]
-        steer: bool,
-    },
     /// Run as a worker process (used by supervisor, not invoked directly)
     #[command(hide = true)]
     Worker {
@@ -69,5 +43,15 @@ pub enum Commands {
         agent_id: String,
         /// Workspace path
         workspace_path: String,
+    },
+    /// Start HTTP server in foreground (used internally by daemon)
+    #[command(hide = true)]
+    Serve {
+        /// Port to listen on
+        #[arg(short, long)]
+        port: Option<u16>,
+        /// PID file path
+        #[arg(long, hide = true)]
+        pid_file: Option<String>,
     },
 }

@@ -21,10 +21,17 @@ pub enum TeamCmd {
         /// Team id
         id: String,
     },
-    /// Delete a team
+    /// Delete a team (cascading: workers will be restarted without team context)
     Delete {
         /// Team id
         id: String,
+    },
+    /// Change the leader of a team
+    Leader {
+        /// Team id
+        id: String,
+        /// New leader agent id
+        agent_id: String,
     },
 }
 
@@ -87,12 +94,23 @@ pub fn run(workspace: &WorkspaceDir, cmd: TeamCmd) {
                 std::process::exit(1);
             }
         },
-        TeamCmd::Delete { id } => match see_agent_corp::team::delete_team(workspace, &id) {
-            Ok(()) => println!("Deleted team: {id}"),
-            Err(e) => {
-                eprintln!("Error: {e}");
-                std::process::exit(1);
+        TeamCmd::Delete { id } => {
+            match see_agent_corp::team::delete_team(workspace, &id) {
+                Ok(()) => println!("Deleted team: {id}"),
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
             }
-        },
+        }
+        TeamCmd::Leader { id, agent_id } => {
+            match see_agent_corp::team::set_leader(workspace, &id, &agent_id) {
+                Ok(()) => println!("Team '{id}' leader changed to '{agent_id}'"),
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
     }
 }

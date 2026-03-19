@@ -124,6 +124,49 @@ async fn copy_to_clipboard(text: String) {
     }
 }
 
+/// Look backward through messages to find tool_calls input args for a given tool_result.
+fn find_tool_input(msgs: &[SessionMsg], current_idx: usize, tool_call_id: &str, tool_name: &str) -> String {
+    // Search backward from current_idx for an assistant message with matching tool_calls
+    for i in (0..current_idx).rev() {
+        let m = &msgs[i];
+        if m.msg_type != "assistant" {
+            continue;
+        }
+        // Check tool_calls array in data
+        if let Some(tool_calls) = m.data.get("tool_calls").and_then(|v| v.as_array()) {
+            for tc in tool_calls {
+                // Match by tool_call_id if available, otherwise by function name
+                let tc_id = tc.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                let tc_name = tc.get("function")
+                    .and_then(|v| v.get("name"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+
+                let matches = if !tool_call_id.is_empty() {
+                    tc_id == tool_call_id
+                } else {
+                    tc_name == tool_name
+                };
+
+                if matches
+                    && let Some(args) = tc.get("function")
+                        .and_then(|v| v.get("arguments"))
+                        .and_then(|v| v.as_str())
+                {
+                    // Try to pretty-print JSON args
+                    if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(args) {
+                        return serde_json::to_string_pretty(&parsed).unwrap_or_else(|_| args.to_string());
+                    }
+                    return args.to_string();
+                }
+            }
+        }
+        // Only search the most recent assistant message
+        break;
+    }
+    String::new()
+}
+
 fn status_badge_class(status: &str) -> &'static str {
     match status {
         "running" => "badge badge-success",
@@ -346,10 +389,11 @@ fn AgentDetailPanel(agent_id: String) -> impl IntoView {
         });
     }
 
-    // --- Fetch skills ---
+    // --- Fetch per-agent skills ---
     {
+        let id = agent_id.clone();
         wasm_bindgen_futures::spawn_local(async move {
-            if let Ok(skills) = api::get::<Vec<SkillInfo>>("/skills").await {
+            if let Ok(skills) = api::get::<Vec<SkillInfo>>(&format!("/agents/{id}/skills")).await {
                 skills_list.set(skills);
             }
         });
@@ -553,7 +597,7 @@ fn AgentDetailPanel(agent_id: String) -> impl IntoView {
                                                     // Scrollable messages area
                                                     <div node_ref=chat_container_ref class="flex-1 overflow-y-auto min-h-0 p-2">
                                                         {move || {
-                                                            let msgs = chat_messages.get();
+                                                            let msgs: Vec<SessionMsg> = chat_messages.get().into_iter().collect();
                                                             if msgs.is_empty() {
                                                                 view! {
                                                                     <div role="alert" class="alert">
@@ -561,7 +605,8 @@ fn AgentDetailPanel(agent_id: String) -> impl IntoView {
                                                                     </div>
                                                                 }.into_any()
                                                             } else {
-                                                                msgs.into_iter().filter_map(|m| {
+                                                                let msgs_clone = msgs.clone();
+                                                                msgs.into_iter().enumerate().filter_map(move |(idx, m)| {
                                                                     let text = extract_message_text(&m);
                                                                     if text.is_empty() { return None; }
                                                                     // Strip [xxx] prefix from content if present
@@ -570,6 +615,7 @@ fn AgentDetailPanel(agent_id: String) -> impl IntoView {
                                                                             text[end + 2..].to_string()
                                                                         } else { text.clone() }
                                                                     } else { text.clone() };
+                                                                    let _ = idx;
                                                                     match m.msg_type.as_str() {
                                                                         "user_task" | "user_reply" => {
                                                                             let sender = m.data.get("sender")
@@ -602,12 +648,18 @@ fn AgentDetailPanel(agent_id: String) -> impl IntoView {
                                                                                 </div>
                                                                             }.into_any())
                                                                         }
-                                                                        // Bug 16: Tool messages collapsed
+                                                                        // Bug 16/48: Tool messages collapsed with input params
                                                                         "tool_result" => {
                                                                             let tool_name = m.data.get("tool")
                                                                                 .and_then(|v| v.as_str())
                                                                                 .unwrap_or("tool")
                                                                                 .to_string();
+                                                                            let tool_call_id = m.data.get("tool_call_id")
+                                                                                .and_then(|v| v.as_str())
+                                                                                .unwrap_or("")
+                                                                                .to_string();
+                                                                            // Look back for matching tool_calls in preceding assistant messages
+                                                                            let input_args = find_tool_input(&msgs_clone, idx, &tool_call_id, &tool_name);
                                                                             Some(view! {
                                                                                 <div class="collapse collapse-arrow bg-base-200 mb-2">
                                                                                     <input type="checkbox" />
@@ -615,6 +667,13 @@ fn AgentDetailPanel(agent_id: String) -> impl IntoView {
                                                                                         {format!("\u{1F527} {tool_name}")}
                                                                                     </div>
                                                                                     <div class="collapse-content">
+                                                                                        {if !input_args.is_empty() {
+                                                                                            Some(view! {
+                                                                                                <div class="text-xs mb-1 opacity-70">"Input:"</div>
+                                                                                                <pre class="text-xs whitespace-pre-wrap max-h-[120px] overflow-y-auto bg-base-300 p-2 rounded mb-2">{input_args}</pre>
+                                                                                            })
+                                                                                        } else { None }}
+                                                                                        <div class="text-xs mb-1 opacity-70">"Result:"</div>
                                                                                         <pre class="text-xs whitespace-pre-wrap max-h-[200px] overflow-y-auto bg-base-300 p-2 rounded">{text}</pre>
                                                                                     </div>
                                                                                 </div>
@@ -641,12 +700,12 @@ fn AgentDetailPanel(agent_id: String) -> impl IntoView {
                                                                     }
                                                                 }
                                                             ></textarea>
-                                                            <select class="select select-bordered select-xs w-16"
+                                                            <select class="select select-bordered select-xs w-20"
                                                                 prop:value=move || msg_priority.get()
                                                                 on:change=move |ev: ev::Event| msg_priority.set(event_target_value(&ev))
                                                             >
-                                                                <option value="collect">"C"</option>
-                                                                <option value="steer">"S"</option>
+                                                                <option value="collect">"普通"</option>
+                                                                <option value="steer">"加急"</option>
                                                             </select>
                                                             <button class="btn btn-primary btn-sm"
                                                                 on:click=move |_| (send_msg)()

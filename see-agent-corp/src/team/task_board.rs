@@ -156,6 +156,26 @@ impl TaskBoard {
         Ok(result)
     }
 
+    /// Unassign all tasks assigned to a specific agent (set back to unassigned/pending).
+    pub fn unassign_agent(&self, agent_id: &str) -> Result<usize> {
+        let mut tasks = self.load_tasks()?;
+        let mut count = 0;
+        for task in &mut tasks {
+            if task.assigned_to.as_deref() == Some(agent_id) {
+                task.assigned_to = None;
+                if task.status == TaskStatus::Claimed || task.status == TaskStatus::InProgress {
+                    task.status = TaskStatus::Pending;
+                }
+                task.updated_at = Utc::now().to_rfc3339();
+                count += 1;
+            }
+        }
+        if count > 0 {
+            self.save_tasks(&tasks)?;
+        }
+        Ok(count)
+    }
+
     /// Update arbitrary fields on a task.
     pub fn update_task(
         &self,
@@ -320,6 +340,26 @@ mod tests {
         assert!(result.is_err());
         let msg = result.unwrap_err().to_string();
         assert!(msg.contains("blocked"), "error should mention blocked: {msg}");
+    }
+
+    #[test]
+    fn unassign_agent_resets_tasks() {
+        let (_tmp, team_dir) = setup();
+        let board = TaskBoard::new(team_dir);
+
+        let t1 = board.create_task("T1", "desc", "a1", vec![]).unwrap();
+        let t2 = board.create_task("T2", "desc", "a1", vec![]).unwrap();
+        board.claim_task(&t1.id, "a1").unwrap();
+        board.claim_task(&t2.id, "a1").unwrap();
+
+        let count = board.unassign_agent("a1").unwrap();
+        assert_eq!(count, 2);
+
+        let tasks = board.list_tasks(None).unwrap();
+        for task in &tasks {
+            assert_eq!(task.assigned_to, None);
+            assert_eq!(task.status, TaskStatus::Pending);
+        }
     }
 
     #[test]

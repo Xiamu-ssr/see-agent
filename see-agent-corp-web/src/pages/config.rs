@@ -155,6 +155,74 @@ pub fn Config() -> impl IntoView {
                                                         };
 
                                                         match field_type.as_str() {
+                                                            "array" => {
+                                                                let on_change = on_change.clone();
+                                                                let items: Vec<String> = match current_val() {
+                                                                    Value::Array(arr) => arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect(),
+                                                                    _ => vec![],
+                                                                };
+                                                                let list = RwSignal::new(items);
+                                                                let new_item = RwSignal::new(String::new());
+                                                                view! {
+                                                                    <div class="md:col-span-2">
+                                                                        <label class="label"><span class="label-text font-bold">{label}</span></label>
+                                                                        {if !description.is_empty() {
+                                                                            Some(view! { <p class="text-sm opacity-70 mb-1">{description.clone()}</p> })
+                                                                        } else { None }}
+                                                                        <div class="flex flex-col gap-1">
+                                                                            {
+                                                                                let on_change_list = on_change.clone();
+                                                                                move || list.get().into_iter().enumerate().map(|(i, item)| {
+                                                                                let on_change = on_change_list.clone();
+                                                                                view! {
+                                                                                    <div class="flex items-center gap-1">
+                                                                                        <code class="text-xs flex-1 bg-base-200 p-1 rounded">{item}</code>
+                                                                                        <button class="btn btn-xs btn-ghost" on:click=move |_| {
+                                                                                            list.update(|l| { l.remove(i); });
+                                                                                            let vals: Vec<Value> = list.get_untracked().into_iter().map(Value::String).collect();
+                                                                                            on_change(Value::Array(vals));
+                                                                                        }>"x"</button>
+                                                                                    </div>
+                                                                                }
+                                                                            }).collect_view()}
+                                                                        </div>
+                                                                        <div class="flex items-center gap-1 mt-1">
+                                                                            <input class="input input-bordered input-sm flex-1"
+                                                                                placeholder="Add item..."
+                                                                                prop:value=move || new_item.get()
+                                                                                on:input=move |ev: ev::Event| new_item.set(event_target_value(&ev))
+                                                                                on:keydown={
+                                                                                    let on_change = on_change.clone();
+                                                                                    move |ev: web_sys::KeyboardEvent| {
+                                                                                        if ev.key() == "Enter" {
+                                                                                            ev.prevent_default();
+                                                                                            let val = new_item.get_untracked();
+                                                                                            if !val.trim().is_empty() {
+                                                                                                list.update(|l| l.push(val));
+                                                                                                new_item.set(String::new());
+                                                                                                let vals: Vec<Value> = list.get_untracked().into_iter().map(Value::String).collect();
+                                                                                                on_change(Value::Array(vals));
+                                                                                            }
+                                                                                        }
+                                                                                    }
+                                                                                }
+                                                                            />
+                                                                            <button class="btn btn-sm btn-ghost" on:click={
+                                                                                let on_change = on_change.clone();
+                                                                                move |_| {
+                                                                                    let val = new_item.get_untracked();
+                                                                                    if !val.trim().is_empty() {
+                                                                                        list.update(|l| l.push(val));
+                                                                                        new_item.set(String::new());
+                                                                                        let vals: Vec<Value> = list.get_untracked().into_iter().map(Value::String).collect();
+                                                                                        on_change(Value::Array(vals));
+                                                                                    }
+                                                                                }
+                                                                            }>"+"</button>
+                                                                        </div>
+                                                                    </div>
+                                                                }.into_any()
+                                                            }
                                                             "boolean" => {
                                                                 let on_change = on_change.clone();
                                                                 let init = current_val().as_bool().unwrap_or(false);

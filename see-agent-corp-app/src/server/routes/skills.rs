@@ -112,9 +112,77 @@ async fn toggle_agent_skill_handler(
     }))
 }
 
+/// Per-agent skills: reads agent.json skill dirs, merges with global, loads & gates.
+async fn list_agent_skills_handler(
+    State(state): State<AppState>,
+    Path(agent_id): Path<String>,
+) -> Result<Json<Vec<SkillInfoResponse>>, StatusCode> {
+    let ws = state.workspace();
+    let agent_dir = ws.agent(&agent_id);
+    if !agent_dir.agent_json().exists() {
+        return Err(StatusCode::NOT_FOUND);
+    }
+
+    let config = state.inner.config.read().await;
+    let global_disabled = &config.skills.disabled;
+
+    // Determine skill dirs: agent-specific + global
+    let mut dirs = config.skills.dirs.clone();
+    let agent_json_path = agent_dir.agent_json();
+    if let Ok(content) = std::fs::read_to_string(&agent_json_path)
+        && let Ok(val) = serde_json::from_str::<Value>(&content)
+        && let Some(skill_dirs) = val
+            .get("skills")
+            .and_then(|s| s.get("dirs"))
+            .and_then(|d| d.as_array())
+    {
+        for d in skill_dirs {
+            if let Some(s) = d.as_str()
+                && !dirs.contains(&s.to_owned())
+            {
+                dirs.push(s.to_owned());
+            }
+        }
+    }
+
+    // Agent-level disabled
+    let mut agent_disabled: Vec<String> = Vec::new();
+    if let Ok(content) = std::fs::read_to_string(&agent_json_path)
+        && let Ok(val) = serde_json::from_str::<Value>(&content)
+        && let Some(disabled) = val
+            .get("skills")
+            .and_then(|s| s.get("disabled"))
+            .and_then(|d| d.as_array())
+    {
+        for d in disabled {
+            if let Some(s) = d.as_str() {
+                agent_disabled.push(s.to_owned());
+            }
+        }
+    }
+
+    let skills = gate_skills(load_skills(&dirs));
+    let response: Vec<SkillInfoResponse> = skills
+        .into_iter()
+        .map(|s| {
+            let disabled =
+                global_disabled.contains(&s.name) || agent_disabled.contains(&s.name);
+            SkillInfoResponse {
+                name: s.name,
+                description: s.description,
+                available: !s.blocked && !disabled,
+                disabled,
+            }
+        })
+        .collect();
+
+    Ok(Json(response))
+}
+
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/skills", get(list_skills_handler))
+        .route("/agents/{agent_id}/skills", get(list_agent_skills_handler))
         .route(
             "/agents/{agent_id}/skills/{skill_name}/toggle",
             post(toggle_agent_skill_handler),

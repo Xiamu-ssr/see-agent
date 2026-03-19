@@ -24,7 +24,7 @@ pub fn AppLayout(is_dark: RwSignal<bool>, children: Children) -> impl IntoView {
             <input id="app-drawer" type="checkbox" class="drawer-toggle" />
 
             // --- Main content ---
-            <div class="drawer-content flex flex-col min-h-screen">
+            <div class="drawer-content flex flex-col h-screen overflow-hidden">
                 // Mobile navbar
                 <div class="navbar bg-base-300 lg:hidden">
                     <div class="flex-none">
@@ -53,7 +53,7 @@ pub fn AppLayout(is_dark: RwSignal<bool>, children: Children) -> impl IntoView {
                 </div>
 
                 // Page content
-                <main class="flex-1 p-4 lg:p-6 max-w-7xl w-full mx-auto flex flex-col min-h-0">
+                <main class="flex-1 p-4 lg:p-6 w-full mx-auto flex flex-col min-h-0 overflow-hidden">
                     {children()}
                 </main>
             </div>
