@@ -20,6 +20,8 @@ struct DashboardResponse {
     tools_count: usize,
     skills_count: usize,
     version: String,
+    sandbox_enabled: bool,
+    sandbox_available: bool,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -46,6 +48,9 @@ async fn get_dashboard_handler(
     let tools_count = builtin_tool_infos().len();
     let skills_count = gate_skills(load_skills(&config.skills.dirs)).len();
 
+    let sandbox_enabled = config.sandbox.enabled;
+    let sandbox_available = sup.is_safehouse_available();
+
     Ok(Json(DashboardResponse {
         agents_count: agents.len(),
         agents_running: running,
@@ -54,6 +59,8 @@ async fn get_dashboard_handler(
         tools_count,
         skills_count,
         version: see_agent_corp::consts::VERSION.into(),
+        sandbox_enabled,
+        sandbox_available,
     }))
 }
 
@@ -281,5 +288,26 @@ mod tests {
             .unwrap();
         let dashboard: DashboardResponse = serde_json::from_slice(&body).unwrap();
         assert_eq!(dashboard.sleeping_agents, 2);
+    }
+
+    #[tokio::test]
+    async fn dashboard_includes_sandbox_status() {
+        let state = make_test_state();
+        let app = router(state);
+        let req = Request::builder()
+            .method("GET")
+            .uri("/dashboard")
+            .body(Body::empty())
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let dashboard: DashboardResponse = serde_json::from_slice(&body).unwrap();
+        // sandbox_enabled defaults to true
+        assert!(dashboard.sandbox_enabled);
     }
 }

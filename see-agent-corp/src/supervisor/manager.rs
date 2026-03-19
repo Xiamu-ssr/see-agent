@@ -4,7 +4,10 @@ use std::path::PathBuf;
 use tracing::{info, warn};
 
 use crate::error::{Result, CorpError};
-use crate::types::{AgentState, Message, MessagePriority, WorkspaceDir};
+use crate::io::read_json;
+use crate::sandbox::{build_safehouse_args, build_sandbox_profile, safehouse_available};
+use crate::team::find_agent_team;
+use crate::types::{AgentDefinition, AgentState, Message, MessagePriority, WorkspaceDir};
 
 use super::inbox::send_to_inbox_with_id;
 
@@ -31,6 +34,10 @@ pub struct Supervisor {
     processes: HashMap<String, ProcessHandle>,
     /// Path to the agentcorp binary. Defaults to the current executable.
     binary_path: PathBuf,
+    /// Whether sandbox is enabled (from config).
+    sandbox_enabled: bool,
+    /// Whether the safehouse binary is available in PATH.
+    safehouse_available: bool,
 }
 
 impl Supervisor {
@@ -40,7 +47,24 @@ impl Supervisor {
             workspace,
             processes: HashMap::new(),
             binary_path,
+            sandbox_enabled: true,
+            safehouse_available: safehouse_available(),
         }
+    }
+
+    /// Set sandbox state from config.
+    pub fn set_sandbox_enabled(&mut self, enabled: bool) {
+        self.sandbox_enabled = enabled;
+    }
+
+    /// Whether sandbox is actually active (enabled AND safehouse available).
+    pub fn sandbox_active(&self) -> bool {
+        self.sandbox_enabled && self.safehouse_available
+    }
+
+    /// Whether safehouse binary is available.
+    pub fn is_safehouse_available(&self) -> bool {
+        self.safehouse_available
     }
 
     /// Override the path to the worker binary.
@@ -80,20 +104,57 @@ impl Supervisor {
             message: format!("failed to clone log file for '{agent_id}': {e}"),
         })?;
 
-        let child = tokio::process::Command::new(&self.binary_path)
-            .arg("worker")
-            .arg(agent_id)
-            .arg(self.workspace.path().to_string_lossy().as_ref())
-            // Clean environment: strip conda/venv vars
-            .env_remove("CONDA_PREFIX")
-            .env_remove("CONDA_DEFAULT_ENV")
-            .env_remove("VIRTUAL_ENV")
-            .stdout(log_file)
-            .stderr(log_stderr)
-            .spawn()
-            .map_err(|e| CorpError::Agent {
-                message: format!("failed to spawn worker for '{agent_id}': {e}"),
-            })?;
+        let child = if self.sandbox_active() {
+            // Load agent definition to determine permissions
+            let agent_def = read_json::<AgentDefinition>(&agent_dir.agent_json()).ok();
+            let is_system = agent_def.as_ref().is_some_and(|d| d.is_system);
+            let team_id = find_agent_team(&self.workspace, agent_id)
+                .ok()
+                .flatten();
+            let agent_sandbox = agent_def.as_ref().and_then(|d| d.sandbox.as_ref());
+            let config = crate::config::load_config(&self.workspace).unwrap_or_default();
+
+            let profile = build_sandbox_profile(
+                &self.workspace,
+                agent_id,
+                is_system,
+                team_id.as_deref(),
+                &config,
+                agent_sandbox,
+            );
+            let safehouse_args = build_safehouse_args(&profile);
+
+            info!(agent = agent_id, "spawning worker with safehouse sandbox");
+            tokio::process::Command::new("safehouse")
+                .args(&safehouse_args)
+                .arg(&self.binary_path)
+                .arg("worker")
+                .arg(agent_id)
+                .arg(self.workspace.path().to_string_lossy().as_ref())
+                .env_remove("CONDA_PREFIX")
+                .env_remove("CONDA_DEFAULT_ENV")
+                .env_remove("VIRTUAL_ENV")
+                .stdout(log_file)
+                .stderr(log_stderr)
+                .spawn()
+                .map_err(|e| CorpError::Agent {
+                    message: format!("failed to spawn sandboxed worker for '{agent_id}': {e}"),
+                })?
+        } else {
+            tokio::process::Command::new(&self.binary_path)
+                .arg("worker")
+                .arg(agent_id)
+                .arg(self.workspace.path().to_string_lossy().as_ref())
+                .env_remove("CONDA_PREFIX")
+                .env_remove("CONDA_DEFAULT_ENV")
+                .env_remove("VIRTUAL_ENV")
+                .stdout(log_file)
+                .stderr(log_stderr)
+                .spawn()
+                .map_err(|e| CorpError::Agent {
+                    message: format!("failed to spawn worker for '{agent_id}': {e}"),
+                })?
+        };
 
         let pid = child.id().unwrap_or(0);
         info!(agent = agent_id, pid, "worker process started");

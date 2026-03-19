@@ -5,7 +5,10 @@ use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
 
 use see_agent_corp::agent::{create_agent, delete_agent, list_agents, load_agent};
-use see_agent_corp::types::{AgentState, Message, MessagePriority};
+use see_agent_corp::io::read_json;
+use see_agent_corp::sandbox::build_sandbox_profile;
+use see_agent_corp::team::find_agent_team;
+use see_agent_corp::types::{AgentDefinition, AgentState, Message, MessagePriority};
 
 use crate::server::AppState;
 
@@ -250,6 +253,68 @@ fn parse_identity(ws: &see_agent_corp::types::WorkspaceDir, agent_id: &str) -> (
 }
 
 // ---------------------------------------------------------------------------
+// Sandbox endpoint
+// ---------------------------------------------------------------------------
+
+#[derive(Serialize)]
+struct SandboxResponse {
+    enabled: bool,
+    engine: String,
+    available: bool,
+    profile: SandboxProfileResponse,
+}
+
+#[derive(Serialize)]
+struct SandboxProfileResponse {
+    rw_dirs: Vec<String>,
+    ro_dirs: Vec<String>,
+    network_outbound: bool,
+    extra_read: Vec<String>,
+    extra_write: Vec<String>,
+}
+
+async fn get_agent_sandbox_handler(
+    State(state): State<AppState>,
+    Path(agent_id): Path<String>,
+) -> Result<Json<SandboxResponse>, StatusCode> {
+    let ws = state.workspace();
+    let agent_dir = ws.agent(&agent_id);
+    if !agent_dir.path().exists() {
+        return Err(StatusCode::NOT_FOUND);
+    }
+
+    let config = state.inner.config.read().await;
+    let sup = state.inner.supervisor.read().await;
+
+    let agent_def = read_json::<AgentDefinition>(&agent_dir.agent_json()).ok();
+    let is_system = agent_def.as_ref().is_some_and(|d| d.is_system);
+    let team_id = find_agent_team(ws, &agent_id).ok().flatten();
+    let agent_sandbox = agent_def.as_ref().and_then(|d| d.sandbox.as_ref());
+
+    let profile = build_sandbox_profile(
+        ws,
+        &agent_id,
+        is_system,
+        team_id.as_deref(),
+        &config,
+        agent_sandbox,
+    );
+
+    Ok(Json(SandboxResponse {
+        enabled: config.sandbox.enabled,
+        engine: "safehouse".into(),
+        available: sup.is_safehouse_available(),
+        profile: SandboxProfileResponse {
+            rw_dirs: profile.rw_dirs,
+            ro_dirs: profile.ro_dirs,
+            network_outbound: profile.network_outbound,
+            extra_read: profile.extra_read,
+            extra_write: profile.extra_write,
+        },
+    }))
+}
+
+// ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
 
@@ -262,6 +327,7 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/agents/{agent_id}/message", post(send_message_handler))
         .route("/agents/{agent_id}/logs", get(get_agent_logs_handler))
+        .route("/agents/{agent_id}/sandbox", get(get_agent_sandbox_handler))
         .with_state(state)
 }
 

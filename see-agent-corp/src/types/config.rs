@@ -232,12 +232,19 @@ pub struct ToolsConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct SandboxConfig {
+    /// Whether sandbox is enabled. Default true. Set false for development.
+    #[serde(default = "default_true")]
+    pub enabled: bool,
     #[serde(default = "default_sandbox_profile")]
     pub profile: String,
     #[serde(default)]
     pub extra_read: Vec<String>,
     #[serde(default)]
     pub extra_write: Vec<String>,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 fn default_sandbox_profile() -> String {
@@ -247,6 +254,7 @@ fn default_sandbox_profile() -> String {
 impl Default for SandboxConfig {
     fn default() -> Self {
         Self {
+            enabled: true,
             profile: default_sandbox_profile(),
             extra_read: Vec::new(),
             extra_write: Vec::new(),

@@ -58,6 +58,23 @@ pub async fn serve(state: AppState, port: Option<u16>, pid_file: Option<PathBuf>
         daemon::write_pid(pf);
     }
 
+    // Check sandbox availability
+    {
+        let config = state.inner.config.read().await;
+        let sup = state.inner.supervisor.read().await;
+        if config.sandbox.enabled && !sup.is_safehouse_available() {
+            tracing::warn!(
+                "sandbox enabled but safehouse not found in PATH. \
+                 Workers will run WITHOUT sandbox protection. \
+                 Install: brew install eugene1g/safehouse/agent-safehouse"
+            );
+        } else if config.sandbox.enabled {
+            tracing::info!("sandbox protection enabled (safehouse)");
+        } else {
+            tracing::warn!("sandbox protection disabled by config (sandbox.enabled=false)");
+        }
+    }
+
     // Spawn config hot-reload watcher
     {
         let state = state.clone();

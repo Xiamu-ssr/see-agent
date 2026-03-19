@@ -77,6 +77,24 @@ struct FileEntry {
     size: u64,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+struct SandboxData {
+    enabled: bool,
+    #[allow(dead_code)]
+    engine: String,
+    available: bool,
+    profile: SandboxProfileData,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct SandboxProfileData {
+    rw_dirs: Vec<String>,
+    ro_dirs: Vec<String>,
+    network_outbound: bool,
+    extra_read: Vec<String>,
+    extra_write: Vec<String>,
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -110,6 +128,27 @@ fn extract_message_text(msg: &SessionMsg) -> String {
         return msg.data.as_str().unwrap_or("").to_string();
     }
     serde_json::to_string_pretty(&msg.data).unwrap_or_default()
+}
+
+fn is_sandbox_blocked(text: &str) -> bool {
+    text.contains("Operation not permitted")
+        || text.contains("Permission denied")
+        || text.contains("EPERM")
+}
+
+fn log_line_class(line: &str) -> &'static str {
+    // Check for log level keywords in typical formats like:
+    // 2025-01-01T00:00:00Z ERROR ... or [ERROR] ...
+    let upper = line.to_uppercase();
+    if upper.contains(" ERROR ") || upper.contains("[ERROR]") || upper.starts_with("ERROR") {
+        "text-error"
+    } else if upper.contains(" WARN") || upper.contains("[WARN") || upper.starts_with("WARN") {
+        "text-warning"
+    } else if upper.contains(" DEBUG ") || upper.contains("[DEBUG]") || upper.starts_with("DEBUG") {
+        "opacity-50"
+    } else {
+        ""
+    }
 }
 
 fn format_file_size(size: u64) -> String {
@@ -349,6 +388,7 @@ fn AgentDetailPanel(agent_id: String) -> impl IntoView {
     let agent_status = RwSignal::new("idle".to_string());
     let is_active = RwSignal::new(true);
     let agent_logs = RwSignal::new(Vec::<String>::new());
+    let sandbox_data = RwSignal::new(Option::<SandboxData>::None);
 
     let aid = StoredValue::new(agent_id.clone());
 
@@ -400,6 +440,16 @@ fn AgentDetailPanel(agent_id: String) -> impl IntoView {
         wasm_bindgen_futures::spawn_local(async move {
             if let Ok(skills) = api::get::<Vec<SkillInfo>>(&format!("/agents/{id}/skills")).await {
                 skills_list.set(skills);
+            }
+        });
+    }
+
+    // --- Fetch sandbox data ---
+    {
+        let id = agent_id.clone();
+        wasm_bindgen_futures::spawn_local(async move {
+            if let Ok(sb) = api::get::<SandboxData>(&format!("/agents/{id}/sandbox")).await {
+                sandbox_data.set(Some(sb));
             }
         });
     }
@@ -699,11 +749,13 @@ fn AgentDetailPanel(agent_id: String) -> impl IntoView {
                                                                                 .to_string();
                                                                             // Look back for matching tool_calls in preceding assistant messages
                                                                             let input_args = find_tool_input(&msgs_clone, idx, &tool_call_id, &tool_name);
+                                                                            let blocked = is_sandbox_blocked(&text);
                                                                             Some(view! {
-                                                                                <div class="collapse collapse-arrow bg-base-200 mb-2">
+                                                                                <div class={if blocked { "collapse collapse-arrow bg-base-200 mb-2 border border-error" } else { "collapse collapse-arrow bg-base-200 mb-2" }}>
                                                                                     <input type="checkbox" />
                                                                                     <div class="collapse-title text-sm py-1 min-h-0">
                                                                                         {format!("\u{1F527} {tool_name}")}
+                                                                                        {if blocked { Some(view! { <span class="badge badge-error badge-sm ml-2">"Sandbox blocked"</span> }) } else { None }}
                                                                                     </div>
                                                                                     <div class="collapse-content">
                                                                                         {if !input_args.is_empty() {
@@ -839,6 +891,43 @@ fn AgentDetailPanel(agent_id: String) -> impl IntoView {
                                                                         <p>{move || skills_list.get().len().to_string()}</p>
                                                                     </div></div>
                                                                 </div>
+
+                                                                // Sandbox card
+                                                                {move || {
+                                                                    sandbox_data.get().map(|sb| {
+                                                                        let status = if sb.enabled && sb.available {
+                                                                            view! { <span class="badge badge-success gap-1">"Active"</span> }.into_any()
+                                                                        } else if sb.enabled {
+                                                                            view! { <span class="badge badge-warning gap-1">"Unavailable (safehouse not found)"</span> }.into_any()
+                                                                        } else {
+                                                                            view! { <span class="badge badge-ghost gap-1">"Disabled"</span> }.into_any()
+                                                                        };
+                                                                        let rw = sb.profile.rw_dirs.join(", ");
+                                                                        let ro = sb.profile.ro_dirs.join(", ");
+                                                                        let net = if sb.profile.network_outbound { "Allowed" } else { "Blocked" };
+                                                                        let extra_r = sb.profile.extra_read.join(", ");
+                                                                        let extra_w = sb.profile.extra_write.join(", ");
+                                                                        view! {
+                                                                            <div class="card bg-base-100 shadow-xl mt-4 border-l-4 border-info">
+                                                                                <div class="card-body">
+                                                                                    <h3 class="card-title text-sm">"Sandbox"</h3>
+                                                                                    <div class="mb-2">{status}</div>
+                                                                                    <div class="grid grid-cols-1 gap-1 text-sm">
+                                                                                        <div><span class="font-bold opacity-70">"Read-Write: "</span><code class="text-xs">{rw}</code></div>
+                                                                                        <div><span class="font-bold opacity-70">"Read-Only: "</span><code class="text-xs">{ro}</code></div>
+                                                                                        <div><span class="font-bold opacity-70">"Network: "</span>{net}</div>
+                                                                                        {if !extra_r.is_empty() {
+                                                                                            Some(view! { <div><span class="font-bold opacity-70">"Extra Read: "</span><code class="text-xs">{extra_r}</code></div> })
+                                                                                        } else { None }}
+                                                                                        {if !extra_w.is_empty() {
+                                                                                            Some(view! { <div><span class="font-bold opacity-70">"Extra Write: "</span><code class="text-xs">{extra_w}</code></div> })
+                                                                                        } else { None }}
+                                                                                    </div>
+                                                                                </div>
+                                                                            </div>
+                                                                        }
+                                                                    })
+                                                                }}
                                                             }.into_any(),
 
                                                             // ----- Files -----
@@ -1045,9 +1134,10 @@ fn AgentDetailPanel(agent_id: String) -> impl IntoView {
                                                                                 if lines.is_empty() {
                                                                                     view! { <span class="opacity-50 text-sm">"No logs yet"</span> }.into_any()
                                                                                 } else {
-                                                                                    view! {
-                                                                                        <pre class="text-xs whitespace-pre-wrap">{lines.join("\n")}</pre>
-                                                                                    }.into_any()
+                                                                                    lines.into_iter().map(|line| {
+                                                                                        let cls = log_line_class(&line);
+                                                                                        view! { <div class={format!("text-xs whitespace-pre-wrap {cls}")}>{line}</div> }
+                                                                                    }).collect_view().into_any()
                                                                                 }
                                                                             }}
                                                                         </div>
@@ -1165,5 +1255,45 @@ mod tests {
         assert_eq!(d.id, "a1");
         assert!(d.has_soul);
         assert_eq!(d.state, "idle");
+    }
+
+    #[test]
+    fn sandbox_data_deserialize() {
+        let json = r#"{
+            "enabled": true,
+            "engine": "safehouse",
+            "available": true,
+            "profile": {
+                "rw_dirs": ["/tmp/agent"],
+                "ro_dirs": ["/tmp/config"],
+                "network_outbound": false,
+                "extra_read": [],
+                "extra_write": []
+            }
+        }"#;
+        let sb: SandboxData = serde_json::from_str(json).unwrap();
+        assert!(sb.enabled);
+        assert!(sb.available);
+        assert_eq!(sb.profile.rw_dirs.len(), 1);
+        assert!(!sb.profile.network_outbound);
+    }
+
+    #[test]
+    fn is_sandbox_blocked_detects_keywords() {
+        assert!(is_sandbox_blocked("error: Operation not permitted"));
+        assert!(is_sandbox_blocked("Permission denied: /foo"));
+        assert!(is_sandbox_blocked("EPERM reading file"));
+        assert!(!is_sandbox_blocked("file written successfully"));
+    }
+
+    #[test]
+    fn log_line_class_detects_levels() {
+        assert_eq!(log_line_class("2025-01-01 ERROR something failed"), "text-error");
+        assert_eq!(log_line_class("[ERROR] crash"), "text-error");
+        assert_eq!(log_line_class("2025-01-01 WARN low memory"), "text-warning");
+        assert_eq!(log_line_class("[WARN] caution"), "text-warning");
+        assert_eq!(log_line_class("2025-01-01 DEBUG verbose"), "opacity-50");
+        assert_eq!(log_line_class("2025-01-01 INFO started"), "");
+        assert_eq!(log_line_class("normal log line"), "");
     }
 }

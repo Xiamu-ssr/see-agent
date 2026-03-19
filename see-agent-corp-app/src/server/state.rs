@@ -28,7 +28,8 @@ impl AppState {
                 Config::default()
             }
         };
-        let supervisor = Supervisor::new(workspace.clone());
+        let mut supervisor = Supervisor::new(workspace.clone());
+        supervisor.set_sandbox_enabled(config.sandbox.enabled);
         Self {
             inner: Arc::new(AppStateInner {
                 workspace,

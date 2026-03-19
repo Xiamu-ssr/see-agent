@@ -11,6 +11,10 @@ struct DashboardData {
     tools_count: usize,
     skills_count: usize,
     version: String,
+    #[serde(default)]
+    sandbox_enabled: bool,
+    #[serde(default)]
+    sandbox_available: bool,
 }
 
 #[component]
@@ -72,6 +76,17 @@ pub fn Dashboard() -> impl IntoView {
                                     </div>
                                 </div>
 
+                                // Sandbox status
+                                <div class="mb-4">
+                                    {if d.sandbox_enabled && d.sandbox_available {
+                                        view! { <div class="alert alert-success"><span>"Sandbox: Active (safehouse)"</span></div> }.into_any()
+                                    } else if d.sandbox_enabled {
+                                        view! { <div class="alert alert-warning"><span>"Sandbox: Enabled but safehouse not found"</span></div> }.into_any()
+                                    } else {
+                                        view! { <div class="alert"><span>"Sandbox: Disabled"</span></div> }.into_any()
+                                    }}
+                                </div>
+
                                 <div class="flex items-center gap-2">
                                     <button class="btn btn-primary"
                                         on:click=move |_| {
@@ -115,7 +130,9 @@ mod tests {
             "teams_count": 1,
             "tools_count": 10,
             "skills_count": 5,
-            "version": "0.1.0"
+            "version": "0.1.0",
+            "sandbox_enabled": true,
+            "sandbox_available": false
         }"#;
         let d: DashboardData = serde_json::from_str(json).unwrap();
         assert_eq!(d.agents_count, 3);
@@ -124,6 +141,8 @@ mod tests {
         assert_eq!(d.tools_count, 10);
         assert_eq!(d.skills_count, 5);
         assert_eq!(d.version, "0.1.0");
+        assert!(d.sandbox_enabled);
+        assert!(!d.sandbox_available);
     }
 
     #[test]

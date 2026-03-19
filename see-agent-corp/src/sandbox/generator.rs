@@ -1,5 +1,8 @@
 use std::path::{Path, PathBuf};
 
+use serde::Serialize;
+
+use crate::types::config::SandboxConfig;
 use crate::types::{Config, WorkspaceDir};
 
 /// Placeholder token in .sb profiles replaced with the actual home directory.
@@ -11,7 +14,124 @@ const PROFILE_SYSTEM: &str = include_str!("profiles/10-system-runtime.sb");
 const PROFILE_NETWORK: &str = include_str!("profiles/20-network.sb");
 const PROFILE_SEE_AGENT: &str = include_str!("profiles/see-agent-corp-base.sb");
 
-/// Generate a combined sandbox profile for an agent.
+// ---------------------------------------------------------------------------
+// SandboxProfile — describes what an agent can access
+// ---------------------------------------------------------------------------
+
+/// Describes the sandbox permission profile for an agent.
+#[derive(Debug, Clone, Serialize)]
+pub struct SandboxProfile {
+    pub rw_dirs: Vec<String>,
+    pub ro_dirs: Vec<String>,
+    pub network_outbound: bool,
+    pub extra_read: Vec<String>,
+    pub extra_write: Vec<String>,
+}
+
+/// Build a sandbox profile for an agent based on its role and team membership.
+pub fn build_sandbox_profile(
+    workspace: &WorkspaceDir,
+    agent_id: &str,
+    is_system: bool,
+    team_id: Option<&str>,
+    config: &Config,
+    agent_sandbox: Option<&SandboxConfig>,
+) -> SandboxProfile {
+    let ws_path = workspace.path().to_string_lossy().into_owned();
+
+    let mut rw_dirs = Vec::new();
+    let mut ro_dirs = Vec::new();
+
+    if is_system {
+        // System agent: read-write entire workspace
+        rw_dirs.push(ws_path);
+    } else {
+        // Normal agent: rw own dir, ro config + skills
+        let agent_dir = workspace.agent(agent_id);
+        rw_dirs.push(agent_dir.path().to_string_lossy().into_owned());
+        ro_dirs.push(workspace.config().to_string_lossy().into_owned());
+        ro_dirs.push(workspace.skills().to_string_lossy().into_owned());
+
+        // Team access
+        if let Some(tid) = team_id {
+            let team_dir = workspace.team(tid);
+            rw_dirs.push(team_dir.shared().to_string_lossy().into_owned());
+            ro_dirs.push(team_dir.team_json().to_string_lossy().into_owned());
+            ro_dirs.push(team_dir.tasklist().to_string_lossy().into_owned());
+        }
+    }
+
+    // Extra paths from global config
+    let mut extra_read: Vec<String> = config.sandbox.extra_read.clone();
+    let mut extra_write: Vec<String> = config.sandbox.extra_write.clone();
+
+    // Extra paths from agent-level sandbox config
+    if let Some(agent_sb) = agent_sandbox {
+        extra_read.extend(agent_sb.extra_read.iter().cloned());
+        extra_write.extend(agent_sb.extra_write.iter().cloned());
+    }
+
+    SandboxProfile {
+        rw_dirs,
+        ro_dirs,
+        network_outbound: true,
+        extra_read,
+        extra_write,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Safehouse CLI integration
+// ---------------------------------------------------------------------------
+
+/// Check if `safehouse` binary is available in PATH.
+pub fn safehouse_available() -> bool {
+    std::process::Command::new("safehouse")
+        .arg("--version")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .is_ok()
+}
+
+/// Build command-line arguments for `safehouse` from a SandboxProfile.
+///
+/// Returns args like: `["--read", "/path", "--write", "/path", "--net", "--"]`
+pub fn build_safehouse_args(profile: &SandboxProfile) -> Vec<String> {
+    let home = dirs::home_dir()
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "/Users/unknown".to_owned());
+
+    let mut args = Vec::new();
+
+    for dir in &profile.rw_dirs {
+        args.push("--write".into());
+        args.push(expand_home(dir, &home));
+    }
+    for dir in &profile.ro_dirs {
+        args.push("--read".into());
+        args.push(expand_home(dir, &home));
+    }
+    for dir in &profile.extra_read {
+        args.push("--read".into());
+        args.push(expand_home(dir, &home));
+    }
+    for dir in &profile.extra_write {
+        args.push("--write".into());
+        args.push(expand_home(dir, &home));
+    }
+    if profile.network_outbound {
+        args.push("--net".into());
+    }
+    args.push("--".into());
+    args
+}
+
+// ---------------------------------------------------------------------------
+// Legacy .sb profile generation (kept for backward compat)
+// ---------------------------------------------------------------------------
+
+/// Generate a combined sandbox profile for an agent (legacy .sb format).
 ///
 /// Assembles profile fragments, replaces the HOME_DIR placeholder,
 /// adds per-agent directory rules, and writes to /tmp.
@@ -32,40 +152,29 @@ pub fn generate_profile(
     // Try to load optional profiles from the profiles directory
     let profiles_dir = find_profiles_dir();
     if let Some(dir) = &profiles_dir {
-        // Toolchain profiles
         load_optional_profile(&mut parts, dir, "30-toolchains/python.sb");
         load_optional_profile(&mut parts, dir, "30-toolchains/runtime-managers.sb");
-
-        // Shared agent context
         load_optional_profile(&mut parts, dir, "40-shared/agent-common.sb");
-
-        // Core integrations
         load_optional_profile(&mut parts, dir, "50-integrations-core/git.sb");
         load_optional_profile(&mut parts, dir, "50-integrations-core/scm-clis.sb");
-
-        // Optional: macOS GUI + clipboard for screen agents
         load_optional_profile(&mut parts, dir, "55-integrations-optional/macos-gui.sb");
         load_optional_profile(&mut parts, dir, "55-integrations-optional/clipboard.sb");
         load_optional_profile(&mut parts, dir, "55-integrations-optional/shell-init.sb");
     }
 
-    // Combine all fragments
     let mut combined = parts.join("\n\n");
 
-    // Replace HOME placeholder
     let home = dirs::home_dir()
         .map(|p| p.to_string_lossy().into_owned())
         .unwrap_or_else(|| "/Users/unknown".to_owned());
     combined = combined.replace(HOME_PLACEHOLDER, &home);
 
-    // Add per-agent dynamic rules
     let agent_dir = workspace.agent(agent_id);
     combined.push_str(&format!(
         "\n\n;; Per-agent directory access\n(allow file-read* file-write*\n    (subpath \"{}\")\n)\n",
         agent_dir.path().display()
     ));
 
-    // Add extra_read / extra_write from config
     if !config.sandbox.extra_read.is_empty() {
         combined.push_str("\n;; Extra read paths from config\n(allow file-read*\n");
         for path in &config.sandbox.extra_read {
@@ -81,16 +190,17 @@ pub fn generate_profile(
         combined.push_str(")\n");
     }
 
-    // Write to /tmp
     let output_path = PathBuf::from(format!("/tmp/see-agent-corp-{agent_id}.sb"));
     let _ = std::fs::write(&output_path, &combined);
 
     output_path
 }
 
-/// Try to find the profiles directory relative to the binary or in known locations.
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
 fn find_profiles_dir() -> Option<PathBuf> {
-    // Check next to the executable
     if let Ok(exe) = std::env::current_exe() {
         let dir = exe.parent()?.join("profiles");
         if dir.is_dir() {
@@ -98,7 +208,6 @@ fn find_profiles_dir() -> Option<PathBuf> {
         }
     }
 
-    // Check in the see crate source (development mode)
     let dev_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/sandbox/profiles");
     if dev_path.is_dir() {
         return Some(dev_path);
@@ -107,12 +216,7 @@ fn find_profiles_dir() -> Option<PathBuf> {
     None
 }
 
-/// Load an optional profile file and store the owned string.
-/// Uses a Vec of owned strings to avoid lifetime issues.
 fn load_optional_profile(parts: &mut Vec<&str>, _dir: &Path, _relative: &str) {
-    // For now, optional profiles from disk are not loaded at runtime.
-    // Core profiles are embedded via include_str!().
-    // This function exists as a hook for future extension.
     let _ = parts;
     let _ = _dir;
     let _ = _relative;
@@ -160,7 +264,7 @@ mod tests {
         assert!(path.exists());
         let content = std::fs::read_to_string(&path).unwrap();
         assert!(content.contains("(deny default)"));
-        assert!(content.contains("test-sandbox")); // agent dir path
+        assert!(content.contains("test-sandbox"));
         assert!(!content.contains(HOME_PLACEHOLDER));
 
         let _ = std::fs::remove_file(&path);
@@ -187,5 +291,66 @@ mod tests {
         assert!(content.contains("custom-dir"));
 
         let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn build_profile_system_agent() {
+        use tempfile::TempDir;
+
+        let tmp = TempDir::new().unwrap();
+        let ws = WorkspaceDir::new(tmp.path());
+        let config = Config::default();
+
+        let profile = build_sandbox_profile(&ws, "system", true, None, &config, None);
+        assert!(profile.rw_dirs.iter().any(|d| d.contains(tmp.path().to_str().unwrap())));
+        assert!(profile.ro_dirs.is_empty());
+        assert!(profile.network_outbound);
+    }
+
+    #[test]
+    fn build_profile_normal_agent() {
+        use tempfile::TempDir;
+
+        let tmp = TempDir::new().unwrap();
+        let ws = WorkspaceDir::new(tmp.path());
+        let config = Config::default();
+
+        let profile = build_sandbox_profile(&ws, "dev-1", false, None, &config, None);
+        assert_eq!(profile.rw_dirs.len(), 1);
+        assert!(profile.rw_dirs[0].contains("dev-1"));
+        assert!(profile.ro_dirs.iter().any(|d| d.contains("config.json")));
+        assert!(profile.ro_dirs.iter().any(|d| d.contains("skills")));
+    }
+
+    #[test]
+    fn build_profile_team_agent() {
+        use tempfile::TempDir;
+
+        let tmp = TempDir::new().unwrap();
+        let ws = WorkspaceDir::new(tmp.path());
+        let config = Config::default();
+
+        let profile = build_sandbox_profile(&ws, "dev-1", false, Some("team-x"), &config, None);
+        assert!(profile.rw_dirs.iter().any(|d| d.contains("shared")));
+        assert!(profile.ro_dirs.iter().any(|d| d.contains("team.json")));
+        assert!(profile.ro_dirs.iter().any(|d| d.contains("tasklist.json")));
+    }
+
+    #[test]
+    fn build_safehouse_args_includes_rw_and_ro() {
+        let profile = SandboxProfile {
+            rw_dirs: vec!["/tmp/work".into()],
+            ro_dirs: vec!["/etc/config".into()],
+            network_outbound: true,
+            extra_read: vec![],
+            extra_write: vec![],
+        };
+        let args = build_safehouse_args(&profile);
+        assert!(args.contains(&"--write".to_string()));
+        assert!(args.contains(&"/tmp/work".to_string()));
+        assert!(args.contains(&"--read".to_string()));
+        assert!(args.contains(&"/etc/config".to_string()));
+        assert!(args.contains(&"--net".to_string()));
+        assert_eq!(args.last().unwrap(), "--");
     }
 }
