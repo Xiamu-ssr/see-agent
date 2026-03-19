@@ -153,10 +153,49 @@ install() {
     tmp_dir="$(mktemp -d)"
     trap 'rm -rf "$tmp_dir"' EXIT
 
-    # Download
+    # Download (try multiple methods to avoid security software blocking)
     info "downloading..."
-    if ! curl -fSL --progress-bar --connect-timeout 10 --max-time 120 -o "${tmp_dir}/${archive_name}" "$url"; then
-        error "download failed. Check that ${version} exists at https://github.com/${REPO}/releases"
+    local downloaded=false
+    
+    # Method 1: curl
+    if ! $downloaded && command -v curl &>/dev/null; then
+        info "trying curl..."
+        if curl -fSL -o "${tmp_dir}/${archive_name}" "$url" 2>/dev/null; then
+            downloaded=true
+        fi
+    fi
+    
+    # Method 2: wget
+    if ! $downloaded && command -v wget &>/dev/null; then
+        info "trying wget..."
+        if wget -q -O "${tmp_dir}/${archive_name}" "$url" 2>/dev/null; then
+            downloaded=true
+        fi
+    fi
+    
+    # Method 3: python3 urllib
+    if ! $downloaded && command -v python3 &>/dev/null; then
+        info "trying python3..."
+        if python3 -c "
+import urllib.request, sys
+urllib.request.urlretrieve('$url', '${tmp_dir}/${archive_name}')
+print('ok')
+" 2>/dev/null | grep -q ok; then
+            downloaded=true
+        fi
+    fi
+    
+    if ! $downloaded; then
+        echo ""
+        warn "automatic download failed (security software may be blocking it)"
+        echo ""
+        echo "  Manual install:"
+        echo "  1. Download from: $url"
+        echo "  2. Extract:       tar xzf ${archive_name}"
+        echo "  3. Move to:       mkdir -p ${INSTALL_DIR} && mv ${BINARY_NAME}-${target} ${INSTALL_DIR}/${BINARY_NAME}"
+        echo "  4. Make exec:     chmod +x ${INSTALL_DIR}/${BINARY_NAME}"
+        echo ""
+        exit 1
     fi
 
     # Extract
