@@ -1,8 +1,9 @@
 use std::path::PathBuf;
 
 use crate::error::Result;
+use crate::io::{write_json, write_text};
 use crate::types::paths::WorkspaceDir;
-use crate::types::{Config, SkillsConfig};
+use crate::types::{AgentDefinition, Config, SkillsConfig};
 
 /// Resolve the workspace root directory.
 ///
@@ -56,12 +57,31 @@ pub fn ensure_workspace(workspace: &WorkspaceDir) -> Result<()> {
         }
     }
 
-    // Ensure system agent directory exists
+    // Ensure system agent is fully initialized
     let system_dir = workspace.system_agent();
     std::fs::create_dir_all(system_dir.path())?;
     std::fs::create_dir_all(system_dir.memory_dir())?;
     std::fs::create_dir_all(system_dir.session().path())?;
     std::fs::create_dir_all(system_dir.session().screenshots())?;
+
+    // Write agent.json with is_system: true if missing
+    if !system_dir.agent_json().exists() {
+        let mut def = AgentDefinition::new("system");
+        def.is_system = true;
+        write_json(&system_dir.agent_json(), &def)?;
+
+        // Write identity
+        write_text(
+            &system_dir.identity_md(),
+            "# Identity\n\n**Name:** System\n**Emoji:** ⚙️\n\n系统管理 Agent，负责 workspace 管理和系统配置。\n",
+        )?;
+
+        // Init inbox + cursor + messages
+        write_text(&system_dir.inbox(), "")?;
+        write_json(&system_dir.inbox_cursor(), &serde_json::json!({"line": 0}))?;
+        write_text(&system_dir.session().messages(), "")?;
+        write_text(&system_dir.memory_md(), "")?;
+    }
 
     Ok(())
 }

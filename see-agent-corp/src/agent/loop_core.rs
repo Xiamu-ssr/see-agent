@@ -501,7 +501,30 @@ impl AgentLoop {
                     }
                 };
 
-                ctx.add_tool_result(&tc.id, &result.text, &[]);
+                // Convert tool result images (same as Mode A)
+                let ctx_images: Vec<super::context::ToolResultImage> = result
+                    .images
+                    .iter()
+                    .map(|img| super::context::ToolResultImage {
+                        base64: img.base64.clone(),
+                        mime_type: img.mime_type.clone(),
+                        detail: img.detail.clone(),
+                    })
+                    .collect();
+                ctx.add_tool_result(&tc.id, &result.text, &ctx_images);
+
+                // Screenshot tool: save to disk + update screen dims for coord scaling
+                if tc.name == "screenshot" {
+                    if let Ok(new_ss) = self.eye.capture().await {
+                        self.screen_dims = (
+                            new_ss.width,
+                            new_ss.height,
+                            new_ss.screen_width.unwrap_or(new_ss.width),
+                            new_ss.screen_height.unwrap_or(new_ss.height),
+                        );
+                        self.save_screenshot_ref(ctx, &new_ss);
+                    }
+                }
 
                 // Persist tool result to session store
                 if let Some(ref mut store) = self.session_store {

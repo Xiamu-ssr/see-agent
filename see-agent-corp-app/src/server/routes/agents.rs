@@ -20,6 +20,7 @@ struct AgentSummaryResponse {
     emoji: String,
     state: AgentState,
     team_id: Option<String>,
+    is_system: bool,
 }
 
 #[derive(Serialize)]
@@ -89,6 +90,7 @@ async fn list_agents_handler(
                 emoji: a.emoji,
                 state: agent_state,
                 team_id: a.team_id,
+                is_system: a.is_system,
             }
         })
         .collect();

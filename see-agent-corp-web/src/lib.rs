@@ -32,6 +32,8 @@ mod tests {
         emoji: String,
         state: String,
         team_id: Option<String>,
+        #[serde(default)]
+        is_system: bool,
     }
 
     #[derive(Debug, Clone, Deserialize)]

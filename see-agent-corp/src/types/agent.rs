@@ -26,6 +26,9 @@ pub struct AgentDefinition {
     pub mcp: Option<McpConfig>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sandbox: Option<SandboxConfig>,
+    /// Whether this is the system agent (hidden from normal agent list).
+    #[serde(default)]
+    pub is_system: bool,
     /// Extra fields not captured by known sections.
     #[serde(flatten)]
     pub extra: HashMap<String, serde_json::Value>,
@@ -41,6 +44,7 @@ impl AgentDefinition {
             skills: None,
             mcp: None,
             sandbox: None,
+            is_system: false,
             extra: HashMap::new(),
         }
     }
@@ -72,6 +76,8 @@ pub struct AgentSummary {
     pub team_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub team_name: Option<String>,
+    #[serde(default)]
+    pub is_system: bool,
 }
 
 // ---------------------------------------------------------------------------

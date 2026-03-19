@@ -101,6 +101,11 @@ pub fn list_agents(workspace: &WorkspaceDir) -> Result<Vec<AgentSummary>> {
         let name = parse_identity_field(&identity, "Name").unwrap_or_else(|| id.clone());
         let emoji = parse_identity_field(&identity, "Emoji").unwrap_or_else(|| "🤖".to_owned());
 
+        // Read is_system from agent.json
+        let is_system = read_json::<AgentDefinition>(&agent_dir.agent_json())
+            .map(|d| d.is_system)
+            .unwrap_or(false);
+
         agents.push(AgentSummary {
             id,
             name,
@@ -108,6 +113,7 @@ pub fn list_agents(workspace: &WorkspaceDir) -> Result<Vec<AgentSummary>> {
             state: AgentState::Sleeping,
             team_id: None,
             team_name: None,
+            is_system,
         });
     }
 
@@ -203,13 +209,7 @@ mod tests {
     #[test]
     fn list_agents_includes_system() {
         let (_tmp, ws) = setup();
-        // ensure_workspace creates system agent dir, but we need agent.json
-        let system_dir = ws.system_agent();
-        crate::io::write_json(
-            &system_dir.agent_json(),
-            &AgentDefinition::new("system"),
-        )
-        .unwrap();
+        // ensure_workspace now creates system agent with agent.json (is_system: true)
 
         create_agent(&ws, "a1", None, None).unwrap();
 
@@ -217,6 +217,14 @@ mod tests {
         let ids: Vec<&str> = agents.iter().map(|a| a.id.as_str()).collect();
         assert!(ids.contains(&"system"));
         assert!(ids.contains(&"a1"));
+
+        // System agent should be marked is_system
+        let system = agents.iter().find(|a| a.id == "system").unwrap();
+        assert!(system.is_system);
+
+        // Normal agent should not be is_system
+        let a1 = agents.iter().find(|a| a.id == "a1").unwrap();
+        assert!(!a1.is_system);
     }
 
     #[test]
