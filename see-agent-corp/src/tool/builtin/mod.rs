@@ -41,7 +41,7 @@ pub fn core_tool_infos() -> Vec<(&'static str, &'static str)> {
         ("finished", "Signal task completion"),
         ("call_user", "Request human intervention"),
         ("memory_search", "Search agent memory"),
-        ("memory_write", "Write to agent memory"),
+        ("memory_get", "Read memory file by path and line range"),
         ("read", "Read a file (text or image)"),
     ]
 }
@@ -284,24 +284,97 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn memory_write_and_search() {
+    async fn memory_get_reads_file_lines() {
+        let tmp = TempDir::new().unwrap();
+        let ctx = test_ctx(&tmp);
+
+        // Write a memory file manually
+        let mem_dir = ctx.agent_dir.memory_dir();
+        std::fs::create_dir_all(&mem_dir).unwrap();
+        std::fs::write(
+            mem_dir.join("MEMORY.md"),
+            "line1\nline2\nline3\nline4\nline5\n",
+        )
+        .unwrap();
+
+        let mut reg = ToolRegistry::new();
+        register_builtin_tools(&mut reg, ctx);
+
+        // Read lines 2-4
+        let result = reg
+            .execute(
+                "memory_get",
+                serde_json::json!({"path": "MEMORY.md", "from": 2, "lines": 3}),
+            )
+            .await
+            .unwrap();
+        assert!(result.text.contains("line2"));
+        assert!(result.text.contains("line3"));
+        assert!(result.text.contains("line4"));
+        assert!(!result.text.contains("line1"));
+
+        // Default read (from start)
+        let result2 = reg
+            .execute(
+                "memory_get",
+                serde_json::json!({"path": "MEMORY.md"}),
+            )
+            .await
+            .unwrap();
+        assert!(result2.text.contains("line1"));
+        assert!(result2.text.contains("line5"));
+    }
+
+    #[tokio::test]
+    async fn memory_get_rejects_path_traversal() {
         let tmp = TempDir::new().unwrap();
         let ctx = test_ctx(&tmp);
         let mut reg = ToolRegistry::new();
         register_builtin_tools(&mut reg, ctx);
 
-        // Write
-        let write_result = reg
+        let result = reg
             .execute(
-                "memory_write",
-                serde_json::json!({
-                    "file": "MEMORY.md",
-                    "content": "Safari crashes on retina display"
-                }),
+                "memory_get",
+                serde_json::json!({"path": "../../../etc/passwd"}),
             )
             .await
             .unwrap();
-        assert!(write_result.text.contains("written"));
+        assert!(result.text.contains("must not contain"));
+    }
+
+    #[tokio::test]
+    async fn memory_get_missing_file() {
+        let tmp = TempDir::new().unwrap();
+        let ctx = test_ctx(&tmp);
+        let mut reg = ToolRegistry::new();
+        register_builtin_tools(&mut reg, ctx);
+
+        let result = reg
+            .execute(
+                "memory_get",
+                serde_json::json!({"path": "nonexistent.md"}),
+            )
+            .await
+            .unwrap();
+        assert!(result.text.contains("file not found"));
+    }
+
+    #[tokio::test]
+    async fn memory_search_and_get_workflow() {
+        let tmp = TempDir::new().unwrap();
+        let ctx = test_ctx(&tmp);
+
+        // Write a memory file manually
+        let mem_dir = ctx.agent_dir.memory_dir();
+        std::fs::create_dir_all(&mem_dir).unwrap();
+        std::fs::write(
+            mem_dir.join("MEMORY.md"),
+            "Safari crashes on retina display\nFixed by updating WebKit\n",
+        )
+        .unwrap();
+
+        let mut reg = ToolRegistry::new();
+        register_builtin_tools(&mut reg, ctx);
 
         // Search
         let search_result = reg
@@ -312,6 +385,17 @@ mod tests {
             .await
             .unwrap();
         assert!(search_result.text.contains("Safari"));
+
+        // Then get the specific file
+        let get_result = reg
+            .execute(
+                "memory_get",
+                serde_json::json!({"path": "MEMORY.md", "from": 1, "lines": 2}),
+            )
+            .await
+            .unwrap();
+        assert!(get_result.text.contains("Safari"));
+        assert!(get_result.text.contains("WebKit"));
     }
 
     #[tokio::test]

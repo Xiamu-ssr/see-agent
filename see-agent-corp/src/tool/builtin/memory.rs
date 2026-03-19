@@ -80,52 +80,88 @@ impl Tool for MemorySearchTool {
 }
 
 // ---------------------------------------------------------------------------
-// MemoryWriteTool
+// MemoryGetTool
 // ---------------------------------------------------------------------------
 
-pub struct MemoryWriteTool {
+const DEFAULT_MEMORY_GET_LINES: usize = 20;
+
+pub struct MemoryGetTool {
     ctx: Arc<ToolContext>,
 }
 
 #[async_trait]
-impl Tool for MemoryWriteTool {
+impl Tool for MemoryGetTool {
     fn name(&self) -> &str {
-        "memory_write"
+        "memory_get"
     }
     fn description(&self) -> &str {
-        "Write content to agent memory"
+        "按路径和行号读取 memory 文件片段。配合 memory_search 使用：先搜索找到相关文件和行号，再用此工具精确读取需要的片段，节省上下文。"
     }
     fn parameters(&self) -> Value {
         json!({
             "type": "object",
             "properties": {
-                "file": {
+                "path": {
                     "type": "string",
-                    "description": "Memory file name (MEMORY.md or YYYY-MM-DD.md)"
+                    "description": "Memory file path relative to memory/ directory (e.g. MEMORY.md or notes/plan.md)"
                 },
-                "content": {
-                    "type": "string",
-                    "description": "Content to write"
+                "from": {
+                    "type": "integer",
+                    "description": "Starting line number (1-based, default: 1)"
+                },
+                "lines": {
+                    "type": "integer",
+                    "description": "Number of lines to read (default: 20)"
                 }
             },
-            "required": ["file", "content"]
+            "required": ["path"]
         })
     }
 
     async fn execute(&self, args: Value) -> Result<ToolResult> {
-        let file = args["file"].as_str().unwrap_or("MEMORY.md");
-        let content = args["content"]
-            .as_str()
-            .ok_or_else(|| crate::error::CorpError::Tool {
-                tool: "memory_write".to_owned(),
-                message: "missing 'content' parameter".to_owned(),
-            })?;
+        let path = args["path"].as_str().ok_or_else(|| crate::error::CorpError::Tool {
+            tool: "memory_get".to_owned(),
+            message: "missing 'path' parameter".to_owned(),
+        })?;
 
-        let mem = MarkdownMemory::new(self.ctx.agent_dir.memory_dir());
-        mem.write(file, content)?;
+        // Security: prevent path traversal
+        if path.contains("..") {
+            return Ok(ToolResult {
+                text: "error: path must not contain '..'".to_owned(),
+                images: vec![],
+            });
+        }
+
+        let from = args["from"].as_u64().unwrap_or(1).max(1) as usize;
+        let lines = args["lines"]
+            .as_u64()
+            .map(|n| n as usize)
+            .unwrap_or(DEFAULT_MEMORY_GET_LINES);
+
+        let file_path = self.ctx.agent_dir.memory_dir().join(path);
+        let content = match std::fs::read_to_string(&file_path) {
+            Ok(c) => c,
+            Err(_) => {
+                return Ok(ToolResult {
+                    text: format!("file not found: {path}"),
+                    images: vec![],
+                });
+            }
+        };
+
+        let all_lines: Vec<&str> = content.lines().collect();
+        let total = all_lines.len();
+        let start_idx = (from - 1).min(total);
+        let end_idx = (start_idx + lines).min(total);
+        let selected = &all_lines[start_idx..end_idx];
+
+        let mut text = format!("--- {path} (lines {from}-{}, total {total}) ---\n", start_idx + selected.len());
+        for (i, line) in selected.iter().enumerate() {
+            text.push_str(&format!("{:4}| {}\n", start_idx + i + 1, line));
+        }
 
         Ok(ToolResult {
-            text: format!("written to {file}"),
+            text,
             images: vec![],
         })
     }
@@ -137,5 +173,5 @@ impl Tool for MemoryWriteTool {
 
 pub fn register(registry: &mut ToolRegistry, ctx: &Arc<ToolContext>) {
     registry.register(Box::new(MemorySearchTool { ctx: ctx.clone() }));
-    registry.register(Box::new(MemoryWriteTool { ctx: ctx.clone() }));
+    registry.register(Box::new(MemoryGetTool { ctx: ctx.clone() }));
 }

@@ -117,6 +117,32 @@ pub fn list_agents(workspace: &WorkspaceDir) -> Result<Vec<AgentSummary>> {
         });
     }
 
+    // Populate team_id/team_name by scanning teams
+    let teams_dir = workspace.teams();
+    if teams_dir.exists() {
+        // Build agent_id → (team_id, team_name) map
+        let mut agent_team: std::collections::HashMap<String, (String, String)> =
+            std::collections::HashMap::new();
+        if let Ok(entries) = std::fs::read_dir(&teams_dir) {
+            for entry in entries.flatten() {
+                let team_id = entry.file_name().to_string_lossy().to_string();
+                let team_dir = workspace.team(&team_id);
+                if let Ok(def) = read_json::<crate::types::TeamDefinition>(&team_dir.team_json()) {
+                    for member in &def.members {
+                        agent_team
+                            .insert(member.id.clone(), (team_id.clone(), def.name.clone()));
+                    }
+                }
+            }
+        }
+        for agent in &mut agents {
+            if let Some((tid, tname)) = agent_team.remove(&agent.id) {
+                agent.team_id = Some(tid);
+                agent.team_name = Some(tname);
+            }
+        }
+    }
+
     agents.sort_by(|a, b| a.id.cmp(&b.id));
     Ok(agents)
 }

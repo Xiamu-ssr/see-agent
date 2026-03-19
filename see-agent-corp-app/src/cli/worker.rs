@@ -64,10 +64,10 @@ pub async fn run(agent_id: &str, workspace_path: &str) {
     let wake_fn: Option<see_agent_corp::tool::WakeFn> = Some(Arc::new(move |target_id: &str| {
         let target_dir = wake_workspace.agent(target_id);
         let pid_path = target_dir.worker_pid();
-        if let Ok(content) = std::fs::read_to_string(&pid_path) {
-            if let Ok(pid) = content.trim().parse::<u32>() {
-                wake_process(pid);
-            }
+        if let Ok(content) = std::fs::read_to_string(&pid_path)
+            && let Ok(pid) = content.trim().parse::<u32>()
+        {
+            wake_process(pid);
         }
     }));
 

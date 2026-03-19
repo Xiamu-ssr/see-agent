@@ -19,7 +19,10 @@ struct AgentSummaryResponse {
     name: String,
     emoji: String,
     state: AgentState,
+    #[serde(skip_serializing_if = "Option::is_none")]
     team_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    team_name: Option<String>,
     is_system: bool,
 }
 
@@ -90,6 +93,7 @@ async fn list_agents_handler(
                 emoji: a.emoji,
                 state: agent_state,
                 team_id: a.team_id,
+                team_name: a.team_name,
                 is_system: a.is_system,
             }
         })
