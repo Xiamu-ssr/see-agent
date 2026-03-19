@@ -61,6 +61,7 @@ pub async fn run(agent_id: &str, workspace_path: &str) {
     let is_team_agent = team_dir.is_some();
     let heartbeat_team_dir = team_dir.clone();
     // Create wake_fn: reads target agent's worker.pid and sends SIGUSR1
+    // If worker.pid doesn't exist (agent not started), call HTTP API to trigger supervisor start
     let wake_workspace = workspace.clone();
     let wake_fn: Option<see_agent_corp::tool::WakeFn> = Some(Arc::new(move |target_id: &str| {
         let target_dir = wake_workspace.agent(target_id);
@@ -69,6 +70,17 @@ pub async fn run(agent_id: &str, workspace_path: &str) {
             && let Ok(pid) = content.trim().parse::<u32>()
         {
             wake_process(pid);
+        } else {
+            // Worker not running — trigger supervisor via HTTP to start it
+            // Fire-and-forget: send a no-op message to trigger auto-start
+            let _ = std::process::Command::new("curl")
+                .args([
+                    "-s", "-X", "POST",
+                    &format!("http://127.0.0.1:28789/api/agents/{}/wake", target_id),
+                ])
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .spawn();
         }
     }));
 

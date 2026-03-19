@@ -205,6 +205,20 @@ async fn send_message_handler(
     Ok(Json(StatusResponse { status: "sent".into() }))
 }
 
+/// Wake an agent's worker (start if not running, signal if running).
+async fn wake_agent_handler(
+    State(state): State<AppState>,
+    Path(agent_id): Path<String>,
+) -> Result<Json<StatusResponse>, StatusCode> {
+    let mut sup = state.inner.supervisor.write().await;
+    if !sup.is_running(&agent_id) {
+        sup.start_agent(&agent_id)
+            .await
+            .map_err(|_| StatusCode::NOT_FOUND)?;
+    }
+    Ok(Json(StatusResponse { status: "woke".into() }))
+}
+
 async fn get_agent_logs_handler(
     State(state): State<AppState>,
     Path(agent_id): Path<String>,
@@ -324,6 +338,7 @@ pub fn router(state: AppState) -> Router {
             get(get_agent_handler).delete(delete_agent_handler),
         )
         .route("/agents/{agent_id}/message", post(send_message_handler))
+        .route("/agents/{agent_id}/wake", post(wake_agent_handler))
         .route("/agents/{agent_id}/logs", get(get_agent_logs_handler))
         .route("/agents/{agent_id}/sandbox", get(get_agent_sandbox_handler))
         .with_state(state)
