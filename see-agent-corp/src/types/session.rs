@@ -70,4 +70,5 @@ pub enum SessionMessageType {
     UserReply,
     SystemHint,
     Compact,
+    Error,
 }

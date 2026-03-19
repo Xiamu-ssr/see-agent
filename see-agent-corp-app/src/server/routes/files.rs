@@ -85,13 +85,30 @@ async fn read_agent_file_handler(
         return Err(StatusCode::NOT_FOUND);
     }
 
-    // Limit file size to avoid serving huge files
-    let meta = std::fs::metadata(&target).map_err(|_| StatusCode::NOT_FOUND)?;
-    if meta.len() > see_agent_corp::consts::MAX_FILE_CHARS as u64 {
-        return Err(StatusCode::PAYLOAD_TOO_LARGE);
-    }
+    const MAX_SIZE: u64 = 100 * 1024; // 100KB
 
-    std::fs::read_to_string(&target).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+    let meta = std::fs::metadata(&target).map_err(|_| StatusCode::NOT_FOUND)?;
+    let file_size = meta.len();
+
+    if file_size <= MAX_SIZE {
+        std::fs::read_to_string(&target).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+    } else {
+        // Large file: read only the tail
+        use std::io::{Read, Seek, SeekFrom};
+        let mut f = std::fs::File::open(&target).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        let offset = file_size - MAX_SIZE;
+        f.seek(SeekFrom::Start(offset)).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        let mut buf = Vec::with_capacity(MAX_SIZE as usize);
+        f.read_to_end(&mut buf).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        let tail = String::from_utf8_lossy(&buf);
+        // Skip to first newline to avoid partial line
+        let content = if let Some(pos) = tail.find('\n') {
+            &tail[pos + 1..]
+        } else {
+            &tail
+        };
+        Ok(format!("[文件过大 ({:.1} KB)，仅显示最后 100KB]\n\n{content}", file_size as f64 / 1024.0))
+    }
 }
 
 // ---------------------------------------------------------------------------

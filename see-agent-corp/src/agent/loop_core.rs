@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use tracing::{info, warn};
 
-use crate::consts::{DEFAULT_LLM_MAX_TOKENS, FULL_COMPACT_RATIO, MICROCOMPACT_RATIO};
+use crate::consts::DEFAULT_LLM_MAX_TOKENS;
 use crate::eye::Eye;
 #[cfg(test)]
 use crate::eye::Screenshot;
@@ -84,6 +84,13 @@ impl AgentLoop {
     pub fn set_inbox_paths(&mut self, inbox: PathBuf, cursor: PathBuf) {
         self.inbox_path = Some(inbox);
         self.cursor_path = Some(cursor);
+    }
+
+    /// Hot-reload config and brain (called when config.json changes).
+    pub fn hot_reload(&mut self, config: Config, brain: Box<dyn crate::brain::Brain>) {
+        self.max_steps = config.agent.max_steps;
+        self.config = config;
+        self.brain = brain;
     }
 
     /// Save a screenshot to disk and add it to context as a path reference.
@@ -245,6 +252,12 @@ impl AgentLoop {
                 Ok(r) => r,
                 Err(e) => {
                     warn!("LLM error in run_one_turn: {e}");
+                    if let Some(ref mut store) = self.session_store {
+                        let _ = store.append_message(
+                            SessionMessageType::Error,
+                            serde_json::json!({ "error": format!("{e}") }),
+                        );
+                    }
                     break;
                 }
             };
@@ -325,7 +338,7 @@ impl AgentLoop {
         let keep_recent = self.config.agent.compact.keep_recent as usize;
 
         // Layer 2: Microcompact — clear old tool outputs (rules only, no LLM)
-        let micro_threshold = (window * MICROCOMPACT_RATIO) as usize;
+        let micro_threshold = (window * self.config.agent.compact.microcompact_ratio) as usize;
         if tokens >= micro_threshold {
             let saved = ctx.apply_microcompact(keep_recent);
             if saved > 0 {
@@ -334,7 +347,7 @@ impl AgentLoop {
         }
 
         // Layer 3: Full compact — LLM summarization
-        let full_threshold = (window * FULL_COMPACT_RATIO) as usize;
+        let full_threshold = (window * self.config.agent.compact.full_compact_ratio) as usize;
         let tokens_after = estimate_tokens(&ctx.get_messages());
         if tokens_after < full_threshold {
             return;
@@ -473,7 +486,7 @@ mod tests {
             raw: json!({"role": "assistant", "content": "Got it."}),
         };
         let mut agent = make_loop(vec![brain_resp]);
-        let mut ctx = ConversationContext::new("sys", 5, None);
+        let mut ctx = ConversationContext::new("sys", 3, 3, None);
 
         let msgs = vec![json!({"content": "hello", "sender": "user", "priority": "collect"})];
         agent.run_one_turn(&mut ctx, &msgs, "sys").await;
@@ -502,7 +515,7 @@ mod tests {
             }),
         };
         let mut agent = make_loop(vec![brain_resp]);
-        let mut ctx = ConversationContext::new("sys", 5, None);
+        let mut ctx = ConversationContext::new("sys", 3, 3, None);
 
         let msgs = vec![json!({"content": "do it", "sender": "user", "priority": "collect"})];
         agent.run_one_turn(&mut ctx, &msgs, "sys").await;
@@ -519,7 +532,7 @@ mod tests {
         let mut agent = make_loop(vec![]);
         agent.set_screenshots_dir(screenshots_dir.clone());
 
-        let mut ctx = ConversationContext::new("sys", 5, None);
+        let mut ctx = ConversationContext::new("sys", 3, 3, None);
 
         use base64::Engine;
         let fake_bytes = b"fake-screenshot-data";
@@ -561,7 +574,7 @@ mod tests {
         let mut agent = make_loop(vec![]);
         agent.set_screenshots_dir(screenshots_dir.clone());
 
-        let mut ctx = ConversationContext::new("sys", 5, None);
+        let mut ctx = ConversationContext::new("sys", 3, 3, None);
 
         use base64::Engine;
         let b64 = base64::engine::general_purpose::STANDARD.encode(b"data");
@@ -588,7 +601,7 @@ mod tests {
     fn save_screenshot_ref_falls_back_to_inline_without_dir() {
         let mut agent = make_loop(vec![]);
 
-        let mut ctx = ConversationContext::new("sys", 5, None);
+        let mut ctx = ConversationContext::new("sys", 3, 3, None);
 
         use base64::Engine;
         let b64 = base64::engine::general_purpose::STANDARD.encode(b"data");

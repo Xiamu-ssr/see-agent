@@ -24,8 +24,8 @@ pub struct AgentRuntime {
 }
 
 impl AgentRuntime {
-    pub fn new(agent_loop: AgentLoop, system_prompt: String, max_images: usize) -> Self {
-        let ctx = ConversationContext::new(&system_prompt, max_images, None);
+    pub fn new(agent_loop: AgentLoop, system_prompt: String, image_high_count: usize, image_low_count: usize) -> Self {
+        let ctx = ConversationContext::new(&system_prompt, image_high_count, image_low_count, None);
         Self {
             agent_loop,
             ctx,
@@ -183,7 +183,7 @@ mod tests {
         let registry = ToolRegistry::new();
         let config = Config::default();
         let agent_loop = AgentLoop::new(brain, eye, registry, config, "test".into());
-        AgentRuntime::new(agent_loop, "system prompt".into(), 5)
+        AgentRuntime::new(agent_loop, "system prompt".into(), 3, 3)
     }
 
     #[test]

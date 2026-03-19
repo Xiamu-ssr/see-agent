@@ -163,7 +163,8 @@ pub async fn run(agent_id: &str, workspace_path: &str) {
                         "restoring session from disk"
                     );
                     let mut ctx =
-                        ConversationContext::for_restore(config.agent.max_images as usize);
+                        ConversationContext::for_restore(config.agent.compact.image_high_count as usize,
+                        config.agent.compact.image_low_count as usize);
                     ctx.push_raw(serde_json::json!({
                         "role": "system",
                         "content": &system_prompt
@@ -183,7 +184,8 @@ pub async fn run(agent_id: &str, workspace_path: &str) {
                         "restoring session (no compact summary)"
                     );
                     let mut ctx =
-                        ConversationContext::for_restore(config.agent.max_images as usize);
+                        ConversationContext::for_restore(config.agent.compact.image_high_count as usize,
+                        config.agent.compact.image_low_count as usize);
                     ctx.push_raw(serde_json::json!({
                         "role": "system",
                         "content": &system_prompt
@@ -199,13 +201,15 @@ pub async fn run(agent_id: &str, workspace_path: &str) {
                     info!(agent = agent_id, "no previous session, starting fresh");
                     ConversationContext::new(
                         &system_prompt,
-                        config.agent.max_images as usize,
+                        config.agent.compact.image_high_count as usize,
+                        config.agent.compact.image_low_count as usize,
                         None,
                     )
                 }
             }
         } else {
-            ConversationContext::new(&system_prompt, config.agent.max_images as usize, None)
+            ConversationContext::new(&system_prompt, config.agent.compact.image_high_count as usize,
+                        config.agent.compact.image_low_count as usize, None)
         }
     };
 
@@ -227,7 +231,15 @@ pub async fn run(agent_id: &str, workspace_path: &str) {
         });
     }
 
-    // 10. Main inbox drain loop
+    // 10. Config hot-reload tracking
+    let config_path = workspace.config();
+    let mut config_mtime = std::fs::metadata(&config_path)
+        .and_then(|m| m.modified())
+        .ok();
+    let mut _config = config;
+    let mut system_prompt = system_prompt;
+
+    // 11. Main inbox drain loop
     let inbox_path = agent_dir.inbox();
     let cursor_path = agent_dir.inbox_cursor();
     info!(agent = agent_id, inbox = %inbox_path.display(), "entering inbox loop");
@@ -235,6 +247,62 @@ pub async fn run(agent_id: &str, workspace_path: &str) {
     let mut is_first_drain = true;
 
     loop {
+        // Config hot-reload: check mtime before each iteration
+        if let Ok(meta) = std::fs::metadata(&config_path)
+            && let Ok(new_mtime) = meta.modified()
+            && config_mtime.is_none_or(|old| new_mtime > old)
+            && config_mtime.is_some() // skip first load (already loaded above)
+        {
+            info!(agent = agent_id, "config.json changed, hot-reloading");
+            match load_agent_config(&workspace, agent_id, team_id.as_deref()) {
+                Ok(new_config) => {
+                    let new_brain = Box::new(OpenAiBrain::new(&new_config.llm));
+
+                    // Rebuild system prompt with new config
+                    let new_skill_dirs = {
+                        let mut dirs = new_config.skills.dirs.clone();
+                        if let Ok(agent_def) = read_json::<see_agent_corp::types::AgentDefinition>(&agent_dir.agent_json())
+                            && let Some(skills_cfg) = agent_def.skills
+                            && !skills_cfg.dirs.is_empty()
+                        {
+                            dirs = skills_cfg.dirs;
+                        }
+                        dirs
+                    };
+                    let new_skills = gate_skills(filter_skills(
+                        load_skills(&new_skill_dirs),
+                        &new_config.skills.disabled,
+                    ));
+
+                    let new_team_context = team_def.as_ref().map(|def| {
+                        let my_role = if def.leader == agent_id { "leader" } else { "worker" };
+                        TeamContext {
+                            name: &def.name,
+                            my_role,
+                            leader_id: &def.leader,
+                            members: &def.members,
+                            shared_dir: shared_dir_str.as_deref(),
+                        }
+                    });
+
+                    let new_prompt_ctx = PromptContext {
+                        agent_dir: agent_dir.path(),
+                        max_steps: new_config.agent.max_steps,
+                        skills: &new_skills,
+                        team: new_team_context,
+                    };
+                    system_prompt = build_system_prompt(&new_prompt_ctx);
+
+                    agent_loop.hot_reload(new_config.clone(), new_brain);
+                    _config = new_config;
+                    info!(agent = agent_id, "config hot-reload complete");
+                }
+                Err(e) => {
+                    tracing::warn!(agent = agent_id, "config hot-reload failed: {e}");
+                }
+            }
+            config_mtime = Some(new_mtime);
+        }
         // Drain inbox
         if let Ok((steer_msgs, collect_msgs)) =
             see_agent_corp::supervisor::drain_inbox_split(&inbox_path, &cursor_path)

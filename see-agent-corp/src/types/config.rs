@@ -84,8 +84,6 @@ impl Default for LlmConfig {
 pub struct AgentBehaviorConfig {
     #[serde(default = "default_max_steps")]
     pub max_steps: u32,
-    #[serde(default = "default_max_images")]
-    pub max_images: u32,
     #[serde(default)]
     pub compact: CompactConfig,
 }
@@ -94,15 +92,10 @@ fn default_max_steps() -> u32 {
     consts::DEFAULT_MAX_STEPS
 }
 
-fn default_max_images() -> u32 {
-    consts::DEFAULT_MAX_CONTEXT_IMAGES
-}
-
 impl Default for AgentBehaviorConfig {
     fn default() -> Self {
         Self {
             max_steps: default_max_steps(),
-            max_images: default_max_images(),
             compact: CompactConfig::default(),
         }
     }
@@ -112,34 +105,55 @@ impl Default for AgentBehaviorConfig {
 pub struct CompactConfig {
     #[serde(default = "default_context_window")]
     pub context_window: u64,
-    #[serde(default = "default_target_ratio")]
-    pub target_ratio: f64,
+    #[serde(default = "default_microcompact_ratio")]
+    pub microcompact_ratio: f64,
+    #[serde(default = "default_full_compact_ratio")]
+    pub full_compact_ratio: f64,
     #[serde(default = "default_keep_recent")]
     pub keep_recent: u32,
     /// Empty string = use the main model.
     #[serde(default)]
     pub summary_model: String,
+    #[serde(default = "default_image_high_count")]
+    pub image_high_count: u32,
+    #[serde(default = "default_image_low_count")]
+    pub image_low_count: u32,
 }
 
 fn default_context_window() -> u64 {
     consts::DEFAULT_CONTEXT_WINDOW
 }
 
-fn default_target_ratio() -> f64 {
-    consts::DEFAULT_COMPACT_TARGET_RATIO
+fn default_microcompact_ratio() -> f64 {
+    consts::DEFAULT_MICROCOMPACT_RATIO
+}
+
+fn default_full_compact_ratio() -> f64 {
+    consts::DEFAULT_FULL_COMPACT_RATIO
 }
 
 fn default_keep_recent() -> u32 {
     consts::DEFAULT_COMPACT_KEEP_RECENT
 }
 
+fn default_image_high_count() -> u32 {
+    consts::DEFAULT_IMAGE_HIGH_COUNT
+}
+
+fn default_image_low_count() -> u32 {
+    consts::DEFAULT_IMAGE_LOW_COUNT
+}
+
 impl Default for CompactConfig {
     fn default() -> Self {
         Self {
             context_window: default_context_window(),
-            target_ratio: default_target_ratio(),
+            microcompact_ratio: default_microcompact_ratio(),
+            full_compact_ratio: default_full_compact_ratio(),
             keep_recent: default_keep_recent(),
             summary_model: String::new(),
+            image_high_count: default_image_high_count(),
+            image_low_count: default_image_low_count(),
         }
     }
 }

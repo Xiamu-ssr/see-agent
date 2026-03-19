@@ -14,6 +14,7 @@ use tower_http::cors::{Any, CorsLayer};
 use tower_http::set_header::SetResponseHeaderLayer;
 use tracing::info;
 
+use see_agent_corp::config::load_config;
 use see_agent_corp::consts::DEFAULT_SERVER_PORT;
 
 use crate::cli::daemon;
@@ -55,6 +56,37 @@ pub async fn serve(state: AppState, port: Option<u16>, pid_file: Option<PathBuf>
     // Only write PID after successful bind
     if let Some(ref pf) = pid_file {
         daemon::write_pid(pf);
+    }
+
+    // Spawn config hot-reload watcher
+    {
+        let state = state.clone();
+        tokio::spawn(async move {
+            let config_path = state.workspace().config();
+            let mut last_mtime = std::fs::metadata(&config_path)
+                .and_then(|m| m.modified())
+                .ok();
+            loop {
+                tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
+                if let Ok(meta) = std::fs::metadata(&config_path)
+                    && let Ok(new_mtime) = meta.modified()
+                    && last_mtime.is_none_or(|old| new_mtime > old)
+                    && last_mtime.is_some()
+                {
+                    info!("config.json changed, reloading server config");
+                    match load_config(state.workspace()) {
+                        Ok(new_config) => {
+                            *state.inner.config.write().await = new_config;
+                            info!("server config reloaded");
+                        }
+                        Err(e) => {
+                            tracing::warn!("config reload failed: {e}");
+                        }
+                    }
+                    last_mtime = Some(new_mtime);
+                }
+            }
+        });
     }
 
     info!("see-agent-corp server listening on http://0.0.0.0:{port}");

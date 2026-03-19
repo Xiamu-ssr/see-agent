@@ -89,6 +89,7 @@ async fn get_session_messages_handler(
                 SessionMessageType::UserReply => "user_reply",
                 SessionMessageType::SystemHint => "system_hint",
                 SessionMessageType::Compact => "compact",
+                SessionMessageType::Error => "error",
             };
             SessionMessageResponse {
                 msg_id: m.msg_id,

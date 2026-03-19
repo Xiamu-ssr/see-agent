@@ -112,7 +112,7 @@ async fn toggle_agent_skill_handler(
     }))
 }
 
-/// Per-agent skills: reads agent.json skill dirs, merges with global, loads & gates.
+/// Per-agent skills: agent.json skill dirs override global (not merge), matching worker behavior.
 async fn list_agent_skills_handler(
     State(state): State<AppState>,
     Path(agent_id): Path<String>,
@@ -126,24 +126,23 @@ async fn list_agent_skills_handler(
     let config = state.inner.config.read().await;
     let global_disabled = &config.skills.disabled;
 
-    // Determine skill dirs: agent-specific + global
-    let mut dirs = config.skills.dirs.clone();
+    // Determine skill dirs: agent-specific overrides global (same as worker)
     let agent_json_path = agent_dir.agent_json();
-    if let Ok(content) = std::fs::read_to_string(&agent_json_path)
+    let dirs = if let Ok(content) = std::fs::read_to_string(&agent_json_path)
         && let Ok(val) = serde_json::from_str::<Value>(&content)
         && let Some(skill_dirs) = val
             .get("skills")
             .and_then(|s| s.get("dirs"))
             .and_then(|d| d.as_array())
+        && !skill_dirs.is_empty()
     {
-        for d in skill_dirs {
-            if let Some(s) = d.as_str()
-                && !dirs.contains(&s.to_owned())
-            {
-                dirs.push(s.to_owned());
-            }
-        }
-    }
+        skill_dirs
+            .iter()
+            .filter_map(|d| d.as_str().map(|s| s.to_owned()))
+            .collect()
+    } else {
+        config.skills.dirs.clone()
+    };
 
     // Agent-level disabled
     let mut agent_disabled: Vec<String> = Vec::new();

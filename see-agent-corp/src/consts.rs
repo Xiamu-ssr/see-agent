@@ -8,9 +8,11 @@ pub const MAX_STEPS_WITHOUT_SCREENSHOT: usize = 5;
 /// Config defaults — numeric
 pub const DEFAULT_MAX_STEPS: u32 = 50;
 pub const DEFAULT_CONTEXT_WINDOW: u64 = 200_000;
-pub const DEFAULT_COMPACT_TARGET_RATIO: f64 = 0.75;
 pub const DEFAULT_COMPACT_KEEP_RECENT: u32 = 8;
-pub const DEFAULT_MAX_CONTEXT_IMAGES: u32 = 5;
+pub const DEFAULT_MICROCOMPACT_RATIO: f64 = 0.30;
+pub const DEFAULT_FULL_COMPACT_RATIO: f64 = 0.95;
+pub const DEFAULT_IMAGE_HIGH_COUNT: u32 = 3;
+pub const DEFAULT_IMAGE_LOW_COUNT: u32 = 3;
 pub const DEFAULT_LLM_MAX_TOKENS: u32 = 4096;
 pub const DEFAULT_SUMMARIZE_MAX_TOKENS: u32 = 2048;
 
@@ -71,13 +73,6 @@ pub const DEFAULT_WAIT_SECS: f64 = 2.0;
 pub const DEFAULT_SCROLL_AMOUNT: i32 = 3;
 pub const READ_MAX_FILE_CHARS: usize = 50_000;
 
-/// Compression thresholds
-pub const MICROCOMPACT_RATIO: f64 = 0.30;
-pub const FULL_COMPACT_RATIO: f64 = 0.95;
-
-/// Image lifecycle levels
-pub const IMAGE_LEVEL1_COUNT: usize = 3;
-pub const IMAGE_LEVEL2_COUNT: usize = 3;
 
 /// Version
 pub const VERSION: &str = "0.1.0";

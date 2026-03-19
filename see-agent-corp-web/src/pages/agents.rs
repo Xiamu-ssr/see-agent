@@ -103,6 +103,9 @@ fn extract_message_text(msg: &SessionMsg) -> String {
     if let Some(text) = msg.data.get("text").and_then(|t| t.as_str()) {
         return text.to_string();
     }
+    if let Some(error) = msg.data.get("error").and_then(|t| t.as_str()) {
+        return error.to_string();
+    }
     if msg.data.is_string() {
         return msg.data.as_str().unwrap_or("").to_string();
     }
@@ -715,6 +718,17 @@ fn AgentDetailPanel(agent_id: String) -> impl IntoView {
                                                                                 </div>
                                                                             }.into_any())
                                                                         }
+                                                                        "error" => {
+                                                                            let error_text = m.data.get("error")
+                                                                                .and_then(|v| v.as_str())
+                                                                                .unwrap_or(&text)
+                                                                                .to_string();
+                                                                            Some(view! {
+                                                                                <div class="alert alert-error text-sm mb-2">
+                                                                                    <span>{format!("\u{26A0}\u{FE0F} {error_text}")}</span>
+                                                                                </div>
+                                                                            }.into_any())
+                                                                        }
                                                                         _ => None,
                                                                     }
                                                                 }).collect_view().into_any()
@@ -916,7 +930,7 @@ fn AgentDetailPanel(agent_id: String) -> impl IntoView {
                                                                                                 } else {
                                                                                                     view! {
                                                                                                         <button class="btn btn-ghost btn-sm mb-2" on:click=move |_| is_editing_file.set(true)>"Edit"</button>
-                                                                                                        <pre class="text-sm whitespace-pre-wrap break-all">{content}</pre>
+                                                                                                        <pre class="text-sm whitespace-pre-wrap break-all max-h-[70vh] overflow-y-auto">{content}</pre>
                                                                                                     }.into_any()
                                                                                                 }
                                                                                             }

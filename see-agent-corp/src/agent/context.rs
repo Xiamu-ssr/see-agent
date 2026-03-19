@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use serde_json::{json, Value};
 
-use crate::consts::{CHARS_PER_TOKEN, IMAGE_LEVEL1_COUNT, IMAGE_LEVEL2_COUNT, TOKENS_PER_IMAGE};
+use crate::consts::{CHARS_PER_TOKEN, TOKENS_PER_IMAGE};
 
 // ---------------------------------------------------------------------------
 // Tool result image (from tool execution)
@@ -60,7 +60,8 @@ enum ImageAction {
 /// `[Screenshot omitted]`.
 pub struct ConversationContext {
     messages: Vec<Value>,
-    max_images: usize,
+    image_high_count: usize,
+    image_low_count: usize,
     on_append: Option<Box<dyn Fn(Value) + Send + Sync>>,
 }
 
@@ -68,7 +69,8 @@ impl ConversationContext {
     /// Create a new context with the initial system prompt.
     pub fn new(
         system_prompt: &str,
-        max_images: usize,
+        image_high_count: usize,
+        image_low_count: usize,
         on_append: Option<Box<dyn Fn(Value) + Send + Sync>>,
     ) -> Self {
         let sys_msg = json!({"role": "system", "content": system_prompt});
@@ -79,16 +81,18 @@ impl ConversationContext {
 
         Self {
             messages: vec![sys_msg],
-            max_images,
+            image_high_count,
+            image_low_count,
             on_append,
         }
     }
 
     /// Create a context for session restore (no on_append, no initial system message).
-    pub fn for_restore(max_images: usize) -> Self {
+    pub fn for_restore(image_high_count: usize, image_low_count: usize) -> Self {
         Self {
             messages: Vec::new(),
-            max_images,
+            image_high_count,
+            image_low_count,
             on_append: None,
         }
     }
@@ -304,12 +308,13 @@ impl ConversationContext {
         }
 
         // 2. If within limit, return as-is
-        if image_positions.len() <= self.max_images {
+        let max_images = self.image_high_count + self.image_low_count;
+        if image_positions.len() <= max_images {
             return self.messages.clone();
         }
 
         // 3. Identify positions to drop (oldest first)
-        let drop_count = image_positions.len() - self.max_images;
+        let drop_count = image_positions.len() - max_images;
         let to_drop: std::collections::HashSet<(usize, Option<usize>)> =
             image_positions[..drop_count].iter().copied().collect();
 
@@ -367,8 +372,8 @@ impl ConversationContext {
     /// Get messages for LLM call, resolving path refs to base64 and applying
     /// the four-level image lifecycle.
     ///
-    /// Level 1: Latest IMAGE_LEVEL1_COUNT images — full fidelity (detail: high)
-    /// Level 2: Next IMAGE_LEVEL2_COUNT images — low fidelity (detail: low)
+    /// Level 1: Latest image_high_count images — full fidelity (detail: high)
+    /// Level 2: Next image_low_count images — low fidelity (detail: low)
     /// Level 3: Older images — replaced with text placeholder
     /// Level 4: Images discarded at full compact (handled by apply_compaction)
     pub fn get_messages_for_llm(&self) -> Vec<Value> {
@@ -397,8 +402,8 @@ impl ConversationContext {
 
         // 3. Classify images by level (newest-first)
         let total = image_positions.len();
-        let level1_start = total.saturating_sub(IMAGE_LEVEL1_COUNT);
-        let level2_start = level1_start.saturating_sub(IMAGE_LEVEL2_COUNT);
+        let level1_start = total.saturating_sub(self.image_high_count);
+        let level2_start = level1_start.saturating_sub(self.image_low_count);
 
         // Build action map: (msg_idx, part_idx) -> action
         let mut actions: std::collections::HashMap<(usize, usize), ImageAction> =
@@ -638,7 +643,7 @@ mod tests {
     use super::*;
 
     fn make_ctx() -> ConversationContext {
-        ConversationContext::new("You are a test agent.", 3, None)
+        ConversationContext::new("You are a test agent.", 3, 3, None)
     }
 
     #[test]
@@ -700,13 +705,13 @@ mod tests {
         ctx.add_screenshot("def", "high", "image/webp");
 
         let msgs = ctx.get_messages();
-        // 2 images <= max_images(3), no pruning
+        // 2 images <= image_high+low(6), no pruning
         assert_eq!(msgs.len(), 3);
     }
 
     #[test]
     fn get_messages_sliding_window() {
-        let mut ctx = ConversationContext::new("sys", 2, None);
+        let mut ctx = ConversationContext::new("sys", 1, 1, None);
         ctx.add_screenshot("img1", "high", "image/webp");
         ctx.add_screenshot("img2", "high", "image/webp");
         ctx.add_screenshot("img3", "high", "image/webp");
@@ -732,7 +737,7 @@ mod tests {
 
     #[test]
     fn get_messages_preserves_mixed_content() {
-        let mut ctx = ConversationContext::new("sys", 1, None);
+        let mut ctx = ConversationContext::new("sys", 1, 0, None);
         // User task with text + image
         ctx.add_user_task("Do this", "img_data", "high", "image/webp");
         // Another screenshot
@@ -816,7 +821,8 @@ mod tests {
 
         let mut ctx = ConversationContext::new(
             "sys",
-            5,
+            3,
+            3,
             Some(Box::new(move |v| {
                 log2.lock().unwrap().push(v);
             })),
@@ -941,8 +947,8 @@ mod tests {
     fn get_messages_for_llm_four_level_on_path_refs() {
         let tmp = tempfile::TempDir::new().unwrap();
 
-        // 4 images: with L1=3, L2=3 → img0=Downgrade, img1-3=KeepHigh
-        let mut ctx = ConversationContext::new("sys", 100, None);
+        // 4 images: with image_high=3, image_low=3 → img0=Downgrade, img1-3=KeepHigh
+        let mut ctx = ConversationContext::new("sys", 3, 3, None);
         for i in 0..4 {
             let img_path = tmp.path().join(format!("img{i}.png"));
             std::fs::write(&img_path, format!("data-{i}").as_bytes()).unwrap();
@@ -1031,8 +1037,7 @@ mod tests {
         let tmp = tempfile::TempDir::new().unwrap();
 
         // Create 8 images: 2 → TextOnly, 3 → Downgrade, 3 → KeepHigh
-        // max_images is big enough to not trigger old sliding window
-        let mut ctx = ConversationContext::new("sys", 100, None);
+        let mut ctx = ConversationContext::new("sys", 3, 3, None);
         for i in 0..8 {
             let img_path = tmp.path().join(format!("img{i}.png"));
             std::fs::write(&img_path, format!("data-{i}").as_bytes()).unwrap();
@@ -1075,8 +1080,8 @@ mod tests {
     #[test]
     fn four_level_lifecycle_few_images_all_keep_high() {
         let tmp = tempfile::TempDir::new().unwrap();
-        // Only 2 images — both within IMAGE_LEVEL1_COUNT, all KeepHigh
-        let mut ctx = ConversationContext::new("sys", 100, None);
+        // Only 2 images — both within image_high_count, all KeepHigh
+        let mut ctx = ConversationContext::new("sys", 3, 3, None);
         for i in 0..2 {
             let img_path = tmp.path().join(format!("img{i}.png"));
             std::fs::write(&img_path, format!("data-{i}").as_bytes()).unwrap();

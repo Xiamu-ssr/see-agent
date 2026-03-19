@@ -189,7 +189,7 @@ mod tests {
         let registry = ToolRegistry::new();
         let config = Config::default();
         let agent_loop = crate::agent::AgentLoop::new(brain, eye, registry, config, "test".into());
-        let runtime = super::AgentRuntime::new(agent_loop, "system".into(), 5);
+        let runtime = super::AgentRuntime::new(agent_loop, "system".into(), 3, 3);
 
         let _worker = Worker::new("test".into(), agent_dir, runtime);
 
