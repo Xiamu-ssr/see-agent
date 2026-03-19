@@ -96,7 +96,8 @@ pub fn safehouse_available() -> bool {
 
 /// Build command-line arguments for `safehouse` from a SandboxProfile.
 ///
-/// Returns args like: `["--read", "/path", "--write", "/path", "--net", "--"]`
+/// Maps to safehouse CLI: `--add-dirs` (rw), `--add-dirs-ro` (ro), `--enable` (features).
+/// Network is allowed by default in safehouse (no flag needed).
 pub fn build_safehouse_args(profile: &SandboxProfile) -> Vec<String> {
     let home = dirs::home_dir()
         .map(|p| p.to_string_lossy().into_owned())
@@ -104,26 +105,30 @@ pub fn build_safehouse_args(profile: &SandboxProfile) -> Vec<String> {
 
     let mut args = Vec::new();
 
-    for dir in &profile.rw_dirs {
+    // Read-write directories
+    let mut rw_paths: Vec<String> = profile.rw_dirs.iter().map(|d| expand_home(d, &home)).collect();
+    rw_paths.extend(profile.extra_write.iter().map(|d| expand_home(d, &home)));
+    if !rw_paths.is_empty() {
         args.push("--add-dirs".into());
-        args.push(expand_home(dir, &home));
+        args.push(rw_paths.join(":"));
     }
-    for dir in &profile.ro_dirs {
+
+    // Read-only directories
+    let mut ro_paths: Vec<String> = profile.ro_dirs.iter().map(|d| expand_home(d, &home)).collect();
+    ro_paths.extend(profile.extra_read.iter().map(|d| expand_home(d, &home)));
+    if !ro_paths.is_empty() {
         args.push("--add-dirs-ro".into());
-        args.push(expand_home(dir, &home));
+        args.push(ro_paths.join(":"));
     }
-    for dir in &profile.extra_read {
-        args.push("--add-dirs-ro".into());
-        args.push(expand_home(dir, &home));
-    }
-    for dir in &profile.extra_write {
-        args.push("--add-dirs".into());
-        args.push(expand_home(dir, &home));
-    }
-    if profile.network_outbound {
-        args.push("--enable".into());
-        args.push("net".into());
-    }
+
+    // Enable required features
+    // - process-control: Worker needs SIGUSR1 signal handling + shell tool spawns subprocesses
+    // - shell-init: shell tool may need .zshrc/.bashrc
+    args.push("--enable".into());
+    args.push("process-control,shell-init".into());
+
+    // Network is allowed by default in safehouse — no flag needed.
+
     args.push("--".into());
     args
 }
@@ -352,7 +357,7 @@ mod tests {
         assert!(args.contains(&"--add-dirs-ro".to_string()));
         assert!(args.contains(&"/etc/config".to_string()));
         assert!(args.contains(&"--enable".to_string()));
-        assert!(args.contains(&"net".to_string()));
+        assert!(args.contains(&"process-control,shell-init".to_string()));
         assert_eq!(args.last().unwrap(), "--");
     }
 }
