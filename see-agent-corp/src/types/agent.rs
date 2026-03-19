@@ -71,6 +71,8 @@ pub struct AgentSummary {
     pub id: String,
     pub name: String,
     pub emoji: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub race: Option<String>,
     pub state: AgentState,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub team_id: Option<String>,
@@ -89,6 +91,8 @@ pub struct AgentDetail {
     pub id: String,
     pub name: String,
     pub emoji: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub race: Option<String>,
     pub state: AgentState,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub team_id: Option<String>,

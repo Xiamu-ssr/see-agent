@@ -38,7 +38,7 @@ pub fn create_agent(
     // Write IDENTITY.md with name/emoji if provided
     let identity = if name.is_some() || emoji.is_some() {
         format!(
-            "# Identity\n\n**Name:** {}\n**Emoji:** {}\n\n你是一个 AI 助手，能够看到用户的屏幕并操作 Mac 电脑。\n",
+            "# Identity\n\n**Name:** {}\n**Emoji:** {}\n**Race:** 🦀\n\n你是一个 AI 助手，能够看到用户的屏幕并操作 Mac 电脑。\n",
             name.unwrap_or(id),
             emoji.unwrap_or("🤖")
         )
@@ -96,10 +96,11 @@ pub fn list_agents(workspace: &WorkspaceDir) -> Result<Vec<AgentSummary>> {
             continue;
         }
 
-        // Parse name/emoji from IDENTITY.md
+        // Parse name/emoji/race from IDENTITY.md
         let identity = read_text(&agent_dir.identity_md()).unwrap_or_default();
         let name = parse_identity_field(&identity, "Name").unwrap_or_else(|| id.clone());
         let emoji = parse_identity_field(&identity, "Emoji").unwrap_or_else(|| "🤖".to_owned());
+        let race = parse_identity_field(&identity, "Race");
 
         // Read is_system from agent.json
         let is_system = read_json::<AgentDefinition>(&agent_dir.agent_json())
@@ -110,6 +111,7 @@ pub fn list_agents(workspace: &WorkspaceDir) -> Result<Vec<AgentSummary>> {
             id,
             name,
             emoji,
+            race,
             state: AgentState::Sleeping,
             team_id: None,
             team_name: None,
@@ -167,7 +169,7 @@ pub fn delete_agent(workspace: &WorkspaceDir, id: &str) -> Result<()> {
 }
 
 /// Parse a field from IDENTITY.md. Looks for `**Field:** value` pattern.
-fn parse_identity_field(content: &str, field: &str) -> Option<String> {
+pub fn parse_identity_field(content: &str, field: &str) -> Option<String> {
     for line in content.lines() {
         let trimmed = line.trim();
         let prefix = format!("**{field}:**");
@@ -279,9 +281,10 @@ mod tests {
 
     #[test]
     fn parse_identity_fields() {
-        let content = "# Identity\n\n**Name:** Alice\n**Emoji:** 👩\n";
+        let content = "# Identity\n\n**Name:** Alice\n**Emoji:** 👩\n**Race:** 🦀\n";
         assert_eq!(parse_identity_field(content, "Name"), Some("Alice".into()));
         assert_eq!(parse_identity_field(content, "Emoji"), Some("👩".into()));
+        assert_eq!(parse_identity_field(content, "Race"), Some("🦀".into()));
         assert_eq!(parse_identity_field(content, "Missing"), None);
     }
 }

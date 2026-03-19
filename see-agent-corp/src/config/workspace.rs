@@ -80,7 +80,7 @@ pub fn ensure_workspace(workspace: &WorkspaceDir) -> Result<()> {
     if !system_dir.identity_md().exists() {
         write_text(
             &system_dir.identity_md(),
-            "# Identity\n\n**Name:** System\n**Emoji:** ⚙️\n\n系统管理 Agent，负责 workspace 管理和系统配置。\n",
+            "# Identity\n\n**Name:** Steward\n**Emoji:** 🦞\n**Race:** 🦞\n\n系统管家，负责 workspace 管理和系统配置。\n",
         )?;
     }
 
@@ -89,7 +89,7 @@ pub fn ensure_workspace(workspace: &WorkspaceDir) -> Result<()> {
         write_text(&system_dir.inbox(), "")?;
     }
     if !system_dir.inbox_cursor().exists() {
-        write_json(&system_dir.inbox_cursor(), &serde_json::json!({"line": 0}))?;
+        write_json(&system_dir.inbox_cursor(), &serde_json::json!({"collect": 0, "steer": 0}))?;
     }
     if !system_dir.session().messages().exists() {
         write_text(&system_dir.session().messages(), "")?;

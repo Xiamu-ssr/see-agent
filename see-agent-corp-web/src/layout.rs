@@ -35,7 +35,7 @@ pub fn AppLayout(is_dark: RwSignal<bool>, children: Children) -> impl IntoView {
                         </label>
                     </div>
                     <div class="flex-1">
-                        <span class="text-lg font-bold">"see-agent-corp"</span>
+                        <span class="text-lg font-bold">"Claw Race"</span>
                     </div>
                     <div class="flex-none">
                         <label class="swap swap-rotate">
@@ -64,7 +64,7 @@ pub fn AppLayout(is_dark: RwSignal<bool>, children: Children) -> impl IntoView {
                 <aside class="bg-base-200 min-h-full w-64 flex flex-col">
                     // Brand header
                     <div class="p-4 flex items-center justify-between border-b border-base-300">
-                        <span class="text-lg font-bold">"see-agent-corp"</span>
+                        <span class="text-lg font-bold">"Claw Race"</span>
                         <label class="swap swap-rotate hidden lg:inline-grid">
                             <input type="checkbox"
                                 prop:checked=move || is_dark.get()

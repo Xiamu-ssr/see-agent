@@ -16,6 +16,9 @@ struct AgentSummary {
     id: String,
     name: String,
     emoji: String,
+    #[serde(default)]
+    #[allow(dead_code)]
+    race: Option<String>,
     state: String,
     #[serde(default)]
     team_id: Option<String>,
@@ -32,6 +35,8 @@ struct AgentDetailData {
     name: String,
     #[allow(dead_code)]
     emoji: String,
+    #[serde(default)]
+    race: Option<String>,
     state: String,
     #[allow(dead_code)]
     tools: Vec<String>,
@@ -646,6 +651,7 @@ fn AgentDetailPanel(agent_id: String) -> impl IntoView {
                     Some(a) => {
                         let id = a.id.clone();
                         let has_soul = a.has_soul;
+                        let race = a.race.clone();
                         let location = a.location.clone();
 
                         view! {
@@ -669,10 +675,12 @@ fn AgentDetailPanel(agent_id: String) -> impl IntoView {
                                 {
                                     let id_for_view = id.clone();
                                     let location_for_view = location.clone();
+                                    let race_for_view = race.clone();
                                     move || {
                                     let mode = view_mode.get();
                                     let _id_v = id_for_view.clone();
                                     let _loc_v = location_for_view.clone();
+                                    let _race_v = race_for_view.clone();
                                     match mode.as_str() {
                                         // ============================================================
                                         // CHAT VIEW (Bug 15: fixed container + scroll)
@@ -882,6 +890,12 @@ fn AgentDetailPanel(agent_id: String) -> impl IntoView {
                                                                         <span class="text-sm font-bold opacity-70">"Location"</span>
                                                                         <code>{loc_d}</code>
                                                                     </div></div>
+                                                                    {_race_v.clone().map(|r| view! {
+                                                                        <div class="card bg-base-100 shadow-xl"><div class="card-body">
+                                                                            <span class="text-sm font-bold opacity-70">"Race"</span>
+                                                                            <span class="text-3xl">{r}</span>
+                                                                        </div></div>
+                                                                    })}
                                                                     <div class="card bg-base-100 shadow-xl"><div class="card-body">
                                                                         <span class="text-sm font-bold opacity-70">"Tools"</span>
                                                                         <p>{move || tools_list.get().len().to_string()}</p>

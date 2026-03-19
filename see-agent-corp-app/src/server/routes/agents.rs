@@ -34,6 +34,8 @@ struct AgentDetailResponse {
     id: String,
     name: String,
     emoji: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    race: Option<String>,
     state: AgentState,
     tools: Vec<String>,
     skills: Vec<String>,
@@ -118,7 +120,7 @@ async fn get_agent_handler(
 
     let agent_dir = ws.agent(&agent_id);
     let has_soul = agent_dir.soul_md().exists();
-    let (name, emoji) = parse_identity(ws, &agent_id);
+    let (name, emoji, race) = parse_identity(ws, &agent_id);
 
     let mut sup = state.inner.supervisor.write().await;
     let agent_state = sup.agent_state(&agent_id);
@@ -127,6 +129,7 @@ async fn get_agent_handler(
         id: agent_id,
         name,
         emoji,
+        race,
         state: agent_state,
         tools: vec![],
         skills: vec![],
@@ -232,23 +235,18 @@ async fn get_agent_logs_handler(
 // Helpers
 // ---------------------------------------------------------------------------
 
-fn parse_identity(ws: &see_agent_corp::types::WorkspaceDir, agent_id: &str) -> (String, String) {
+fn parse_identity(ws: &see_agent_corp::types::WorkspaceDir, agent_id: &str) -> (String, String, Option<String>) {
     let agent_dir = ws.agent(agent_id);
     let identity_path = agent_dir.identity_md();
     if let Ok(content) = std::fs::read_to_string(&identity_path) {
-        let name = content
-            .lines()
-            .find(|l| l.starts_with("name:"))
-            .map(|l| l.trim_start_matches("name:").trim().to_owned())
+        let name = see_agent_corp::agent::parse_identity_field(&content, "Name")
             .unwrap_or_else(|| agent_id.to_owned());
-        let emoji = content
-            .lines()
-            .find(|l| l.starts_with("emoji:"))
-            .map(|l| l.trim_start_matches("emoji:").trim().to_owned())
+        let emoji = see_agent_corp::agent::parse_identity_field(&content, "Emoji")
             .unwrap_or_else(|| "🤖".to_owned());
-        (name, emoji)
+        let race = see_agent_corp::agent::parse_identity_field(&content, "Race");
+        (name, emoji, race)
     } else {
-        (agent_id.to_owned(), "🤖".to_owned())
+        (agent_id.to_owned(), "🤖".to_owned(), None)
     }
 }
 
