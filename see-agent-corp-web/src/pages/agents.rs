@@ -28,7 +28,9 @@ struct AgentSummary {
 #[derive(Debug, Clone, Deserialize)]
 struct AgentDetailData {
     id: String,
+    #[allow(dead_code)]
     name: String,
+    #[allow(dead_code)]
     emoji: String,
     state: String,
     #[allow(dead_code)]
@@ -430,17 +432,36 @@ fn AgentDetailPanel(agent_id: String) -> impl IntoView {
         });
     }
 
-    // --- Auto-scroll chat to bottom on new messages ---
+    // --- Sticky scroll: auto-scroll only when near bottom ---
+    let is_near_bottom = RwSignal::new(true);
+    // Track scroll position to determine if user is near bottom
+    let on_chat_scroll = move |_: ev::Event| {
+        if let Some(el) = chat_container_ref.get() {
+            let el: web_sys::Element = el.into();
+            let distance = el.scroll_height() - el.scroll_top() - el.client_height();
+            is_near_bottom.set(distance < 100);
+        }
+    };
+    // On new messages, only scroll if near bottom (sticky behavior)
     Effect::new(move |_| {
         let _msgs = chat_messages.get();
-        if let Some(el) = chat_container_ref.get() {
-            // Use request_animation_frame to ensure DOM has updated
+        if is_near_bottom.get_untracked()
+            && let Some(el) = chat_container_ref.get()
+        {
             let el: web_sys::Element = el.into();
             request_animation_frame(move || {
                 el.set_scroll_top(el.scroll_height());
             });
         }
     });
+    // Scroll-to-bottom handler for floating button
+    let scroll_to_bottom = move |_: ev::MouseEvent| {
+        if let Some(el) = chat_container_ref.get() {
+            let el: web_sys::Element = el.into();
+            el.set_scroll_top(el.scroll_height());
+        }
+        is_near_bottom.set(true);
+    };
 
     // --- Chat handlers ---
     let send_msg = move || {
@@ -571,18 +592,13 @@ fn AgentDetailPanel(agent_id: String) -> impl IntoView {
                 match &*a {
                     Some(a) => {
                         let id = a.id.clone();
-                        let name = a.name.clone();
-                        let emoji = a.emoji.clone();
                         let has_soul = a.has_soul;
                         let location = a.location.clone();
 
                         view! {
-                            // Header bar (Bug 19: no status badge)
+                            // Header bar: Chat/Details toggle only (Bug 59: removed emoji+name)
                             <div class="flex items-center gap-2 mb-2">
-                                <span class="text-lg">{emoji}</span>
-                                <span class="font-bold text-lg">{name}</span>
-                                // Bug 14: Chat / Details toggle
-                                <div class="ml-auto join">
+                                <div class="join">
                                     <button
                                         class=move || if view_mode.get() == "chat" { "btn btn-sm join-item btn-active" } else { "btn btn-sm join-item" }
                                         on:click=move |_| view_mode.set("chat".to_string())
@@ -612,9 +628,10 @@ fn AgentDetailPanel(agent_id: String) -> impl IntoView {
                                             let send = send_msg;
                                             view! {
                                                 // Full-height chat container
-                                                <div class="flex-1 flex flex-col min-h-0 h-full">
+                                                <div class="flex-1 flex flex-col min-h-0 h-full relative">
                                                     // Scrollable messages area
-                                                    <div node_ref=chat_container_ref class="flex-1 overflow-y-auto min-h-0 p-2">
+                                                    <div node_ref=chat_container_ref class="flex-1 overflow-y-auto min-h-0 p-2"
+                                                        on:scroll=on_chat_scroll>
                                                         {move || {
                                                             let msgs: Vec<SessionMsg> = chat_messages.get().into_iter().collect();
                                                             if msgs.is_empty() {
@@ -704,6 +721,14 @@ fn AgentDetailPanel(agent_id: String) -> impl IntoView {
                                                             }
                                                         }}
                                                     </div>
+                                                    // Floating scroll-to-bottom button
+                                                    {move || if !is_near_bottom.get() {
+                                                        Some(view! {
+                                                            <button class="btn btn-circle btn-sm btn-ghost absolute bottom-16 left-1/2 -translate-x-1/2 opacity-70 z-10 bg-base-200"
+                                                                on:click=scroll_to_bottom
+                                                            >"\u{2193}"</button>
+                                                        })
+                                                    } else { None }}
                                                     // Fixed input area at bottom
                                                     <div class="border-t border-base-300 p-2">
                                                         <div class="flex items-end gap-1">
