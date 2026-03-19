@@ -120,8 +120,14 @@ fn build_skills_section(skills: &[SkillInfo]) -> String {
     }
 
     let mut lines = vec!["<SKILLS>".to_owned()];
-    for skill in active {
-        lines.push(format!("- **{}**: {}", skill.name, skill.description));
+    for skill in &active {
+        lines.push(format!("\n## Skill: {}", skill.name));
+        if !skill.description.is_empty() {
+            lines.push(skill.description.clone());
+        }
+        if !skill.body.is_empty() {
+            lines.push(skill.body.clone());
+        }
     }
     lines.push("</SKILLS>".to_owned());
     lines.join("\n")
@@ -131,32 +137,37 @@ fn build_skills_section(skills: &[SkillInfo]) -> String {
 // Team context section
 // ---------------------------------------------------------------------------
 
+const TEAM_LEADER_TEMPLATE: &str = include_str!("../../../templates/team_leader_prompt.md");
+const TEAM_MEMBER_TEMPLATE: &str = include_str!("../../../templates/team_member_prompt.md");
+
 fn build_team_section(team: &TeamContext) -> String {
-    let mut lines = vec!["<TEAM_CONTEXT>".to_owned()];
-    lines.push(format!("团队名称: {}", team.name));
-    lines.push(format!("你的角色: {}", team.my_role));
-    lines.push(format!("团队领导: {}", team.leader_id));
-    lines.push("成员列表:".to_owned());
-    for m in team.members {
-        let location = if m.endpoint.is_some() {
-            " (远程)"
-        } else {
-            ""
-        };
-        lines.push(format!("- {} ({}){}", m.id, m.role, location));
-    }
-    lines.push("你可以用 `send_message` 工具给队友发消息协作。".to_owned());
-    // Role-specific instructions
-    if team.my_role == "leader" {
-        lines.push("你是团队领导。使用 `create_task` 和 `assign_task` 分配工作给团队成员。".to_owned());
+    let members_str = team
+        .members
+        .iter()
+        .map(|m| {
+            let location = if m.endpoint.is_some() { " (远程)" } else { "" };
+            format!("- {} ({}){}", m.id, m.role, location)
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let template = if team.my_role == "leader" {
+        TEAM_LEADER_TEMPLATE
     } else {
-        lines.push(format!("你是团队成员。使用 `claim_task` 领取任务，使用 `complete_task` 完成任务。向领导 {} 汇报进度。", team.leader_id));
-    }
+        TEAM_MEMBER_TEMPLATE
+    };
+
+    let mut section = template
+        .replace("{{team_name}}", team.name)
+        .replace("{{my_role}}", team.my_role)
+        .replace("{{leader_id}}", team.leader_id)
+        .replace("{{members}}", &members_str);
+
     if let Some(shared_path) = team.shared_dir {
-        lines.push(format!("\n## Team Shared Workspace\nFiles in {} are accessible to all team members.\nUse this directory for shared artifacts, notes, and outputs.", shared_path));
+        section.push_str(&format!("\n\n## Team Shared Workspace\nFiles in {} are accessible to all team members.\nUse this directory for shared artifacts, notes, and outputs.", shared_path));
     }
-    lines.push("</TEAM_CONTEXT>".to_owned());
-    lines.join("\n")
+
+    format!("<TEAM_CONTEXT>\n{}\n</TEAM_CONTEXT>", section.trim())
 }
 
 // ---------------------------------------------------------------------------
@@ -234,7 +245,8 @@ mod tests {
 
         let prompt = build_system_prompt(&ctx);
         assert!(prompt.contains("<SKILLS>"));
-        assert!(prompt.contains("web_search"));
+        assert!(prompt.contains("Skill: web_search"));
+        assert!(prompt.contains("Search the web"));
         // Blocked skill should not appear
         assert!(!prompt.contains("blocked_skill"));
     }
@@ -394,7 +406,7 @@ mod tests {
         let prompt = build_system_prompt(&ctx);
         assert!(prompt.contains("create_task"));
         assert!(prompt.contains("assign_task"));
-        assert!(prompt.contains("你是团队领导"));
+        assert!(prompt.contains("的领导（leader）"));
     }
 
     #[test]
@@ -430,7 +442,7 @@ mod tests {
         assert!(prompt.contains("claim_task"));
         assert!(prompt.contains("complete_task"));
         assert!(prompt.contains("alice")); // leader name in worker instructions
-        assert!(!prompt.contains("你是团队领导"));
+        assert!(!prompt.contains("的领导（leader）"));
     }
 
     #[test]
@@ -470,5 +482,26 @@ mod tests {
 
         let result = build_skills_section(&skills);
         assert!(result.is_empty());
+    }
+
+    #[test]
+    fn skills_section_includes_body_content() {
+        let skills = vec![SkillInfo {
+            name: "web_search".to_owned(),
+            description: "Search the web".to_owned(),
+            body: "Use this skill to search for information online.\n\n## Usage\nCall with a query string.".to_owned(),
+            path: String::new(),
+            requires_bins: vec![],
+            requires_env: vec![],
+            requires_any_bins: vec![],
+            blocked: false,
+            block_reason: None,
+        }];
+
+        let result = build_skills_section(&skills);
+        assert!(result.contains("Skill: web_search"));
+        assert!(result.contains("Search the web"));
+        assert!(result.contains("Use this skill to search for information online."));
+        assert!(result.contains("## Usage"));
     }
 }

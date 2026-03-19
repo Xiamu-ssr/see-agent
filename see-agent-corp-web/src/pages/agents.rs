@@ -254,7 +254,7 @@ pub fn AgentsPage() -> impl IntoView {
             </div>
 
             // --- Right panel: agent detail ---
-            <div class="flex-1 flex flex-col min-h-0 overflow-y-auto p-4">
+            <div class="flex-1 flex flex-col min-h-0 overflow-hidden p-4">
                 {move || {
                     let id = agent_id.get();
                     if id.is_empty() {
@@ -287,6 +287,7 @@ fn AgentDetailPanel(agent_id: String) -> impl IntoView {
     let msg_input = RwSignal::new(String::new());
     let msg_priority = RwSignal::new(String::from("collect"));
     let chat_messages = RwSignal::new(Vec::<SessionMsg>::new());
+    let chat_container_ref = NodeRef::<leptos::html::Div>::new();
     let tools_list = RwSignal::new(Vec::<ToolInfo>::new());
     let skills_list = RwSignal::new(Vec::<SkillInfo>::new());
     let file_entries = RwSignal::new(Vec::<FileEntry>::new());
@@ -382,6 +383,18 @@ fn AgentDetailPanel(agent_id: String) -> impl IntoView {
             }
         });
     }
+
+    // --- Auto-scroll chat to bottom on new messages ---
+    Effect::new(move |_| {
+        let _msgs = chat_messages.get();
+        if let Some(el) = chat_container_ref.get() {
+            // Use request_animation_frame to ensure DOM has updated
+            let el: web_sys::Element = el.into();
+            request_animation_frame(move || {
+                el.set_scroll_top(el.scroll_height());
+            });
+        }
+    });
 
     // --- Chat handlers ---
     let send_msg = move || {
@@ -535,14 +548,14 @@ fn AgentDetailPanel(agent_id: String) -> impl IntoView {
                                             view! {
                                                 // Full-height chat container
                                                 <div class="flex-1 flex flex-col min-h-0 h-full">
-                                                    // Scrollable messages area (Bug 15)
-                                                    <div class="flex-1 overflow-y-auto min-h-0 p-2">
+                                                    // Scrollable messages area
+                                                    <div node_ref=chat_container_ref class="flex-1 overflow-y-auto min-h-0 p-2">
                                                         {move || {
                                                             let msgs = chat_messages.get();
                                                             if msgs.is_empty() {
                                                                 view! {
                                                                     <div role="alert" class="alert">
-                                                                        <span>"No messages yet. Send a message to start a conversation."</span>
+                                                                        <span>"还没有消息。发送消息开始对话。"</span>
                                                                     </div>
                                                                 }.into_any()
                                                             } else {

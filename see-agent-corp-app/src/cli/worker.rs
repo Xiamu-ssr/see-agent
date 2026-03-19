@@ -8,6 +8,7 @@ use see_agent_corp::io::read_json;
 use see_agent_corp::session::SessionStore;
 use see_agent_corp::types::TeamDefinition;
 use see_agent_corp::config::load_agent_config;
+use see_agent_corp::skill::{filter_skills, gate_skills, load_skills};
 use see_agent_corp::tool::{register_builtin_tools, ToolContext, ToolRegistry};
 use see_agent_corp::types::WorkspaceDir;
 
@@ -122,10 +123,25 @@ pub async fn run(agent_id: &str, workspace_path: &str) {
             shared_dir: shared_dir_str.as_deref(),
         }
     });
+    // 7b. Load skills
+    let mut skill_dirs = config.skills.dirs.clone();
+    // Agent-level skill dirs override (from agent.json)
+    if let Ok(agent_def) = read_json::<see_agent_corp::types::AgentDefinition>(&agent_dir.agent_json())
+        && let Some(skills_cfg) = agent_def.skills
+        && !skills_cfg.dirs.is_empty()
+    {
+        skill_dirs = skills_cfg.dirs;
+    }
+    let skills = gate_skills(filter_skills(
+        load_skills(&skill_dirs),
+        &config.skills.disabled,
+    ));
+    info!(count = skills.len(), "loaded skills for agent");
+
     let prompt_ctx = PromptContext {
         agent_dir: agent_dir.path(),
         max_steps: config.agent.max_steps,
-        skills: &[],
+        skills: &skills,
         team: team_context,
     };
     let system_prompt = build_system_prompt(&prompt_ctx);
@@ -256,32 +272,60 @@ pub async fn run(agent_id: &str, workspace_path: &str) {
         let timeout = tokio::time::Duration::from_secs(see_agent_corp::consts::WORKER_HEARTBEAT_SECS);
         let wake_result = tokio::time::timeout(timeout, wake_rx.recv()).await;
 
-        // On heartbeat timeout for team agents: check TaskBoard for pending tasks
-        if wake_result.is_err()
-            && is_team_agent
-            && let Some(ref td) = heartbeat_team_dir
-        {
-            let board = see_agent_corp::team::TaskBoard::new(td.clone());
-            let has_work = board
-                .list_tasks(Some(see_agent_corp::types::TaskStatus::Pending))
-                .map(|tasks| {
-                    tasks.iter().any(|t| {
-                        t.assigned_to.is_none()
-                            || t.assigned_to.as_deref() == Some(agent_id)
-                    })
-                })
-                .unwrap_or(false);
+        // On heartbeat timeout: drain inbox (all agents) + check TaskBoard (team agents)
+        if wake_result.is_err() {
+            // Re-drain inbox in case SIGUSR1 was missed
+            if let Ok((steer, collect)) =
+                see_agent_corp::supervisor::drain_inbox_split(&inbox_path, &cursor_path)
+            {
+                for msg in steer.iter().chain(collect.iter()) {
+                    if msg.is_shutdown() {
+                        info!(agent = agent_id, "heartbeat: received shutdown, exiting");
+                        let _ = std::fs::remove_file(agent_dir.worker_pid());
+                        return;
+                    }
+                }
 
-            if has_work {
-                info!(agent = agent_id, "heartbeat: found pending tasks, waking agent");
-                let heartbeat_msg = serde_json::json!({
-                    "content": "Heartbeat: there are pending tasks on the task board. Check list_tasks and work on available tasks.",
-                    "from": "system",
-                    "priority": "steer"
-                });
-                agent_loop
-                    .run_one_turn(&mut conv_ctx, &[heartbeat_msg], &system_prompt)
-                    .await;
+                let heartbeat_inbox: Vec<serde_json::Value> = steer
+                    .iter()
+                    .chain(collect.iter())
+                    .filter_map(|m| serde_json::to_value(m).ok())
+                    .collect();
+
+                if !heartbeat_inbox.is_empty() {
+                    info!(agent = agent_id, count = heartbeat_inbox.len(), "heartbeat: draining missed inbox messages");
+                    agent_loop
+                        .run_one_turn(&mut conv_ctx, &heartbeat_inbox, &system_prompt)
+                        .await;
+                }
+            }
+
+            // Team agents: also check TaskBoard for pending tasks
+            if is_team_agent
+                && let Some(ref td) = heartbeat_team_dir
+            {
+                let board = see_agent_corp::team::TaskBoard::new(td.clone());
+                let has_work = board
+                    .list_tasks(Some(see_agent_corp::types::TaskStatus::Pending))
+                    .map(|tasks| {
+                        tasks.iter().any(|t| {
+                            t.assigned_to.is_none()
+                                || t.assigned_to.as_deref() == Some(agent_id)
+                        })
+                    })
+                    .unwrap_or(false);
+
+                if has_work {
+                    info!(agent = agent_id, "heartbeat: found pending tasks, waking agent");
+                    let heartbeat_msg = serde_json::json!({
+                        "content": "Heartbeat: there are pending tasks on the task board. Check list_tasks and work on available tasks.",
+                        "from": "system",
+                        "priority": "steer"
+                    });
+                    agent_loop
+                        .run_one_turn(&mut conv_ctx, &[heartbeat_msg], &system_prompt)
+                        .await;
+                }
             }
         }
     }
@@ -494,7 +538,7 @@ mod tests {
         assert!(prompt.contains("Alpha Team"), "prompt should contain team name");
         assert!(prompt.contains("alice"), "prompt should contain leader id");
         assert!(prompt.contains("bob (dev)"), "prompt should list members");
-        assert!(prompt.contains("你是团队领导"), "leader should get leader instructions");
+        assert!(prompt.contains("的领导（leader）"), "leader should get leader instructions");
         assert!(prompt.contains("Team Shared Workspace"), "prompt should mention shared workspace");
     }
 
@@ -542,6 +586,6 @@ mod tests {
         assert!(prompt.contains("<TEAM_CONTEXT>"), "prompt should contain TEAM_CONTEXT block");
         assert!(prompt.contains("claim_task"), "worker should see claim_task instruction");
         assert!(prompt.contains("complete_task"), "worker should see complete_task instruction");
-        assert!(!prompt.contains("你是团队领导"), "worker should NOT get leader instructions");
+        assert!(!prompt.contains("的领导（leader）"), "worker should NOT get leader instructions");
     }
 }

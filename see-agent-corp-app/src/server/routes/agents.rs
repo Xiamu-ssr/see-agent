@@ -58,6 +58,10 @@ struct StatusResponse {
 struct CreateAgentRequest {
     #[serde(default)]
     id: Option<String>,
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    emoji: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -138,11 +142,21 @@ async fn create_agent_handler(
     });
 
     let def = create_agent(ws, &id, None, None).map_err(|_| StatusCode::CONFLICT)?;
-    let (name, emoji) = parse_identity(ws, &def.id);
+
+    // Write IDENTITY.md with name/emoji if provided
+    let agent_name = req.name.unwrap_or_else(|| id.clone());
+    let agent_emoji = req.emoji.unwrap_or_else(|| "🤖".to_owned());
+    let identity_content = format!("# Identity\n\n**Name:** {}\n**Emoji:** {}\n", agent_name, agent_emoji);
+    let agent_dir = ws.agent(&def.id);
+    let _ = std::fs::write(agent_dir.path().join("IDENTITY.md"), &identity_content);
 
     Ok((
         StatusCode::CREATED,
-        Json(AgentCreateResponse { id, name, emoji }),
+        Json(AgentCreateResponse {
+            id,
+            name: agent_name,
+            emoji: agent_emoji,
+        }),
     ))
 }
 
