@@ -26,6 +26,10 @@ pub async fn run(agent_id: &str, workspace_path: &str) {
 
     info!(agent = agent_id, "worker starting");
 
+    // Write PID file so other agents can send us SIGUSR1
+    let pid = std::process::id();
+    let _ = std::fs::write(agent_dir.worker_pid(), pid.to_string());
+
     // 1. Look up team membership (needed for config merge chain)
     let team_dir = find_agent_team(&workspace, agent_id);
     let team_id = team_dir.as_ref().and_then(|td| {
@@ -55,6 +59,18 @@ pub async fn run(agent_id: &str, workspace_path: &str) {
     let shared_dir = team_dir.as_ref().map(|td| td.shared());
     let is_team_agent = team_dir.is_some();
     let heartbeat_team_dir = team_dir.clone();
+    // Create wake_fn: reads target agent's worker.pid and sends SIGUSR1
+    let wake_workspace = workspace.clone();
+    let wake_fn: Option<see_agent_corp::tool::WakeFn> = Some(Arc::new(move |target_id: &str| {
+        let target_dir = wake_workspace.agent(target_id);
+        let pid_path = target_dir.worker_pid();
+        if let Ok(content) = std::fs::read_to_string(&pid_path) {
+            if let Ok(pid) = content.trim().parse::<u32>() {
+                wake_process(pid);
+            }
+        }
+    }));
+
     let tool_ctx = Arc::new(ToolContext {
         agent_id: agent_id.to_owned(),
         agent_dir: agent_dir.clone(),
@@ -62,6 +78,7 @@ pub async fn run(agent_id: &str, workspace_path: &str) {
         eye: eye.clone(),
         workspace: workspace.clone(),
         shared_dir: shared_dir.clone(),
+        wake_fn,
     });
 
     let mut registry = ToolRegistry::new();
@@ -205,6 +222,7 @@ pub async fn run(agent_id: &str, workspace_path: &str) {
             for msg in steer_msgs.iter().chain(collect_msgs.iter()) {
                 if msg.is_shutdown() {
                     info!(agent = agent_id, "received shutdown, exiting");
+                    let _ = std::fs::remove_file(agent_dir.worker_pid());
                     return;
                 }
             }
@@ -320,6 +338,23 @@ fn create_eye() -> Arc<dyn see_agent_corp::eye::Eye> {
 fn create_eye() -> Arc<dyn see_agent_corp::eye::Eye> {
     Arc::new(see_agent_corp::eye::LinuxEye)
 }
+
+/// Send SIGUSR1 to a process by PID.
+#[cfg(unix)]
+fn wake_process(pid: u32) {
+    use nix::sys::signal::{kill, Signal};
+    use nix::unistd::Pid;
+
+    if pid == 0 {
+        return;
+    }
+    if let Err(e) = kill(Pid::from_raw(pid as i32), Signal::SIGUSR1) {
+        tracing::warn!(pid, "failed to send SIGUSR1 to wake target: {e}");
+    }
+}
+
+#[cfg(not(unix))]
+fn wake_process(_pid: u32) {}
 
 /// Find the team directory for an agent by scanning all teams.
 pub(crate) fn find_agent_team(

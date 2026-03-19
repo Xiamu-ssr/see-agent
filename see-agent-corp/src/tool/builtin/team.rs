@@ -107,6 +107,11 @@ impl Tool for SendMessageTool {
 
         send_to_inbox_with_id(&inbox_path, message)?;
 
+        // Wake the target agent's worker process
+        if let Some(ref wake_fn) = self.ctx.wake_fn {
+            wake_fn(to);
+        }
+
         Ok(ToolResult {
             text: format!("sent message to {to}"),
             images: vec![],

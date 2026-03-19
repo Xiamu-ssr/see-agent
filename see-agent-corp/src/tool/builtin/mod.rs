@@ -12,6 +12,9 @@ use crate::eye::Eye;
 use crate::tool::ToolRegistry;
 use crate::types::paths::{AgentDir, TeamDir, WorkspaceDir};
 
+/// Callback to wake a target agent's worker process (e.g., via SIGUSR1).
+pub type WakeFn = Arc<dyn Fn(&str) + Send + Sync>;
+
 /// Shared context for all builtin tools.
 pub struct ToolContext {
     pub agent_id: String,
@@ -20,6 +23,8 @@ pub struct ToolContext {
     pub eye: Arc<dyn Eye>,
     pub workspace: WorkspaceDir,
     pub shared_dir: Option<PathBuf>,
+    /// Optional callback to wake another agent's worker after sending a message.
+    pub wake_fn: Option<WakeFn>,
 }
 
 /// Core (non-team) tool info pairs.
@@ -113,6 +118,7 @@ mod tests {
             eye: Arc::new(MockEye),
             workspace: ws,
             shared_dir: None,
+            wake_fn: None,
         })
     }
 
@@ -144,6 +150,7 @@ mod tests {
             eye: Arc::new(MockEye),
             workspace: ws,
             shared_dir: Some(shared),
+            wake_fn: None,
         })
     }
 
@@ -175,6 +182,7 @@ mod tests {
             eye: Arc::new(MockEye),
             workspace: ws,
             shared_dir: Some(shared),
+            wake_fn: None,
         })
     }
 

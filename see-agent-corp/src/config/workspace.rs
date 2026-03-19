@@ -5,6 +5,8 @@ use crate::io::{write_json, write_text};
 use crate::types::paths::WorkspaceDir;
 use crate::types::{AgentDefinition, Config, SkillsConfig};
 
+const SYSTEM_SKILL: &str = include_str!("../../../templates/system-skill/SKILL.md");
+
 /// Resolve the workspace root directory.
 ///
 /// Priority: `SAC_HOME` env var > `~/.agentcorp/`
@@ -66,8 +68,18 @@ pub fn ensure_workspace(workspace: &WorkspaceDir) -> Result<()> {
 
     // Write agent.json with is_system: true if missing
     if !system_dir.agent_json().exists() {
+        // Create skills directory and write system-management skill
+        let skills_dir = system_dir.path().join("skills").join("system-management");
+        std::fs::create_dir_all(&skills_dir)?;
+        std::fs::write(skills_dir.join("SKILL.md"), SYSTEM_SKILL)?;
+
         let mut def = AgentDefinition::new("system");
         def.is_system = true;
+        // Configure skills.dirs to point to the system agent's local skills dir
+        def.skills = Some(SkillsConfig {
+            dirs: vec![system_dir.path().join("skills").to_string_lossy().into_owned()],
+            disabled: vec![],
+        });
         write_json(&system_dir.agent_json(), &def)?;
 
         // Write identity

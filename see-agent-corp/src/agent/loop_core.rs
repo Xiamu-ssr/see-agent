@@ -191,7 +191,13 @@ impl AgentLoop {
                         .get("sender")
                         .and_then(|v| v.as_str())
                         .unwrap_or("system");
-                    ctx.add_user_reply(text, sender, "steer");
+                    let label = match sender {
+                        "user" => "[用户]",
+                        "system" | "supervisor" => "[系统]",
+                        s => &format!("[{s}]"),
+                    };
+                    let formatted = format!("{label} {text}");
+                    ctx.add_user_reply(&formatted, sender, "steer");
                 }
             }
 
@@ -427,18 +433,22 @@ impl AgentLoop {
                 .get("priority")
                 .and_then(|v| v.as_str())
                 .unwrap_or("collect");
-            let formatted = if !sender.is_empty() && sender != "user" {
-                format!("[{sender}] {text}")
-            } else {
-                text.to_owned()
+            let label = match sender {
+                "user" => "[用户]",
+                "system" | "supervisor" => "[系统]",
+                s => {
+                    // Use a temporary string for non-static labels
+                    &format!("[{s}]")
+                }
             };
+            let formatted = format!("{label} {text}");
             ctx.add_user_reply(&formatted, sender, priority);
 
             // Persist user message to session store
             if let Some(ref mut store) = self.session_store {
                 let _ = store.append_message(
-                    SessionMessageType::UserTask,
-                    serde_json::json!({ "content": formatted }),
+                    SessionMessageType::UserReply,
+                    serde_json::json!({ "content": formatted, "sender": sender }),
                 );
             }
         }
@@ -454,7 +464,13 @@ impl AgentLoop {
                         .get("sender")
                         .and_then(|v| v.as_str())
                         .unwrap_or("system");
-                    ctx.add_user_reply(text, sender, "steer");
+                    let label = match sender {
+                        "user" => "[用户]",
+                        "system" | "supervisor" => "[系统]",
+                        s => &format!("[{s}]"),
+                    };
+                    let formatted = format!("{label} {text}");
+                    ctx.add_user_reply(&formatted, sender, "steer");
                 }
             }
 

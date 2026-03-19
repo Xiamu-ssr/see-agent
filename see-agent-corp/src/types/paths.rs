@@ -98,6 +98,10 @@ impl AgentDir {
     pub fn session(&self) -> SessionDir {
         SessionDir(self.0.join("session"))
     }
+
+    pub fn worker_pid(&self) -> PathBuf {
+        self.0.join("worker.pid")
+    }
 }
 
 /// Session directory inside an agent
