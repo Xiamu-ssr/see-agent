@@ -9,5 +9,3 @@
 - 使用 complete_task 完成任务
 - 向领导 {{leader_id}} 汇报进度
 - 遇到问题用 send_message 沟通
-
-你可以用 `send_message` 工具给队友发消息协作。
