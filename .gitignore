@@ -29,6 +29,7 @@ tmp/
 # Playwright screenshots
 *.png
 *.jpeg
+!docs/images/*
 
 # OS
 .DS_Store
