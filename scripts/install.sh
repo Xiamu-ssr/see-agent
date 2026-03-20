@@ -59,16 +59,20 @@ Claw Race Installer 🦞
 
 Usage:
   install.sh [VERSION]
+  install.sh --local [--no-path]
 
 Arguments:
   VERSION   Version tag to install (e.g. v0.3.0). Default: latest release.
 
 Options:
   --help    Show this help message.
+  --local   Install from extracted local bundle instead of downloading.
+  --no-path Skip writing PATH config to shell rc files.
 
 Examples:
   bash install.sh              # install latest
   bash install.sh v0.3.0       # install specific version
+  bash install.sh --local      # install from local extracted tar.gz
 
 Environment:
   SAC_HOME  Override workspace directory (default: ~/.see-agent-corp)
@@ -78,9 +82,13 @@ EOF
 
 # ── Parse args ────────────────────────────────────────────────
 VERSION=""
+MODE_LOCAL=false
+AUTO_PATH=true
 for arg in "$@"; do
     case "$arg" in
         --help|-h) usage ;;
+        --local)   MODE_LOCAL=true ;;
+        --no-path) AUTO_PATH=false ;;
         v*)        VERSION="$arg" ;;
         *)         error "unknown argument: $arg" ;;
     esac
@@ -111,6 +119,11 @@ detect_platform() {
 
 # ── Resolve version ──────────────────────────────────────────
 resolve_version() {
+    if [ "$MODE_LOCAL" = true ]; then
+        echo "local-bundle"
+        return
+    fi
+
     if [ -n "$VERSION" ]; then
         echo "$VERSION"
         return
@@ -136,121 +149,159 @@ resolve_version() {
     echo "$tag"
 }
 
-# ── Download & install ───────────────────────────────────────
-install() {
-    local target version url tmp_dir archive_name
+find_local_binary() {
+    local target script_dir candidate
+    target="$1"
+    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-    target="$(detect_platform)"
-    version="$(resolve_version)"
-    archive_name="${BINARY_NAME}-${target}.tar.gz"
-    url="https://github.com/${REPO}/releases/download/${version}/${archive_name}"
-
-    info "platform:  $target"
-    info "version:   $version"
-    info "download:  $url"
-
-    # Create temp dir
-    tmp_dir="$(mktemp -d)"
-    trap 'rm -rf "$tmp_dir"' EXIT
-
-    # Download (try multiple methods to avoid security software blocking)
-    info "downloading..."
-    local downloaded=false
-    
-    # Method 1: curl
-    if ! $downloaded && command -v curl &>/dev/null; then
-        info "trying curl..."
-        if curl -fSL -o "${tmp_dir}/${archive_name}" "$url" 2>/dev/null; then
-            downloaded=true
-        fi
-    fi
-    
-    # Method 2: wget
-    if ! $downloaded && command -v wget &>/dev/null; then
-        info "trying wget..."
-        if wget -q -O "${tmp_dir}/${archive_name}" "$url" 2>/dev/null; then
-            downloaded=true
-        fi
-    fi
-    
-    # Method 3: python3 urllib
-    if ! $downloaded && command -v python3 &>/dev/null; then
-        info "trying python3..."
-        if python3 -c "
-import urllib.request, sys
-urllib.request.urlretrieve('$url', '${tmp_dir}/${archive_name}')
-print('ok')
-" 2>/dev/null | grep -q ok; then
-            downloaded=true
-        fi
-    fi
-    
-    if ! $downloaded; then
-        echo ""
-        warn "automatic download failed (security software may be blocking it)"
-        echo ""
-        echo "  Manual install:"
-        echo "  1. Download from: $url"
-        echo "  2. Extract:       tar xzf ${archive_name}"
-        echo "  3. Move to:       mkdir -p ${INSTALL_DIR} && mv ${BINARY_NAME}-${target} ${INSTALL_DIR}/${BINARY_NAME}"
-        echo "  4. Make exec:     chmod +x ${INSTALL_DIR}/${BINARY_NAME}"
-        echo ""
-        exit 1
+    candidate="${script_dir}/${BINARY_NAME}-${target}"
+    if [ -f "$candidate" ]; then
+        echo "$candidate"
+        return 0
     fi
 
-    # Extract
-    info "extracting..."
-    tar xzf "${tmp_dir}/${archive_name}" -C "$tmp_dir"
-
-    # Find binary
-    local binary_path="${tmp_dir}/${BINARY_NAME}-${target}"
-    if [ ! -f "$binary_path" ]; then
-        binary_path="${tmp_dir}/${BINARY_NAME}"
-    fi
-    if [ ! -f "$binary_path" ]; then
-        error "binary not found in archive"
+    candidate="${script_dir}/${BINARY_NAME}"
+    if [ -f "$candidate" ]; then
+        echo "$candidate"
+        return 0
     fi
 
-    # Install
+    return 1
+}
+
+install_binary() {
+    local binary_path version
+    binary_path="$1"
+    version="$2"
+
     mkdir -p "$INSTALL_DIR"
     cp "$binary_path" "${INSTALL_DIR}/${BINARY_NAME}"
     chmod +x "${INSTALL_DIR}/${BINARY_NAME}"
 
     ok "installed ${BINARY_NAME} ${version} to ${INSTALL_DIR}/${BINARY_NAME}"
+}
 
-    # ── Install Safehouse (macOS only) ────────────────────────
-    install_safehouse
-
-    # ── PATH check ────────────────────────────────────────────
-    if ! echo "$PATH" | tr ':' '\n' | grep -q "^${INSTALL_DIR}$"; then
-        warn "${INSTALL_DIR} is not in your PATH"
-        echo ""
-        echo "Add it to your shell profile:"
-        echo ""
-
-        local shell_name
-        shell_name="$(basename "${SHELL:-/bin/zsh}")"
-
-        case "$shell_name" in
-            zsh)
-                echo "  echo 'export PATH=\"${INSTALL_DIR}:\$PATH\"' >> ~/.zshrc"
-                echo "  source ~/.zshrc"
-                ;;
-            bash)
-                echo "  echo 'export PATH=\"${INSTALL_DIR}:\$PATH\"' >> ~/.bashrc"
-                echo "  source ~/.bashrc"
-                ;;
-            fish)
-                echo "  set -Ux fish_user_paths ${INSTALL_DIR} \$fish_user_paths"
-                ;;
-            *)
-                echo "  export PATH=\"${INSTALL_DIR}:\$PATH\""
-                ;;
-        esac
-        echo ""
+ensure_path() {
+    if [ "$AUTO_PATH" = false ]; then
+        return
     fi
 
-    # ── Verify ────────────────────────────────────────────────
+    if echo "$PATH" | tr ':' '\n' | grep -q "^${INSTALL_DIR}$"; then
+        return
+    fi
+
+    local shell_name rc_file path_line
+    shell_name="$(basename "${SHELL:-/bin/zsh}")"
+
+    case "$shell_name" in
+        zsh)  rc_file="${HOME}/.zshrc" ;;
+        bash) rc_file="${HOME}/.bashrc" ;;
+        fish)
+            warn "fish shell detected; run: set -Ux fish_user_paths ${INSTALL_DIR} \$fish_user_paths"
+            return
+            ;;
+        *)
+            warn "unsupported shell for auto PATH update: ${shell_name}"
+            warn "add manually: export PATH=\"${INSTALL_DIR}:\$PATH\""
+            return
+            ;;
+    esac
+
+    path_line="export PATH=\"${INSTALL_DIR}:\$PATH\""
+    touch "$rc_file"
+    if grep -Fqx "$path_line" "$rc_file"; then
+        info "PATH entry already exists in ${rc_file}"
+    else
+        echo "$path_line" >> "$rc_file"
+        ok "added ${INSTALL_DIR} to ${rc_file}"
+    fi
+    info "reload shell config: source ${rc_file}"
+}
+
+# ── Download & install ───────────────────────────────────────
+install() {
+    local target version url tmp_dir archive_name binary_path
+
+    target="$(detect_platform)"
+    version="$(resolve_version)"
+
+    info "platform:  $target"
+    info "version:   $version"
+
+    if [ "$MODE_LOCAL" = true ]; then
+        if [ -n "$VERSION" ]; then
+            warn "version argument is ignored in --local mode"
+        fi
+        binary_path="$(find_local_binary "$target" || true)"
+        if [ -z "$binary_path" ]; then
+            error "local binary not found. Extract release tar.gz and run: bash install.sh --local"
+        fi
+    else
+        archive_name="${BINARY_NAME}-${target}.tar.gz"
+        url="https://github.com/${REPO}/releases/download/${version}/${archive_name}"
+        info "download:  $url"
+
+        tmp_dir="$(mktemp -d)"
+        trap 'rm -rf "$tmp_dir"' EXIT
+
+        info "downloading..."
+        local downloaded=false
+
+        if ! $downloaded && command -v curl &>/dev/null; then
+            info "trying curl..."
+            if curl -fSL -o "${tmp_dir}/${archive_name}" "$url" 2>/dev/null; then
+                downloaded=true
+            fi
+        fi
+
+        if ! $downloaded && command -v wget &>/dev/null; then
+            info "trying wget..."
+            if wget -q -O "${tmp_dir}/${archive_name}" "$url" 2>/dev/null; then
+                downloaded=true
+            fi
+        fi
+
+        if ! $downloaded && command -v python3 &>/dev/null; then
+            info "trying python3..."
+            if python3 -c "
+import urllib.request, sys
+urllib.request.urlretrieve('$url', '${tmp_dir}/${archive_name}')
+print('ok')
+" 2>/dev/null | grep -q ok; then
+                downloaded=true
+            fi
+        fi
+
+        if ! $downloaded; then
+            echo ""
+            warn "automatic download failed (security software may be blocking it)"
+            echo ""
+            echo "  Manual install:"
+            echo "  1. Download from: $url"
+            echo "  2. Extract:       tar xzf ${archive_name}"
+            echo "  3. Run local:     bash install.sh --local"
+            echo ""
+            exit 1
+        fi
+
+        info "extracting..."
+        tar xzf "${tmp_dir}/${archive_name}" -C "$tmp_dir"
+
+        binary_path="${tmp_dir}/${BINARY_NAME}-${target}"
+        if [ ! -f "$binary_path" ]; then
+            binary_path="${tmp_dir}/${BINARY_NAME}"
+        fi
+        if [ ! -f "$binary_path" ]; then
+            error "binary not found in archive"
+        fi
+    fi
+
+    install_binary "$binary_path" "$version"
+
+    install_safehouse
+
+    ensure_path
+
     echo ""
     ok "🦞 Claw Race is ready!"
     echo ""

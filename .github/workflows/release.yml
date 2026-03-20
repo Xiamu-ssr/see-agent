@@ -52,7 +52,9 @@ jobs:
         run: |
           mkdir -p dist
           cp target/${{ matrix.target }}/release/see-agent-corp dist/see-agent-corp-${{ matrix.target }}
-          tar czf see-agent-corp-${{ matrix.target }}.tar.gz -C dist see-agent-corp-${{ matrix.target }}
+          cp scripts/install.sh dist/install.sh
+          chmod +x dist/install.sh
+          tar czf see-agent-corp-${{ matrix.target }}.tar.gz -C dist see-agent-corp-${{ matrix.target }} install.sh
 
       - name: Upload release assets
         uses: softprops/action-gh-release@v2
