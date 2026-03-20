@@ -327,8 +327,9 @@ mod tests {
         let config = Config::default();
 
         let profile = build_sandbox_profile(&ws, "dev-1", false, None, &config, None);
-        assert_eq!(profile.rw_dirs.len(), 1);
-        assert!(profile.rw_dirs[0].contains("dev-1"));
+        assert_eq!(profile.rw_dirs.len(), 2);
+        assert!(profile.rw_dirs.iter().any(|d| d.contains("dev-1")));
+        assert!(profile.rw_dirs.iter().any(|d| d.ends_with("/agents")));
         assert!(profile.ro_dirs.iter().any(|d| d.contains("config.json")));
         assert!(profile.ro_dirs.iter().any(|d| d.contains("skills")));
     }
@@ -342,9 +343,9 @@ mod tests {
         let config = Config::default();
 
         let profile = build_sandbox_profile(&ws, "dev-1", false, Some("team-x"), &config, None);
-        assert!(profile.rw_dirs.iter().any(|d| d.contains("shared")));
-        assert!(profile.ro_dirs.iter().any(|d| d.contains("team.json")));
-        assert!(profile.ro_dirs.iter().any(|d| d.contains("tasklist.json")));
+        assert!(profile.rw_dirs.iter().any(|d| d.ends_with("/teams/team-x")));
+        assert!(!profile.ro_dirs.iter().any(|d| d.contains("team.json")));
+        assert!(!profile.ro_dirs.iter().any(|d| d.contains("tasklist.json")));
     }
 
     #[test]
