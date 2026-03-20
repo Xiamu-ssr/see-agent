@@ -2,7 +2,7 @@
 
 A multi-agent desktop AI system where autonomous agents collaborate in teams to accomplish tasks. Built with Rust.
 
-![Agent Chat](docs/images/haibao.png)
+![Haibao](docs/images/haibao.png)
 
 ## Features
 
